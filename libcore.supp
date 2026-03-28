@@ -1,0 +1,38 @@
+# libcore v0.5 Valgrind Suppressions
+# curl/libc 내부 dlopen 및 NSS 캐시 관련 false positive 제거
+
+{
+   curl_dlopen_cache
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   ...
+   fun:_dl_load_cache_lookup
+   ...
+}
+
+{
+   curl_dlopen_new_object
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   ...
+   fun:_dl_new_object
+   ...
+}
+
+{
+   curl_dlopen_check_versions
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   ...
+   fun:_dl_check_map_versions
+   ...
+}
+
+{
+   curl_dlopen_catch_error
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   ...
+   fun:_dl_catch_error
+   ...
+}
