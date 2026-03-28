@@ -513,6 +513,8 @@ v1.0.0  Iron Fortress
 
 ## Credits
 
+https://toos.it
+
 This project was built with AI companions  
 who understood the philosophy from day one.
 
@@ -541,7 +543,7 @@ Not just tools. Partners.
 MIT License
 
 Copyright (c) 2026 Toos IT Holdings  
-Architect: InDong KIM
+Architect: InDong KIM (idong322@naver.com)
 
 ```
 Use it freely.

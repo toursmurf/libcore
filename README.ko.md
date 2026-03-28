@@ -382,6 +382,8 @@ v1.0.0  Iron Fortress
 
 ## 크레딧
 
+https://toos.it 
+
 이 프로젝트는 처음부터 철학을 이해한 AI 동료들과 함께 만들었습니다.
 
 단순한 도구가 아닌, 진짜 파트너들.
@@ -410,7 +412,7 @@ v1.0.0  Iron Fortress
 MIT License
 
 Copyright (c) 2026 Toos IT Holdings  
-아키텍트: 김인동
+아키텍트: 김인동 (idong322@naver.com)
 
 ```
 자유롭게 사용하세요.
