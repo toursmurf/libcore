@@ -299,7 +299,7 @@ MIT License — Free to use, modify, and distribute.
 ---
 
 ## 링크 / Links
-
+- **Author : INDONG KIM(김인동) - idong322@naver.com
 - **GitHub**: https://github.com/toursmurf/libcore
 - **Homepage**: https://toos.it
 - **Issues**: https://github.com/toursmurf/libcore/issues
