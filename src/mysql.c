@@ -3,66 +3,117 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-// 오리지널 매크로 (다형성 호출용)
-#define GET_CLASS(obj) ( *( (const Class**) (obj) ) )
+#include <time.h>
 
 /* =========================================================
- * [1] 연결 및 기초 유틸리티
+ * [0] 내부 유틸리티 및 Snapshot 재접속 엔진
  * ========================================================= */
-static int DB_connect_my(DBClient *self) {
-    pthread_mutex_lock(&self->lock);
+static void DB_apply_saved_options(DBClient *self) {
+    for (int i = 0; i < self->option_count; i++) {
+        mysql_options((MYSQL*)self->conn, (enum mysql_option)self->options[i].option,
+                      self->options[i].value_size > 0 ? self->options[i].value : NULL);
+    }
+}
 
-    MYSQL *conn = mysql_init(NULL);
-    self->conn = (void *)conn;
-
-    if (mysql_real_connect(conn, self->host, self->dbid, self->dbpass, self->dbname, self->port, NULL, 0)) {
-        mysql_set_character_set(conn, strlen(self->charset) > 0 ? self->charset : "utf8mb4");
+static int DB_reconnect_internal(DBClient *self) {
+    if (self->conn) { mysql_close((MYSQL*)self->conn); self->conn = NULL; }
+    self->conn = (void *)mysql_init(NULL);
+    DB_apply_saved_options(self);
+    if (mysql_real_connect((MYSQL*)self->conn, self->host, self->dbid, self->dbpass, self->dbname, self->port, NULL, 0)) {
+        mysql_set_character_set((MYSQL*)self->conn, self->charset);
         self->isConnected = 1;
+    } else self->isConnected = 0;
+    return self->isConnected;
+}
+
+static void DB_setOption_my(DBClient *self, int option, const void *arg, size_t arg_size) {
+    pthread_mutex_lock(&self->lock);
+    if (!self->conn) self->conn = (void *)mysql_init(NULL);
+    mysql_options((MYSQL*)self->conn, (enum mysql_option)option, arg);
+    if (self->option_count < 16) {
+        self->options[self->option_count].option = option;
+        size_t cp = (arg_size < 64) ? arg_size : 63;
+        self->options[self->option_count].value_size = cp;
+        memset(self->options[self->option_count].value, 0, 64);
+        if (arg && cp > 0) memcpy(self->options[self->option_count].value, arg, cp);
+        self->option_count++;
     }
     pthread_mutex_unlock(&self->lock);
+}
 
-    if (self->isConnected) {
-        if (self->save_log) self->writeLog(self, "MySQL Connected", NULL, 0);
+static int DB_connect_my(DBClient *self) {
+		int res = 0;
+    pthread_mutex_lock(&self->lock);
+    if (!self->conn) {
+      self->conn = (void *)mysql_init(NULL);
+      DB_apply_saved_options(self);
+    }
+    if (mysql_real_connect((MYSQL*)self->conn, self->host, self->dbid, self->dbpass, self->dbname, self->port, NULL, 0)) {
+        mysql_set_character_set((MYSQL*)self->conn, self->charset);
+        self->isConnected = 1;
+        res=1;
+    }else{
+			if (self->conn) {
+				mysql_close((MYSQL*)self->conn);
+				self->conn = NULL; }
+        self->isConnected = 0;
+        res = 0;
+    }
+    pthread_mutex_unlock(&self->lock);
+    return res;
+}
+
+static int DB_reconnect_my(DBClient *self) {
+    if (self->conn) {
+      mysql_close((MYSQL*)self->conn);
+      self->conn = NULL;
+    }
+    self->conn = (void *)mysql_init(NULL);
+    DB_apply_saved_options(self);
+
+    if (mysql_real_connect((MYSQL*)self->conn, self->host, self->dbid, self->dbpass, self->dbname, self->port, NULL, 0)) {
+      mysql_set_character_set((MYSQL*)self->conn, self->charset);
+      self->isConnected = 1;
     } else {
-        self->writeLog(self, mysql_error((MYSQL*)self->conn), "Connect Fail", 1);
+      // 💡 [패치] 접속 실패 시 핸들 즉시 파괴 (누수 방지)
+      if (self->conn) {
+          mysql_close((MYSQL*)self->conn);
+          self->conn = NULL;
+      }
+      self->isConnected = 0;
     }
     return self->isConnected;
 }
 
 static void DB_disconnect_my(DBClient *self) {
-    int was_connected = 0;
     pthread_mutex_lock(&self->lock);
     if (self->isConnected && self->conn) {
-        mysql_close((MYSQL*)self->conn);
-        mysql_library_end();
-        self->isConnected = 0;
-        self->conn = NULL;
-        was_connected = 1;
+      mysql_close((MYSQL*)self->conn);
+      self->conn = NULL;
+      self->isConnected = 0;
+      mysql_library_end();
     }
     pthread_mutex_unlock(&self->lock);
-
-    if (was_connected) {
-        self->writeLog(self, "MySQL Disconnected", NULL, 0);
-    }
 }
 
 static int DB_sqlQuery_my(DBClient *self, const char* sql) {
+    char err_snapshot[512] = {0,}; int res;
     pthread_mutex_lock(&self->lock);
     snprintf(self->last_query, sizeof(self->last_query), "%s", sql);
-    int res = mysql_query((MYSQL*)self->conn, sql);
-    pthread_mutex_unlock(&self->lock);
-
-    if (res == 0) {
-        if (self->save_log) self->writeLog(self, "QUERY_OK", sql, 0);
-    } else {
-        self->writeLog(self, mysql_error((MYSQL*)self->conn), sql, 1);
+    res = mysql_query((MYSQL*)self->conn, sql);
+    if (res != 0) {
+        unsigned int en = mysql_errno((MYSQL*)self->conn);
+        if ((en == 2006 || en == 2013) && DB_reconnect_internal(self)) res = mysql_query((MYSQL*)self->conn, sql);
+        if (res != 0) snprintf(err_snapshot, sizeof(err_snapshot), "%s", mysql_error((MYSQL*)self->conn));
     }
+    pthread_mutex_unlock(&self->lock);
+    if (res != 0) self->writeLog(self, err_snapshot, sql, 1);
+    else if (self->save_log) self->writeLog(self, "QUERY_OK", sql, 0);
     return (res == 0);
 }
 
 static char* DB_escape_string_my(DBClient *self, const char* str) {
-    if (!str) return strdup("");
+    if (!str || str[0] == '\0') { char* e = malloc(1); if(e) e[0] = '\0'; return e; }
     char *out = malloc(strlen(str) * 2 + 1);
     pthread_mutex_lock(&self->lock);
     mysql_real_escape_string((MYSQL*)self->conn, out, str, strlen(str));
@@ -71,174 +122,135 @@ static char* DB_escape_string_my(DBClient *self, const char* str) {
 }
 
 /* =========================================================
- * [2] 트랜잭션 (START / COMMIT / ROLLBACK)
+ * [1] C.R.U.D 및 트랜잭션 (Snapshot 기반 풀 로직)
  * ========================================================= */
-static int DB_beginTransaction_my(DBClient *self) { return self->sqlQuery(self, "START TRANSACTION"); }
-static int DB_commit_my(DBClient *self) { return self->sqlQuery(self, "COMMIT"); }
-static int DB_rollback_my(DBClient *self) { return self->sqlQuery(self, "ROLLBACK"); }
+static int DB_beginTransaction_my(DBClient *self) {
+	return self->sqlQuery(self, "START TRANSACTION");
+}
+static int DB_commit_my(DBClient *self) {
+	return self->sqlQuery(self, "COMMIT");
+}
+static int DB_rollback_my(DBClient *self) {
+	return self->sqlQuery(self, "ROLLBACK");
+}
 
-/* =========================================================
- * [3] 스키마 검증 및 정보 조회
- * ========================================================= */
-static HashMap* DB_validateFields_my(DBClient *self, const char* table, HashMap* raw_data) {
-    char q[512];
-    snprintf(q, sizeof(q), "DESC `%s`", table);
-
-    // 🚀 임시 컬럼 리스트 생성 (0바이트 방어)
-    ArrayList *valid_cols = new_ArrayList(16);
+// 🚀 [데드락 방어] validateFields는 락 내부에서 mysql_query를 직접 호출함
+static HashMap* DB_validateFields_my(DBClient *self, const char* table, HashMap* raw) {
+    char q[512]; snprintf(q, sizeof(q), "DESC `%s`", table);
+    ArrayList *vcols = new_ArrayList(16);
     pthread_mutex_lock(&self->lock);
     if (mysql_query((MYSQL*)self->conn, q) == 0) {
-        MYSQL_RES *res = mysql_store_result((MYSQL*)self->conn);
-        if (res) {
-            MYSQL_ROW row;
-            while ((row = mysql_fetch_row(res))) {
-                String *col_name = new_String(row[0]);
-                valid_cols->add(valid_cols, (Object *)col_name);
-                RELEASE(col_name);
-            }
-            mysql_free_result(res);
+        MYSQL_RES *rs = mysql_store_result((MYSQL*)self->conn);
+        if (rs) {
+          MYSQL_ROW r;
+          while((r = mysql_fetch_row(rs))) {
+            String *s = new_String(r[0]);
+            vcols->add(vcols, (Object*)s);
+            RELEASE(s);
+          }
+          mysql_free_result(rs);
         }
     }
     pthread_mutex_unlock(&self->lock);
-
-    HashMap *clean_data = new_HashMap(16);
-    // raw_data를 순회하며 유효한 필드만 clean_data에 복사
-    int b;
-    for (b = 0; b < raw_data->capacity; b++) {
-        HashNode *node = raw_data->buckets[b];
-        while (node) {
-            for (int j = 0; j < valid_cols->getSize(valid_cols); j++) {
-                String *col = (String *)valid_cols->get(valid_cols, j);
-                if (strcmp(node->key, col->value) == 0) {
-                    clean_data->put(clean_data, node->key, node->value);
-                    break;
+    HashMap *clean_map = new_HashMap(16);
+    for (int b=0; b<raw->capacity; b++) {
+        HashNode *n = raw->buckets[b];
+        while(n) {
+            for(int j=0; j<vcols->getSize(vcols); j++) {
+                String *c = (String*)vcols->get(vcols, j);
+                if (strcmp(n->key, c->value) == 0) {
+                  clean_map->put(clean_map, n->key, n->value);
+                  break;
                 }
             }
-            node = node->next;
+            n = n->next;
         }
     }
-    RELEASE(valid_cols); // 🚀 임시 리스트 소각 (내부 스트링들도 연쇄 소각)
-    return clean_data;
+    RELEASE(vcols); return clean_map;
 }
 
-static int DB_table_exists_my(DBClient *self, const char* table) {
-    char q[512];
-    snprintf(q, sizeof(q), "SHOW TABLES LIKE '%s'", table);
-    int exists = 0;
-    pthread_mutex_lock(&self->lock);
-    if (mysql_query((MYSQL*)self->conn, q) == 0) {
-        MYSQL_RES *res = mysql_store_result((MYSQL*)self->conn);
-        if (res) { exists = (mysql_num_rows(res) > 0); mysql_free_result(res); }
+static int DB_insertTable_my(DBClient *self, const char* table, HashMap* data) {
+    HashMap *clean = self->validateFields(self, table, data);
+    if (!clean || clean->getSize(clean) == 0) {
+      if(clean) RELEASE(clean); return 0;
     }
-    pthread_mutex_unlock(&self->lock);
-    return exists;
-}
-
-static int DB_fieldExists_my(DBClient *self, const char* table, const char* field) {
-    char q[512];
-    snprintf(q, sizeof(q), "SHOW COLUMNS FROM `%s` LIKE '%s'", table, field);
-    int exists = 0;
-    pthread_mutex_lock(&self->lock);
-    if (mysql_query((MYSQL*)self->conn, q) == 0) {
-        MYSQL_RES *res = mysql_store_result((MYSQL*)self->conn);
-        if (res) { exists = (mysql_num_rows(res) > 0); mysql_free_result(res); }
-    }
-    pthread_mutex_unlock(&self->lock);
-    return exists;
-}
-
-static long long DB_getNextIdx_my(DBClient *self, const char* table) {
-    char q[512];
-    snprintf(q, sizeof(q), "SELECT MAX(idx) + 1 AS next_idx FROM `%s`", table);
-    HashMap *rec = self->getRecordFromQuery(self, q);
-    long long next_idx = 1;
-    if (rec) {
-        String *v = (String *)rec->get(rec, "next_idx");
-        if (v && strlen(v->value) > 0) next_idx = atoll(v->value);
-        RELEASE(rec); // 🚀 사용 후 즉시 소각!
-    }
-    return next_idx;
-}
-
-/* =========================================================
- * [4] 강력한 C.R.U.D 처리 (Insert, Update, Delete)
- * ========================================================= */
-static int DB_insertTable_my(DBClient *self, const char* table, HashMap* raw_data) {
-    HashMap *data = self->validateFields(self, table, raw_data);
-    int total = data->getSize(data);
-    if (total == 0) { RELEASE(data); return 0; }
-
-    char k_buf[4096] = {0}, v_buf[8192] = {0};
-    int count = 0;
-    for (int b = 0; b < data->capacity; b++) {
-        HashNode *node = data->buckets[b];
-        while (node) {
-            String *v = (String *)node->value;
-            char *esc = self->escape_string(self, v->value);
-            safe_append(k_buf, sizeof(k_buf), "`"); safe_append(k_buf, sizeof(k_buf), node->key); safe_append(k_buf, sizeof(k_buf), "`");
-            safe_append(v_buf, sizeof(v_buf), "'"); safe_append(v_buf, sizeof(v_buf), esc); safe_append(v_buf, sizeof(v_buf), "'");
-            if (++count < total) { safe_append(k_buf, sizeof(k_buf), ", "); safe_append(v_buf, sizeof(v_buf), ", "); }
-            free(esc); node = node->next;
+    char k[4096]={0}, v[8192]={0};
+    int t = clean->getSize(clean), c=0;
+    for (int b=0; b<clean->capacity; b++) {
+        HashNode *n = clean->buckets[b];
+        while(n) {
+            String *vs = (String*)n->value;
+            char *esc = self->escape_string(self, vs->value);
+            safe_append(k, sizeof(k), "`");
+            safe_append(k, sizeof(k), n->key);
+            safe_append(k, sizeof(k), "`");
+            safe_append(v, sizeof(v), "'");
+            safe_append(v, sizeof(v), esc);
+            safe_append(v, sizeof(v), "'");
+            if (++c < t) {
+              safe_append(k, sizeof(k), ", ");
+              safe_append(v, sizeof(v), ", ");
+            }
+            free(esc); n = n->next;
         }
     }
-    char q[16384]; snprintf(q, sizeof(q), "INSERT INTO `%s` (%s) VALUES (%s)", table, k_buf, v_buf);
-    int res = self->sqlQuery(self, q);
+    char q[16384]; snprintf(q, sizeof(q), "INSERT INTO `%s` (%s) VALUES (%s)", table, k, v);
+    RELEASE(clean); int res = self->sqlQuery(self, q);
+    if (res) { pthread_mutex_lock(&self->lock); self->last_insert_id = (long long)mysql_insert_id((MYSQL*)self->conn); pthread_mutex_unlock(&self->lock); }
+    return res;
+}
+
+static int DB_updateTable_my(DBClient *self, const char* table, HashMap* data, const char* cond) {
+    HashMap *clean = self->validateFields(self, table, data);
+    if (!clean || clean->getSize(clean) == 0) {
+      if(clean) RELEASE(clean); return 0;
+    }
+    char s[8192]={0};
+    int t = clean->getSize(clean), c=0;
+    for (int b=0; b<clean->capacity; b++) {
+        HashNode *n = clean->buckets[b];
+        while(n) {
+            String *vs = (String*)n->value; char *esc = self->escape_string(self, vs->value);
+            safe_append(s, sizeof(s), "`");
+            safe_append(s, sizeof(s), n->key);
+            safe_append(s, sizeof(s), "`='");
+            safe_append(s, sizeof(s), esc);
+            safe_append(s, sizeof(s), "'");
+            if (++c < t) safe_append(s, sizeof(s), ", ");
+            free(esc); n = n->next;
+        }
+    }
+    char q[16384];
+    snprintf(q, sizeof(q), "UPDATE `%s` SET %s %s %s", table, s, cond?"WHERE":"", cond?cond:"");
+    RELEASE(clean);
+    return self->sqlQuery(self, q);
+}
+
+static int DB_replaceTable_my(DBClient *self, const char* table, HashMap* data) {
+    HashMap *clean = self->validateFields(self, table, data);
+    if (!clean || clean->getSize(clean) == 0) { if(clean) RELEASE(clean); return 0; }
+    char s[8192]={0}; int t = clean->getSize(clean), c=0;
+    for (int b=0; b<clean->capacity; b++) {
+        HashNode *n = clean->buckets[b];
+        while(n) {
+            String *vs = (String*)n->value; char *esc = self->escape_string(self, vs->value);
+            safe_append(s, sizeof(s), "`");
+            safe_append(s, sizeof(s), n->key);
+            safe_append(s, sizeof(s), "`='");
+            safe_append(s, sizeof(s), esc);
+            safe_append(s, sizeof(s), "'");
+            if (++c < t) safe_append(s, sizeof(s), ", ");
+            free(esc); n = n->next;
+        }
+    }
+    char q[16500]; snprintf(q, sizeof(q), "INSERT INTO `%s` SET %s ON DUPLICATE KEY UPDATE %s", table, s, s);
+    RELEASE(clean); int res = self->sqlQuery(self, q);
     if (res) {
-        pthread_mutex_lock(&self->lock);
-        self->last_insert_id = (long long)mysql_insert_id((MYSQL*)self->conn);
-        pthread_mutex_unlock(&self->lock);
+      pthread_mutex_lock(&self->lock);
+      self->last_insert_id = (long long)mysql_insert_id((MYSQL*)self->conn);
+      pthread_mutex_unlock(&self->lock);
     }
-    RELEASE(data); return res;
-}
-
-static int DB_updateTable_my(DBClient *self, const char* table, HashMap* raw_data, const char* cond) {
-    HashMap *data = self->validateFields(self, table, raw_data);
-    int total = data->getSize(data);
-    if (total == 0) { RELEASE(data); return 0; }
-
-    char s_buf[8192] = {0};
-    int count = 0;
-    for (int b = 0; b < data->capacity; b++) {
-        HashNode *node = data->buckets[b];
-        while (node) {
-            String *v = (String *)node->value;
-            char *esc = self->escape_string(self, v->value);
-            safe_append(s_buf, sizeof(s_buf), "`"); safe_append(s_buf, sizeof(s_buf), node->key);
-            safe_append(s_buf, sizeof(s_buf), "`='"); safe_append(s_buf, sizeof(s_buf), esc); safe_append(s_buf, sizeof(s_buf), "'");
-            if (++count < total) safe_append(s_buf, sizeof(s_buf), ", ");
-            free(esc); node = node->next;
-        }
-    }
-    char q[16384]; snprintf(q, sizeof(q), "UPDATE `%s` SET %s %s %s", table, s_buf, cond ? "WHERE " : "", cond ? cond : "");
-    RELEASE(data); return self->sqlQuery(self, q);
-}
-
-static int DB_replaceTable_my(DBClient *self, const char* table, HashMap* raw_data) {
-    HashMap *data = self->validateFields(self, table, raw_data);
-    int total = data->getSize(data);
-    if (total == 0) { RELEASE(data); return 0; }
-
-    char s_buf[8192] = {0};
-    int count = 0;
-    for (int b = 0; b < data->capacity; b++) {
-        HashNode *node = data->buckets[b];
-        while (node) {
-            String *v = (String *)node->value;
-            char *esc = self->escape_string(self, v->value);
-            safe_append(s_buf, sizeof(s_buf), "`"); safe_append(s_buf, sizeof(s_buf), node->key);
-            safe_append(s_buf, sizeof(s_buf), "`='"); safe_append(s_buf, sizeof(s_buf), esc); safe_append(s_buf, sizeof(s_buf), "'");
-            if (++count < total) safe_append(s_buf, sizeof(s_buf), ", ");
-            free(esc); node = node->next;
-        }
-    }
-    char q[16384]; snprintf(q, sizeof(q), "INSERT INTO `%s` SET %s ON DUPLICATE KEY UPDATE %s", table, s_buf, s_buf);
-    int res = self->sqlQuery(self, q);
-    if (res) {
-        pthread_mutex_lock(&self->lock);
-        self->last_insert_id = (long long)mysql_insert_id((MYSQL*)self->conn);
-        pthread_mutex_unlock(&self->lock);
-    }
-    RELEASE(data); return res;
+    return res;
 }
 
 static int DB_deleteTable_my(DBClient *self, const char* table, const char* cond) {
@@ -252,73 +264,73 @@ static int DB_all_delete_table_my(DBClient *self, const char* table) {
 }
 
 /* =========================================================
- * [5] 데이터 조회 (Select) - ARC 연쇄 소각의 정수!
+ * [2] 조회 및 통계 (Snapshot 패턴 및 네이밍 충돌 방지)
  * ========================================================= */
 static ArrayList* DB_getRecordsFromQuery_my(DBClient *self, const char* sql) {
-    ArrayList *list = new_ArrayList(16);
+    ArrayList *list = new_ArrayList(16); char em[512] = {0,};
     pthread_mutex_lock(&self->lock);
-    snprintf(self->last_query, sizeof(self->last_query), "%s", sql);
-
-    if (mysql_query((MYSQL*)self->conn, sql) == 0) {
-        MYSQL_RES *result = mysql_store_result((MYSQL*)self->conn);
-        if (result) {
-            int nf = mysql_num_fields(result);
-            MYSQL_FIELD *fs = mysql_fetch_fields(result);
+    int res = mysql_query((MYSQL*)self->conn, sql);
+    if (res != 0) {
+        if (mysql_errno((MYSQL*)self->conn) == 2006 && DB_reconnect_internal(self)) res = mysql_query((MYSQL*)self->conn, sql);
+        if (res != 0) snprintf(em, sizeof(em), "%s", mysql_error((MYSQL*)self->conn));
+    }
+    if (res == 0) {
+        MYSQL_RES *rs = mysql_store_result((MYSQL*)self->conn);
+        if (rs) {
+            int nf = mysql_num_fields(rs);
+            MYSQL_FIELD *fs = mysql_fetch_fields(rs);
             MYSQL_ROW row;
-            while ((row = mysql_fetch_row(result))) {
-                HashMap *m = new_HashMap(16);
+            while ((row = mysql_fetch_row(rs))) {
+                HashMap *m_node = new_HashMap(16);
                 for (int i = 0; i < nf; i++) {
-                    String *s = new_String(row[i] ? row[i] : "");
-                    m->put(m, fs[i].name, (Object *)s);
-                    RELEASE(s); // 🚀 맵이 멱살 잡았으니 로컬 해제
+                  String *s = new_String(row[i]?row[i]:"");
+                  m_node->put(m_node, fs[i].name, (Object*)s);
+                  RELEASE(s);
                 }
-                list->add(list, (Object *)m);
-                RELEASE(m); // 🚀 리스트가 멱살 잡았으니 로컬 해제
+                list->add(list, (Object*)m_node); RELEASE(m_node);
             }
-            mysql_free_result(result);
+            mysql_free_result(rs);
         }
     }
     pthread_mutex_unlock(&self->lock);
-    return list; // 👈 의장님은 이 녀석 하나만 RELEASE 하시면 끝!
+    if (res != 0) self->writeLog(self, em, sql, 1);
+    return list;
 }
 
 static HashMap* DB_getRecordFromQuery_my(DBClient *self, const char* sql) {
     ArrayList *l = self->getRecordsFromQuery(self, sql);
     HashMap *res_map = NULL;
-    if (l && l->getSize(l) > 0) {
-        res_map = (HashMap *)RETAIN(l->get(l, 0)); // 0번 레코드 소유권 획득
-    }
-    RELEASE(l); // 리스트와 그 안의 다른 맵들 소각!
+    if (l && l->getSize(l) > 0) res_map = (HashMap*)RETAIN(l->get(l, 0));
+    RELEASE(l);
     return res_map;
 }
 
-static ArrayList* DB_getRecords_my(DBClient *self, const char* table, const char* cond, const char* fields) {
-    char q[4096]; snprintf(q, sizeof(q), "SELECT %s FROM `%s` %s %s", fields ? fields : "*", table, cond ? "WHERE " : "", cond ? cond : "");
+static ArrayList* DB_getRecords_my(DBClient *self, const char* t, const char* c, const char* f) {
+    char q[4096];
+    snprintf(q, sizeof(q), "SELECT %s FROM `%s` %s %s", f?f:"*", t, c?"WHERE":"", c?c:"");
     return self->getRecordsFromQuery(self, q);
 }
 
-static HashMap* DB_getRecord_my(DBClient *self, const char* table, const char* cond, const char* field) {
-    char q[4096]; snprintf(q, sizeof(q), "SELECT %s FROM `%s` %s %s LIMIT 1", field ? field : "*", table, cond ? "WHERE " : "", cond ? cond : "");
+static HashMap* DB_getRecord_my(DBClient *self, const char* t, const char* c, const char* f) {
+    char q[4096]; snprintf(q, sizeof(q), "SELECT %s FROM `%s` %s %s LIMIT 1", f?f:"*", t, c?"WHERE":"", c?c:"");
     return self->getRecordFromQuery(self, q);
 }
 
-/* =========================================================
- * [6] 수치 연산 및 테이블 제어
- * ========================================================= */
-static int DB_getDataCount_my(DBClient *self, const char* table, const char* cond) {
-    char q[512]; snprintf(q, sizeof(q), "SELECT COUNT(*) AS cnt FROM `%s` %s %s", table, cond ? "WHERE " : "", cond ? cond : "");
-    HashMap *r = self->getRecordFromQuery(self, q);
-    int count = 0;
-    if (r) {
-        String *v = (String *)r->get(r, "cnt");
-        if (v) count = atoi(v->value);
-        RELEASE(r);
+static int DB_getDataCount_my(DBClient *self, const char* t, const char* c) {
+    char q[1024]; snprintf(q, sizeof(q), "SELECT COUNT(*) AS cnt FROM `%s` %s %s", t, c?"WHERE":"", c?c:"");
+    ArrayList *l = self->getRecordsFromQuery(self, q);
+    int cnt = 0;
+    if (l && l->getSize(l) > 0) {
+      HashMap *res_map = (HashMap*)l->get(l, 0);
+      String *v = (String*)res_map->get(res_map, "cnt");
+      if(v) cnt = atoi(v->value);
     }
-    return count;
+    RELEASE(l); return cnt;
 }
 
 static long long DB_getDataSum_my(DBClient *self, const char* table, const char* field, const char* cond) {
-    char q[512]; snprintf(q, sizeof(q), "SELECT SUM(%s) AS val_sum FROM `%s` %s %s", field, table, cond ? "WHERE " : "", cond ? cond : "");
+    char q[512];
+    snprintf(q, sizeof(q), "SELECT SUM(%s) AS val_sum FROM `%s` %s %s", field, table, cond ? "WHERE " : "", cond ? cond : "");
     HashMap *r = self->getRecordFromQuery(self, q);
     long long sum_val = 0;
     if (r) {
@@ -329,114 +341,182 @@ static long long DB_getDataSum_my(DBClient *self, const char* table, const char*
     return sum_val;
 }
 
-static long long DB_getDataMax_my(DBClient *self, const char* table, const char* field, const char* cond) {
-    char q[512]; snprintf(q, sizeof(q), "SELECT MAX(%s) AS val_max FROM `%s` %s %s", field, table, cond ? "WHERE " : "", cond ? cond : "");
-    HashMap *r = self->getRecordFromQuery(self, q);
-    long long max_val = 0;
-    if (r) {
-        String *v = (String *)r->get(r, "val_max");
-        if (v) max_val = atoll(v->value);
-        RELEASE(r);
+static long long DB_getDataMax_my(DBClient *self, const char* t, const char* f, const char* c) {
+    char q[1024];
+    snprintf(q, sizeof(q), "SELECT MAX(%s) AS mx FROM `%s` %s %s", f, t, c?"WHERE":"", c?c:"");
+    HashMap *res_map = self->getRecordFromQuery(self, q);
+    long long val=0;
+    if(res_map){
+      String *v=(String*)res_map->get(res_map,"mx");
+      if(v) val=atoll(v->value); RELEASE(res_map);
     }
-    return max_val;
+    return val;
 }
 
-static long long DB_getDataMin_my(DBClient *self, const char* table, const char* field, const char* cond) {
-    char q[512]; snprintf(q, sizeof(q), "SELECT MIN(%s) AS val_min FROM `%s` %s %s", field, table, cond ? "WHERE " : "", cond ? cond : "");
-    HashMap *r = self->getRecordFromQuery(self, q);
-    long long min_val = 0;
-    if (r) {
-        String *v = (String *)r->get(r, "val_min");
-        if (v) min_val = atoll(v->value);
-        RELEASE(r);
+static long long DB_getDataMin_my(DBClient *self, const char* t, const char* f, const char* c) {
+    char q[1024];
+    snprintf(q, sizeof(q), "SELECT MIN(%s) AS mn FROM `%s` %s %s", f, t, c?"WHERE":"", c?c:"");
+    HashMap *res_map = self->getRecordFromQuery(self, q);
+    long long val=0;
+    if(res_map){
+      String *v=(String*)res_map->get(res_map,"mn");
+      if(v) val=atoll(v->value); RELEASE(res_map);
     }
-    return min_val;
+    return val;
 }
 
-static int DB_copyTable_my(DBClient *self, const char* newT, const char* orgT, int copyData) {
-    char q1[512]; snprintf(q1, sizeof(q1), "CREATE TABLE IF NOT EXISTS `%s` LIKE `%s`", newT, orgT);
-    if (!self->sqlQuery(self, q1)) return 0;
-    if (copyData) {
-        char q2[512]; snprintf(q2, sizeof(q2), "INSERT IGNORE INTO `%s` SELECT * FROM `%s`", newT, orgT);
-        return self->sqlQuery(self, q2);
+/* =========================================================
+ * [3] 스키마 및 유틸리티 (Full Implementation)
+ * ========================================================= */
+static int DB_table_exists_my(DBClient *self, const char* t) {
+    char q[512];
+    snprintf(q, sizeof(q), "SHOW TABLES LIKE '%s'", t); int ex=0;
+    pthread_mutex_lock(&self->lock);
+    if(mysql_query((MYSQL*)self->conn, q)==0){
+      MYSQL_RES *rs=mysql_store_result((MYSQL*)self->conn);
+      if(rs){
+        ex=(mysql_num_rows(rs)>0);
+        mysql_free_result(rs);
+      }
+    }
+    pthread_mutex_unlock(&self->lock); return ex;
+}
+
+static int DB_fieldExists_my(DBClient *self, const char* t, const char* f) {
+    char q[512];
+    snprintf(q, sizeof(q), "SHOW COLUMNS FROM `%s` LIKE '%s'", t, f); int ex=0;
+    pthread_mutex_lock(&self->lock);
+    if(mysql_query((MYSQL*)self->conn, q)==0){
+      MYSQL_RES *rs=mysql_store_result((MYSQL*)self->conn);
+      if(rs){
+        ex=(mysql_num_rows(rs)>0);
+        mysql_free_result(rs);
+      }
+    }
+    pthread_mutex_unlock(&self->lock); return ex;
+}
+
+static long long DB_getNextIdx_my(DBClient *self, const char* t) {
+    char q[1024];
+    snprintf(q, sizeof(q), "SELECT MAX(idx) + 1 AS n FROM `%s`", t);
+    HashMap *res_map = self->getRecordFromQuery(self, q); long long n=1;
+    if(res_map){
+      String *v=(String*)res_map->get(res_map,"n");
+      if(v && strlen(v->value)>0)
+        n=atoll(v->value);
+      RELEASE(res_map); }
+    pthread_mutex_lock(&self->lock);
+    self->last_idx = n;
+    pthread_mutex_unlock(&self->lock);
+    return n;
+}
+
+static int DB_copyTable_my(DBClient *self, const char* n, const char* o, int d) {
+    char q1[512];
+    snprintf(q1, sizeof(q1), "CREATE TABLE IF NOT EXISTS `%s` LIKE `%s`", n, o);
+    if(!self->sqlQuery(self, q1)) return 0;
+    if(d){
+      char q2[512];
+      snprintf(q2, sizeof(q2), "INSERT IGNORE INTO `%s` SELECT * FROM `%s`", n, o);
+      return self->sqlQuery(self, q2);
     }
     return 1;
 }
 
-static char* DB_makeTable_my(DBClient *self, const char* tablename) {
-    time_t t = time(NULL); struct tm *ti = localtime(&t);
-    char *new_name = malloc(128);
-    (void) self;
-    snprintf(new_name, 128, "%s_%04d%02d", tablename, ti->tm_year + 1900, ti->tm_mon + 1);
-    return new_name;
+static char* DB_makeTable_my(DBClient *self, const char* t) {
+    time_t now=time(NULL);
+    struct tm *ti=localtime(&now);
+    char *n=malloc(128);
+    (void)self;
+    snprintf(n, 128, "%s_%04d%02d", t, ti->tm_year+1900, ti->tm_mon+1); return n;
 }
 
-static int DB_renameTable_my(DBClient *self, const char* oldT, const char* newT) {
-    char q[512]; snprintf(q, sizeof(q), "RENAME TABLE `%s` TO `%s`", oldT, newT);
+static int DB_renameTable_my(DBClient *self, const char* o, const char* n) {
+    char q[512];
+    snprintf(q, sizeof(q), "RENAME TABLE `%s` TO `%s`", o, n);
     return self->sqlQuery(self, q);
 }
 
-static ArrayList* DB_descTable_my(DBClient *self, const char* table) {
-    char q[512]; snprintf(q, sizeof(q), "DESC `%s`", table);
+static ArrayList* DB_descTable_my(DBClient *self, const char* t) {
+    char q[512];
+    snprintf(q, sizeof(q), "DESC `%s`", t);
     return self->getRecordsFromQuery(self, q);
 }
 
-static long long DB_getTableSize_my(DBClient *self, const char* table) {
+static long long DB_getTableSize_my(DBClient *self, const char* t) {
     char q[1024];
-    snprintf(q, sizeof(q), "SELECT (data_length + index_length) AS size FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '%s'", table);
-    HashMap *r = self->getRecordFromQuery(self, q);
-    long long t_size = 0;
-    if (r) {
-        String *v = (String *)r->get(r, "size");
-        if (v) t_size = atoll(v->value);
-        RELEASE(r);
+    snprintf(q, sizeof(q), "SELECT (data_length + index_length) AS s FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '%s'", t);
+    HashMap *res_map = self->getRecordFromQuery(self, q);
+    long long s=0;
+    if(res_map){
+      String *v=(String*)res_map->get(res_map,"s");
+      if(v) s=atoll(v->value);
+      RELEASE(res_map);
     }
-    return t_size;
+    return s;
 }
 
-static int DB_dropTable_my(DBClient *self, const char *table_name) {
-    char sql[256]; snprintf(sql, sizeof(sql), "DROP TABLE IF EXISTS `%s` ", table_name);
-    return self->sqlQuery(self, sql);
+static int DB_dropTable_my(DBClient *self, const char* t) {
+	char q[256];
+	snprintf(q, sizeof(q), "DROP TABLE IF EXISTS `%s` ", t);
+	return self->sqlQuery(self, q);
 }
-
-static int DB_initTable_my(DBClient *self, const char *table_name) {
-    char sql[256]; snprintf(sql, sizeof(sql), "TRUNCATE TABLE `%s` ", table_name);
-    return self->sqlQuery(self, sql);
+static int DB_initTable_my(DBClient *self, const char* t) {
+	char q[256];
+	snprintf(q, sizeof(q), "TRUNCATE TABLE `%s` ", t);
+	return self->sqlQuery(self, q);
 }
 
 /* =========================================================
- * [7] 팩토리 바인딩
+ * [4] 🚀 bind_mysql: 생략 없는 35개 풀 바인딩!!
  * ========================================================= */
 void bind_mysql(DBClient *db) {
-    db->connect = DB_connect_my;
-    db->disconnect = DB_disconnect_my;
-    db->sqlQuery = DB_sqlQuery_my;
-    db->escape_string = DB_escape_string_my;
-    db->beginTransaction = DB_beginTransaction_my;
-    db->commit = DB_commit_my;
-    db->rollback = DB_rollback_my;
-    db->validateFields = DB_validateFields_my;
-    db->table_exists = DB_table_exists_my;
-    db->fieldExists = DB_fieldExists_my;
-    db->getNextIdx = DB_getNextIdx_my;
-    db->insertTable = DB_insertTable_my;
-    db->updateTable = DB_updateTable_my;
-    db->replaceTable = DB_replaceTable_my;
-    db->deleteTable = DB_deleteTable_my;
-    db->all_delete_table = DB_all_delete_table_my;
-    db->getRecordFromQuery = DB_getRecordFromQuery_my;
+    // 0. 제국 전산실 패치 옵션
+    db->setOption           = DB_setOption_my;
+    db->reconnect           = DB_reconnect_my;
+
+    // 1. 기초 및 연결
+    db->connect             = DB_connect_my;
+    db->disconnect          = DB_disconnect_my;
+    db->sqlQuery            = DB_sqlQuery_my;
+    db->escape_string       = DB_escape_string_my;
+
+    // 2. 트랜잭션
+    db->beginTransaction    = DB_beginTransaction_my;
+    db->commit              = DB_commit_my;
+    db->rollback            = DB_rollback_my;
+
+    // 3. 스키마 검증 및 정보
+    db->validateFields      = DB_validateFields_my;
+    db->table_exists        = DB_table_exists_my;
+    db->fieldExists         = DB_fieldExists_my;
+    db->getNextIdx          = DB_getNextIdx_my;
+
+    // 4. C.R.U.D
+    db->insertTable         = DB_insertTable_my;
+    db->updateTable         = DB_updateTable_my;
+    db->replaceTable        = DB_replaceTable_my;
+    db->deleteTable         = DB_deleteTable_my;
+    db->all_delete_table    = DB_all_delete_table_my;
+
+    // 5. 조회
+    db->getRecordFromQuery  = DB_getRecordFromQuery_my;
     db->getRecordsFromQuery = DB_getRecordsFromQuery_my;
-    db->getRecord = DB_getRecord_my;
-    db->getRecords = DB_getRecords_my;
-    db->getDataCount = DB_getDataCount_my;
-    db->getDataSum = DB_getDataSum_my;
-    db->getDataMax = DB_getDataMax_my;
-    db->getDataMin = DB_getDataMin_my;
-    db->copyTable = DB_copyTable_my;
-    db->makeTable = DB_makeTable_my;
-    db->renameTable = DB_renameTable_my;
-    db->descTable = DB_descTable_my;
-    db->getTableSize = DB_getTableSize_my;
-    db->dropTable = DB_dropTable_my;
-    db->initTable = DB_initTable_my;
+    db->getRecord           = DB_getRecord_my;
+    db->getRecords          = DB_getRecords_my;
+
+    // 6. 통계
+    db->getDataCount        = DB_getDataCount_my;
+    db->getDataSum          = DB_getDataSum_my;
+    db->getDataMax          = DB_getDataMax_my;
+    db->getDataMin          = DB_getDataMin_my;
+
+    // 7. 테이블 제어
+    db->copyTable           = DB_copyTable_my;
+    db->makeTable           = DB_makeTable_my;
+    db->renameTable         = DB_renameTable_my;
+    db->descTable           = DB_descTable_my;
+    db->getTableSize        = DB_getTableSize_my;
+    db->dropTable           = DB_dropTable_my;
+    db->initTable           = DB_initTable_my;
 }

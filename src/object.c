@@ -83,4 +83,21 @@ void destroy(Object* obj) {
      .finalize = Object_DefaultFinalize // 이제 타입이 완벽히 일치합니다!
  };
 
+/* =========================
+   safe strdup
+   ========================= */
+
+ char* safe_strdup(const char* src, size_t max_len) {
+    if (!src) return NULL;
+
+    size_t len = strnlen(src, max_len);
+
+    char* dst = malloc(len + 1);
+    if (!dst) return NULL;
+
+    memcpy(dst, src, len);
+    dst[len] = '\0';
+
+    return dst;
+}
 Class* ObjectClass = &_ObjectClass;

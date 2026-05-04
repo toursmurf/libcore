@@ -1,3 +1,10 @@
+/**
+ * @file arc_queue_test.c (or arc_stack_test.c)
+ * @brief 🇰🇷 FIFO 큐(Queue)와 LIFO 스택(Stack) 컬렉션 테스트입니다.
+ * 🇬🇧 FIFO Queue and LIFO Stack collection tests.
+ * @note  This example strictly follows the ARC memory management rules.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include "libcore.h"

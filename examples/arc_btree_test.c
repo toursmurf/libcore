@@ -1,3 +1,10 @@
+/**
+ * @file arc_tree_test.c (or arc_btree_test.c)
+ * @brief 🇰🇷 이진 탐색 트리(BST)와 B-트리(BTree)의 데이터 정렬 및 탐색 검증 예제입니다.
+ * 🇬🇧 Data sorting and search verification example of Binary Search Tree (BST) and B-Tree.
+ * @note  This example strictly follows the ARC memory management rules.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -8,7 +15,12 @@ typedef struct { Object base; int val; } IntObject;
 static void Int_Finalize(Object* obj) { 
 	(void)obj;
 }
-const Class intClass = { .name = "Int", .size = sizeof(IntObject), .finalize = Int_Finalize };
+const Class intClass = {
+	.name = "Int",
+	.size = sizeof(IntObject),
+	.finalize = Int_Finalize
+};
+
 IntObject* new_Int(int val) {
     IntObject* obj = calloc(1, sizeof(IntObject));
     Object_Init((Object*)obj, &intClass);
@@ -24,15 +36,19 @@ int main(void) {
     BTree* tree = new_BTree(3); // 차수 3 생성!
 
     printf("[1] 단일 스레드 삽입 (RETAIN 테스트)...\n");
-    IntObject *k1 = new_Int(10); IntObject *v1 = new_Int(100);
-    IntObject *k2 = new_Int(20); IntObject *v2 = new_Int(200);
+    IntObject *k1 = new_Int(10);
+    IntObject *v1 = new_Int(100);
+    IntObject *k2 = new_Int(20);
+    IntObject *v2 = new_Int(200);
 
     tree->insert(tree, (Object*)k1, (Object*)v1);
     tree->insert(tree, (Object*)k2, (Object*)v2);
 
     // 트리 내부에 RETAIN 되었으므로, 로컬 소유권은 해제!
-    RELEASE((Object*)k1); RELEASE((Object*)v1);
-    RELEASE((Object*)k2); RELEASE((Object*)v2);
+    RELEASE((Object*)k1);
+    RELEASE((Object*)v1);
+    RELEASE((Object*)k2);
+    RELEASE((Object*)v2);
 
     printf("  - 삽입 후 Size: %d\n", tree->getSize(tree));
 

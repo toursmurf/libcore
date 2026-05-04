@@ -1,3 +1,10 @@
+/**
+ * @file arc_thread_test.c
+ * @brief 🇰🇷 POSIX 스레드 래퍼, Mutex, CondVar, 그리고 동시성 처리를 위한 ThreadPool 동작 검증 예제입니다.
+ * 🇬🇧 Operation verification example of POSIX thread wrappers, Mutex, CondVar, and ThreadPool for concurrency processing.
+ * @note  This example strictly follows the ARC memory management rules.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h> // sleep 함수용

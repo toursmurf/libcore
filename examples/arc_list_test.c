@@ -1,3 +1,10 @@
+/**
+ * @file arc_vector_test.c (or list/linkedlist)
+ * @brief 🇰🇷 동적 배열(Vector) 및 이중/단일 연결 리스트의 동작 검증 예제입니다.
+ * 🇬🇧 Operation verification example of dynamic array (Vector) and doubly/singly linked lists.
+ * @note  This example strictly follows the ARC memory management rules.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>

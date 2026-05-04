@@ -1,3 +1,10 @@
+/**
+ * @file arc_tree_test.c (or arc_btree_test.c)
+ * @brief 🇰🇷 이진 탐색 트리(BST)와 B-트리(BTree)의 데이터 정렬 및 탐색 검증 예제입니다.
+ * 🇬🇧 Data sorting and search verification example of Binary Search Tree (BST) and B-Tree.
+ * @note  This example strictly follows the ARC memory management rules.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include "libcore.h"

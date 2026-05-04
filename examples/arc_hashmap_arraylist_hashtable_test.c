@@ -1,3 +1,10 @@
+/**
+ * @file arc_hashmap_arraylist_hashtable_test.c
+ * @brief 🇰🇷 핵심 컬렉션(HashMap, ArrayList, Hashtable)의 데이터 삽입/조회 및 ARC 소유권 관리 통합 테스트입니다.
+ * 🇬🇧 Integration test for data insertion/retrieval and ARC ownership management of core collections (HashMap, ArrayList, Hashtable).
+ * @note  This example strictly follows the ARC memory management rules.
+ */
+
 #include <stdio.h>
 #include "libcore.h"
 

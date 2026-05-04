@@ -1,23 +1,8 @@
-/*
- * arc_news_crawler.c
- * libcore v0.5 Killer Example!
- * ThreadPool + ArrayList + HashMap + pthread_mutex
- * Parallel RSS News Crawler
- *
- * 투스(Toos) IT 홀딩스 - Iron Fortress
- * "Valgrind 0 bytes. Every. Single. Time."
- *
- * Build:
- * gcc -Wall -O2 -Iinclude examples/arc_news_crawler.c \
- * lib/libcore.a -lpthread -lcurl -lm -o examples/arc_news_crawler
- *
- * Run:
- * ./examples/arc_news_crawler
- *
- * Valgrind:
- * valgrind --leak-check=full --show-leak-kinds=all \
- * --suppressions=libcore.supp \
- * --error-exitcode=1 examples/arc_news_crawler
+/**
+ * @file arc_news_crawler.c
+ * @brief 🇰🇷 소켓 통신, 문자열 처리, 자료구조를 모두 결합하여 만든 실전형 웹 뉴스 크롤러(Web Crawler) 데모입니다.
+ * 🇬🇧 Practical Web Crawler demo combining socket communication, string processing, and data structures.
+ * @note  This example strictly follows the ARC memory management rules.
  */
 
 #include <stdio.h>

@@ -1,3 +1,10 @@
+/**
+ * @file arc_mysql_test.c
+ * @brief 🇰🇷 MySQL/MariaDB 클라이언트 연동, SQL 쿼리 실행 및 트랜잭션 롤백/커밋 테스트입니다.
+ * 🇬🇧 MySQL/MariaDB client integration, SQL query execution, and transaction rollback/commit test.
+ * @note  This example strictly follows the ARC memory management rules.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

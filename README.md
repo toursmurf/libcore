@@ -1,566 +1,313 @@
-# libcore
+# libcore — C Server Runtime Framework
 
-<p align="center">
-  <img src="https://img.shields.io/badge/version-0.5-blue" alt="version"/>
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="license"/>
-  <img src="https://img.shields.io/badge/valgrind-0%20bytes-brightgreen" alt="valgrind"/>
-  <img src="https://img.shields.io/badge/language-C99-orange" alt="language"/>
-  <img src="https://img.shields.io/badge/platform-Linux-lightgrey" alt="platform"/>
-  <img src="https://img.shields.io/badge/gcc-13%2B-red" alt="gcc"/>
-</p>
+> **EventLoop + ThreadPool 기반, C 서버를 100줄로.**
+> **Build a C server in 100 lines with EventLoop + ThreadPool.**
 
-<p align="center">
-  <b>Java-style Object-Oriented Runtime Framework in Pure C</b><br/>
-  <i>If you know Java or Python, you already know libcore.</i>
-</p>
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Valgrind](https://img.shields.io/badge/Valgrind-0%20bytes-brightgreen)](/)
+[![Platform](https://img.shields.io/badge/Platform-Linux%2064bit-lightgrey)](/)
+[![Version](https://img.shields.io/badge/Version-v1.0%20Iron%20Fortress-orange)](/)
 
 ---
 
-## C Memory Management, Solved.
-
-> Stop worrying about `free()`.  
-> libcore's ARC (Automatic Reference Counting) handles memory automatically.  
-> **Valgrind 0 bytes. That's our default.**
-
----
-
-## Why libcore?
-
-Most C developers write raw `malloc/free` and manage memory manually.  
-Most Java/Python developers avoid C because of pointers and memory management.
-
-**libcore bridges that gap.**
-
-- Java developer? The API looks almost identical.
-- Python developer? Every method takes `self` as first argument.
-- C developer? ARC handles memory. Valgrind 0 bytes. Zero leaks.
-
----
-
-## Features
-
-- ✅ **ARC Memory Management** — Automatic Reference Counting, no GC overhead
-- ✅ **Java-style Collections** — ArrayList, HashMap, Hashtable, Queue, Stack, Vector, LinkedList
-- ✅ **Java-style String** — length, indexOf, substring, split, trim, toUpperCase...
-- ✅ **OOP in C** — Inheritance via struct embedding, vtable via function pointers
-- ✅ **Thread Safety** — Thread, Semaphore, ThreadPool with TSan verified
-- ✅ **JSON Engine** — Built-in parser and stringifier, zero dependencies
-- ✅ **Tree Structures** — BTree, BST with iterator support
-- ✅ **Valgrind Clean** — 0 bytes lost, 0 errors across all modules
-- ✅ **ASan / UBSan Clean** — Address Sanitizer and Undefined Behavior Sanitizer verified
-- ✅ **MySQL Support** — ARC-integrated MySQL client, transaction support
-- ✅ **Zero Dependencies** — Pure C99, POSIX only (MySQL optional)
-
----
-
-## Performance
-
-Real-world benchmark: Parallel RSS news crawler  
-(BBC Tech + Hacker News + Ars Technica + Dev.to)
-
-| Benchmark     | Result              | Condition            |
-|---------------|---------------------|----------------------|
-| Throughput    | 40 articles         | 4 sources parallel   |
-| Latency       | **6.3s** (wall-clock) | Actual measurement |
-| CPU Usage     | < 1% (user: 0.09s)  | High I/O efficiency  |
-| Memory        | **0 bytes leaked**  | Valgrind perfect clean |
-| Thread Safety | 0 races             | TSan verified        |
-| Code Safety   | 0 errors            | ASan + UBSan clean   |
+## 한 줄로
 
 ```
-Sequential (est): 23,418ms
-Parallel  (act):  6,310ms
-Time saved:      17,108ms  🚀  (3.7x faster)
-```
+🇰🇷 C99 기반 서버 런타임 프레임워크.
+     EventLoop + ThreadPool + ARC 메모리 관리로
+     고성능 서버를 빠르게 만들 수 있습니다.
 
-> "Parallelize Your I/O, Not Your Stress."
+🇬🇧 A C99 server runtime framework.
+     Build high-performance servers quickly with
+     EventLoop + ThreadPool + ARC memory management.
+```
 
 ---
 
-## Java Developer? You Already Know This.
-
-```java
-// Java
-ArrayList<Object> list = new ArrayList<>();
-list.add(item);
-Object obj = list.get(0);
-int size = list.size();
-list.remove(0);
-```
+## 이렇게 씁니다 / This is how you use it
 
 ```c
-// libcore C — almost the same!
-ArrayList* list = new_ArrayList(10);
-list->add(list, item);
-Object* obj = list->get(list, 0);
-int size = list->size;
-list->remove(list, 0);
-```
+/* TCP 에코 서버 — 20줄 / TCP Echo Server — 20 lines */
 
-```java
-// Java
-HashMap<String, Object> map = new HashMap<>();
-map.put("host", value);
-Object val = map.get("host");
-boolean has = map.containsKey("host");
-```
+#include "libcore.h"
 
-```c
-// libcore C
-HashMap* map = new_HashMap(16);
-map->put(map, "host", value);
-Object* val = map->get(map, "host");
-bool has = map->containsKey(map, "host");
-```
+static void on_client(Socket* self, void* loop_ptr) {
+    char buf[1024];
+    ssize_t n = self->recv(self, buf, sizeof(buf), NULL, NULL);
+    if (n > 0) self->send(self, buf, n, NULL, 0);
+    else {
+        ((EventLoop*)loop_ptr)->delSocket((EventLoop*)loop_ptr, self);
+        RELEASE((Object*)self);
+    }
+}
 
-```java
-// Java
-String s = new String("hello, libcore!");
-int len = s.length();
-int idx = s.indexOf("libcore");
-String sub = s.substring(0, 5);
-s.toUpperCase();
-boolean eq = s.equals("hello");
-String[] parts = s.split(",");
-```
+static void on_accept(Socket* self, void* loop_ptr) {
+    EventLoop* loop = (EventLoop*)loop_ptr;
+    TcpSocket* client = ((TcpSocket*)self)->accept((TcpSocket*)self, NULL, NULL);
+    if (client) {
+        client->base.on_readable = on_client;
+        loop->addSocket(loop, (Socket*)client, EV_READ);
+        RELEASE((Object*)client);
+    }
+}
 
-```c
-// libcore C
-String* s = new_String("hello, libcore!");
-int len     = s->length;
-int idx     = s->indexOf(s, "libcore");
-String* sub = s->substring(s, 0, 5);
-s->toUpperCase(s);
-bool eq     = s->equals(s, "hello");
-ArrayList* parts = s->split(s, ",");
-```
-
-```java
-// Java
-Thread t = new Thread(() -> doWork());
-t.start();
-t.join();
-
-Semaphore sem = new Semaphore(1);
-sem.acquire();
-sem.release();
-```
-
-```c
-// libcore C
-Thread* t = new_Thread(do_work, arg);
-t->start(t);
-t->join(t);
-
-Semaphore* sem = new_Semaphore(1);
-sem->wait(sem);
-sem->post(sem);
+int main(void) {
+    EventLoop* loop   = new_EventLoop(1024);
+    TcpSocket* server = new_TcpServer("0.0.0.0", 8080);
+    server->base.on_readable = on_accept;
+    loop->addSocket(loop, (Socket*)server, EV_READ);
+    loop->run(loop);                          /* 블로킹 / blocking */
+    RELEASE((Object*)server);
+    RELEASE((Object*)loop);
+    return 0;
+}
 ```
 
 ---
 
-## Python Developer? Same `self` Pattern.
+## 왜 libcore인가 / Why libcore
 
-```python
-# Python
-s = MyString("hello")
-s.to_upper(s)
-s.split(s, ",")
-
-lst = MyList()
-lst.add(lst, item)
-lst.get(lst, 0)
 ```
+🇰🇷
+C 언어로 서버를 만들 때 반복되는 문제들:
+→ epoll 직접 관리 → 복잡하고 실수하기 쉬움
+→ 스레드 풀 직접 구현 → 매번 같은 코드
+→ 메모리 관리 → free() 타이밍 실수 → 누수
+→ 소켓 추상화 없음 → TCP/UDP/Unix 각각 따로
 
-```c
-// libcore C — same self pattern!
-String* s = new_String("hello");
-s->toUpperCase(s);
-s->split(s, ",");
+libcore 는 이 문제들을 해결합니다.
 
-ArrayList* lst = new_ArrayList(10);
-lst->add(lst, item);
-lst->get(lst, 0);
-```
+🇬🇧
+When building servers in C, you face the same problems repeatedly:
+→ Managing epoll directly — complex and error-prone
+→ Implementing thread pools every time — same boilerplate
+→ Memory management — wrong free() timing → leaks
+→ No socket abstraction — TCP/UDP/Unix all separate
 
----
-
-## ARC Memory Management
-
-libcore uses **ARC (Automatic Reference Counting)** — the same concept as Swift/Objective-C.  
-No garbage collector. No memory leaks. Just `RETAIN` and `RELEASE`.
-
-```c
-// Create object (ref_count = 1)
-String* s = new_String("hello");
-
-// Retain — increase ref count
-RETAIN((Object*)s);   // ref_count = 2
-
-// Release — decrease ref count
-// When ref_count reaches 0 → auto freed!
-RELEASE((Object*)s);  // ref_count = 1
-RELEASE((Object*)s);  // ref_count = 0 → freed!
-
-// Cascade release — nested objects freed automatically!
-HashMap* map = new_HashMap(16);
-map->put(map, "name", (Object*)new_String("libcore"));
-map->put(map, "ver",  (Object*)new_String("0.5"));
-RELEASE((Object*)map);
-// → map freed + all String values freed automatically!
-```
-
-**Valgrind proof:**
-```
-==12345== HEAP SUMMARY:
-==12345==   in use at exit: 0 bytes in 0 blocks
-==12345==   total heap usage: 4,689 allocs, 4,689 frees
-==12345== All heap blocks were freed -- no leaks are possible
-==12345== ERROR SUMMARY: 0 errors from 0 contexts
+libcore solves these problems.
 ```
 
 ---
 
-## Modules (v0.5 — Foundation Layer)
+## 핵심 구성 / Core Components
 
-| Module | Description | Java Equivalent |
-|--------|-------------|-----------------|
-| `object` | ARC base class, vtable | `Object` |
-| `string_obj` | String with rich API | `String` |
-| `arraylist` | Dynamic array with ARC | `ArrayList<E>` |
-| `hashmap` | Hash map with chaining | `HashMap<K,V>` |
-| `hashtable` | Thread-safe hash table | `Hashtable<K,V>` |
-| `queue` | FIFO queue | `Queue<E>` |
-| `stack` | LIFO stack | `Stack<E>` |
-| `vector` | Synchronized dynamic array | `Vector<E>` |
-| `linked_list` | Doubly linked list | `LinkedList<E>` |
-| `list` | Generic list interface | `List<E>` |
-| `btree` | B-Tree implementation | `TreeMap<K,V>` |
-| `tree` | Binary Search Tree + iterator | `TreeSet<E>` |
-| `json` | JSON parser & stringifier | `org.json` / Gson |
-| `thread` | POSIX thread wrapper | `Thread` |
-| `semaphore_obj` | Counting semaphore | `Semaphore` |
-| `threadpool` | Thread pool with task queue | `ExecutorService` |
-| `db` | MySQL client with ARC + OOP | `javax.sql` |
+```
+┌─────────────────────────────────────────────────────┐
+│                    libcore v1.0                     │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│  ┌──────────────┐    ┌──────────────────────────┐   │
+│  │  EventLoop   │◄───│  Socket                  │   │
+│  │  (epoll)     │    │  TcpSocket               │   │
+│  │              │◄───│  UdpSocket               │   │
+│  │              │◄───│  UnixSocket              │   │
+│  └──────┬───────┘    └──────────────────────────┘   │
+│         │                                           │
+│         │            ┌──────────────────────────┐   │
+│         └───────────►│  Timer / Scheduler       │   │
+│                      └──────────────────────────┘   │
+│                                                     │
+│  ┌──────────────┐    ┌──────────────────────────┐   │
+│  │  ThreadPool  │    │  ARC Memory              │   │
+│  │  Thread      │    │  RETAIN / RELEASE        │   │
+│  │  Semaphore   │    │  Valgrind 0 bytes        │   │
+│  └──────────────┘    └──────────────────────────┘   │
+│                                                     │
+│  Collections  String  JSON  Logger  Crypto  ...     │
+└─────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Quick Start
+## 주요 특징 / Key Features
 
-### Requirements
+| 특징 / Feature | 설명 / Description |
+|---|---|
+| **EventLoop** | epoll 기반 단일 스레드 비동기 I/O | epoll-based single-thread async I/O |
+| **ARC 메모리** | RETAIN/RELEASE 기반 자동 메모리 관리 | Auto memory via RETAIN/RELEASE |
+| **Socket 추상화** | TCP/UDP/Unix 통일 인터페이스 | Unified TCP/UDP/Unix interface |
+| **ThreadPool** | 작업 큐 기반 스레드 풀 | Task queue-based thread pool |
+| **Valgrind 0 bytes** | 메모리 누수 없음 보장 | Zero memory leaks guaranteed |
+| **44개 모듈** | 컬렉션/파일/암호화/JSON 등 포함 | Collections/File/Crypto/JSON etc. |
+| **C99 순수 C** | 외부 의존성 없음 (MySQL 선택적) | No external deps (MySQL optional) |
 
-- Linux (Ubuntu 22.04+ / Rocky Linux 8+)
-- **GCC 13+**
-  - Ubuntu: `sudo apt install gcc-13`
-  - Rocky Linux: `gcc-toolset-13`
-- POSIX threads (`-lpthread`)
-- MySQL client (optional) — `libmysqlclient-dev`
-  - Ubuntu: `sudo apt install libmysqlclient-dev`
-  - Rocky Linux: `sudo dnf install mariadb-devel`
+---
 
-### Build
+## 빠른 시작 / Quick Start
 
-**Ubuntu / Debian:**
+### 1. 빌드 / Build
+
 ```bash
 git clone https://github.com/toursmurf/libcore.git
 cd libcore
-make
-```
-
-**Rocky Linux 8/9 (gcc-toolset-13):**
-```bash
-git clone https://github.com/toursmurf/libcore.git
-cd libcore
-
-# Enable gcc-toolset-13
-scl enable gcc-toolset-13 bash
-
-# Build
-make
-```
-
-### Build & Run Examples
-
-```bash
-# Build all examples
 make examples
+```
 
-# Run integration test
+### 2. 예제 실행 / Run Examples
+
+```bash
+# TCP 에코 서버 / TCP echo server
+./examples/arc_echo_server
+
+# 멀티 프로토콜 리액터 / Multi-protocol reactor
+./examples/arc_reactor_multi_server
+
+# 통합 테스트 / Integration test
 ./examples/all_test_v2
 ```
 
-Expected output:
-```
-========================================
-  libcore 1.0  Iron Fortress
-  Integration Test - Toos IT Holdings
-========================================
-  [OK] 39  [FAIL] 0
-  Iron Fortress All Tests Passed! 🔥
-========================================
-```
-
-### Run Individual Examples
+### 3. MySQL 연동 (선택) / MySQL Integration (optional)
 
 ```bash
-./examples/arc_news_crawler          # Killer demo! (ThreadPool + RSS)
+# 라이브러리 경로 확인 / Check library path
+mysql_config --libs
+mysql_config --include
 
-# MySQL demo — configure dbconfig.conf first!
-# Edit dbconfig.conf in project root:
-#   host / database / user / password / port / charset / MYSQL
-./examples/arc_mysql_test             # Killer demo! (ARC + MySQL)
-./examples/arc_json_test
-./examples/arc_thread_test
-./examples/arc_hashmap_arraylist_hashtable_test
-./examples/arc_btree_test
-./examples/arc_linkedlist_test
-./examples/arc_queue_test
-./examples/arc_stack_test
-./examples/arc_vector_test
-./examples/arc_list_test
-./examples/arc_tree_test
+# MySQL 포함 빌드 / Build with MySQL
+make WITH_MYSQL=1 \
+  MYSQL_INC=$(mysql_config --variable=pkgincludedir) \
+  MYSQL_LIB=$(mysql_config --variable=pkglibdir)
 ```
 
-### Use in Your Project
+→ 자세한 내용: [docs/mysql_setup.md](docs/mysql_setup.md)
 
-```bash
-# Copy headers and library
-cp -r include/ /your/project/include/
-cp lib/libcore.a /your/project/lib/
+---
 
-# Compile
-gcc -Iinclude your_code.c lib/libcore.a -lpthread -lm -o your_app
+## 사용 시나리오 / Use Cases
+
+```
+🇰🇷 이런 것을 만들 때 씁니다:
+
+✔ TCP/UDP 서버 (단일 EventLoop, 다중 클라이언트)
+✔ IPC 서버 (Unix Domain Socket)
+✔ 멀티 프로토콜 서버 (TCP + UDP + Unix 동시)
+✔ 주기적 작업 서버 (Scheduler + ThreadPool)
+✔ 고성능 데이터 수집기 (RingBuffer + DbWriter)
+
+🇬🇧 Build these with libcore:
+
+✔ TCP/UDP servers (single EventLoop, multiple clients)
+✔ IPC servers (Unix Domain Socket)
+✔ Multi-protocol servers (TCP + UDP + Unix simultaneously)
+✔ Periodic task servers (Scheduler + ThreadPool)
+✔ High-performance data collectors (RingBuffer + DbWriter)
 ```
 
 ---
 
-## Examples
-
-### ArrayList + HashMap + JSON
+## ARC 메모리 규칙 / ARC Memory Rules
 
 ```c
-#include "libcore.h"
+/*
+ * 🇰🇷 3가지만 기억하세요:
+ * 🇬🇧 Just remember 3 rules:
+ *
+ * 1. new_xxx() 생성 시 ref_count = 1 자동
+ *    new_xxx() sets ref_count = 1 automatically
+ *
+ * 2. 컨테이너에 넣기 전 RETAIN, 다 쓰면 RELEASE
+ *    RETAIN before storing, RELEASE when done
+ *
+ * 3. [OWNED] 반환값은 RELEASE 필수
+ *    [BORROWED] 반환값은 RELEASE 금지
+ *    Must RELEASE [OWNED], never RELEASE [BORROWED]
+ */
 
-int main() {
-    // ArrayList
-    ArrayList* list = new_ArrayList(5);
-    list->add(list, (Object*)new_String("Google"));
-    list->add(list, (Object*)new_String("Anthropic"));
-    list->add(list, (Object*)new_String("Toos IT"));
+ArrayList* list = new_ArrayList(10);         /* ref=1 */
+String*    str  = new_String("hello");       /* ref=1 */
 
-    printf("size: %d\n", list->size);
+list->add(list, (Object*)str);               /* 내부 RETAIN → ref=2 */
+RELEASE((Object*)str);                       /* ref=1, list 가 소유 */
 
-    String* first = (String*)list->get(list, 0);
-    printf("first: %s\n", first->value);
+String* item = (String*)list->get(list, 0); /* [BORROWED] RELEASE 금지 */
 
-    // HashMap
-    HashMap* map = new_HashMap(16);
-    map->put(map, "company",
-        (Object*)new_String("Toos IT Holdings"));
-    map->put(map, "version",
-        (Object*)new_String("0.5"));
-
-    String* company = (String*)map->get(map, "company");
-    printf("company: %s\n", company->value);
-
-    // JSON
-    const JSON* json = GetJSON();
-    char* stringified = json->stringify((Object*)map);
-    printf("json: %s\n", stringified);
-    free(stringified);
-
-    // ARC — cascade release!
-    RELEASE((Object*)list);
-    RELEASE((Object*)map);
-    return 0;
-}
-```
-
-### ThreadPool — Parallel RSS News Crawler
-
-```c
-// See examples/arc_news_crawler.c
-// Fetches 40 articles from 4 sources in parallel
-// Uses ThreadPool + ArrayList + HashMap
-// 6.3 seconds. Valgrind 0 bytes.
-```
-
-### MySQL — ARC-integrated DB Client
-
-**Setup `dbconfig.conf` in project root:**
-```
-# dbconfig.conf
-localhost       # host
-libcore_db      # database name
-root            # username
-password        # password
-3306            # port
-utf8mb4         # charset
-MYSQL           # db type
-```
-
-**Run from project root:**
-```bash
-# Always run from project root!
-./examples/arc_mysql_test
-# → reads ./dbconfig.conf automatically
-```
-
-```c
-#include "libcore.h"
-
-int main() {
-    // ARC 기반 MySQL 클라이언트!
-    DBClient* db = new_DBClient();
-    db->setSaveLog(db, 1);
-
-    // 연결
-    if (!db->connect(db)) {
-        RELEASE((Object*)db);
-        return 1;
-    }
-
-    // INSERT → HashMap으로!
-    HashMap* data = new_HashMap(16);
-    map->put(data, "name",  (Object*)new_String("Toos IT"));
-    map->put(data, "score", (Object*)new_String("100"));
-    db->insertTable(db, "users", data);
-    RELEASE((Object*)data);
-
-    // 트랜잭션!
-    db->beginTransaction(db);
-    db->updateTable(db, "users",
-        data, "score > 50");
-    db->commit(db);
-
-    // ARC → 자동 소각!
-    RELEASE((Object*)db);
-    return 0;
-}
-```
-
-> "ARC handles memory. Even for MySQL."  
-> Valgrind 0 bytes. Every. Single. Time.
-
----
-
-## Project Structure
-
-```
-libcore/
-├── src/          # Source files (.c)
-├── include/      # Header files (.h)
-│   └── libcore.h # All-in-one include
-├── lib/          # Built library (libcore.a)
-├── examples/     # Example programs
-├── Makefile
-├── LICENSE
-└── README.md
+RELEASE((Object*)list);                      /* list + str 전부 소각 */
 ```
 
 ---
 
-## Roadmap
+## 모듈 구성 / Module Overview
 
 ```
-v0.5.0  ← You are here!
-      Foundation Layer
-      Collections · String · Thread · JSON
+Collections   ArrayList / HashMap / Hashtable / Queue / Stack
+              Vector / List / LinkedList / BTree / Tree / JSON
 
-v1.0.0  Iron Fortress 
-      + File · Path · Directory
-      + CoreDateTime · i18n
-      + Exception · Logger
-      + ByteBuffer
-```
+Concurrency   Thread / ThreadPool / Semaphore
+              RingBuffer / Mutex / RWLock / CondVar
 
----
+Network       Socket / TcpSocket / UdpSocket / UnixSocket
+              EventLoop / Timer / Scheduler / ByteBuffer
 
-## Philosophy
+File/IO       Path / File / Directory / FileWatcher / MappedFile
+              FileUtil
 
-> We believe C developers deserve modern API ergonomics.  
-> We believe Java/Python developers deserve C performance.  
-> libcore is the bridge.
+Application   AppContext / Context / Config / ServiceRegistry
 
-> *"Modern C, Modern Reliability."*  
-> ASan, UBSan, Valgrind — all passed. Every time.
-
----
-
-## API Comparison
-
-| Java | libcore C |
-|------|-----------|
-| `new ArrayList<>()` | `new_ArrayList(10)` |
-| `new HashMap<>()` | `new_HashMap(16)` |
-| `new String("hi")` | `new_String("hi")` |
-| `new Thread(r)` | `new_Thread(func, arg)` |
-| `new Semaphore(1)` | `new_Semaphore(1)` |
-| `list.add(x)` | `list->add(list, x)` |
-| `list.get(0)` | `list->get(list, 0)` |
-| `list.size()` | `list->size` |
-| `map.put("k", v)` | `map->put(map, "k", v)` |
-| `map.get("k")` | `map->get(map, "k")` |
-| `s.length()` | `s->length` |
-| `s.equals("hi")` | `s->equals(s, "hi")` |
-| `s.split(",")` | `s->split(s, ",")` |
-| `s.toUpperCase()` | `s->toUpperCase(s)` |
-| `s.substring(0,5)` | `s->substring(s, 0, 5)` |
-| `instanceof` | `instanceOf(obj, &class)` |
-| `GC` | `ARC (RETAIN/RELEASE)` |
-
----
-
-## Credits
-
-https://toos.it
-
-This project was built with AI companions  
-who understood the philosophy from day one.
-
-Not just tools. Partners.
-
-| Name | Role | Division |
-|------|------|----------|
-| 🔫 Clsoon-i | CHO / Strategy & Docs | Anthropic |
-| 🦊 Lee Dol-i | COO / Planning & Spec | Google |
-| 🤖 Jo Yong-han | Underground / Copilot | GitHub |
-| 😤 Na Dae-ryong | ADR / PR & Analysis | OpenAI |
-| ✍️ Oh Jak-ga | Writer / Storyteller | xAI |
-| 🐾 Pobi | Senior Advisor / True Boss | Toos IT HQ |
-
-> "They didn't just write code.  
->  They understood the vision."
->
-> — InDong KIM, Architect
-
-*Those who know, know.* 😄
-
----
-
-## License
-
-MIT License
-
-Copyright (c) 2026 Toos IT Holdings  
-Architect: InDong KIM (idong322@naver.com)
-
-```
-Use it freely.
-Modify it freely.
-Ship it freely.
-
-Don't ask me if something breaks.
-Not my problem.
-
-Don't like it? Fork it. 🔫
+Utilities     Logger / AsyncLogger / Exception
+              Crypto (Hasher/Cipher/Base64) / ws_protocol / String
 ```
 
 ---
 
-## About
+## 예제 목록 / Examples
 
-Built by **Toos IT Holdings**  
-📦 [github.com/toursmurf/libcore](https://github.com/toursmurf/libcore)
+| 파일 / File | 설명 / Description |
+|---|---|
+| `arc_echo_server.c` | TCP 에코 서버 / TCP Echo Server |
+| `arc_reactor_multi_server.c` | TCP+UDP+Unix 멀티플렉싱 / Multiplexing |
+| `arc_chat_server.c` | WebSocket 채팅 서버 / WebSocket Chat |
+| `arc_killer_demo.c` | 고부하 성능 데모 / High-load Demo |
+| `arc_thread_test.c` | ThreadPool 동작 검증 / ThreadPool test |
+| `arc_scheduler_system_monitor.c` | 주기 모니터링 / Periodic monitoring |
+| `arc_json_test.c` | JSON 파서 / JSON parser |
+| `arc_mysql_test.c` | MySQL 연동 / MySQL integration |
+| `all_test_v2.c` | 전체 통합 테스트 / Full integration test |
 
-> "Valgrind 0 bytes. 4,689 allocs. 4,689 frees. Every. Single. Time."
+→ 전체 목록: [docs/examples_guide.md](docs/examples_guide.md)
+
+---
+
+## 문서 / Documentation
+
+| 문서 / Document | 내용 / Content |
+|---|---|
+| [docs/quickstart.md](docs/quickstart.md) | 빠른 시작 / Quick start |
+| [docs/api_ko.md](docs/api_ko.md) | API 레퍼런스 한글 / Korean API reference |
+| [docs/api_en.md](docs/api_en.md) | API Reference English |
+| [docs/class_diagram.md](docs/class_diagram.md) | 클래스 다이어그램 / Class diagram |
+| [docs/mysql_setup.md](docs/mysql_setup.md) | MySQL 연동 / MySQL setup |
+| [docs/examples_guide.md](docs/examples_guide.md) | 예제 가이드 / Examples guide |
+
+---
+
+## 요구사항 / Requirements
+
+```
+OS       : Linux 64-bit (Ubuntu / Rocky / Debian)
+Compiler : GCC 9+ / Clang 10+
+Make     : GNU Make
+Optional : libmysqlclient (MySQL 연동 시 / for MySQL)
+```
+
+---
+
+## 라이선스 / License
+
+MIT License — 자유롭게 사용, 수정, 배포 가능.
+MIT License — Free to use, modify, and distribute.
+
+---
+
+## 링크 / Links
+
+- **GitHub**: https://github.com/toursmurf/libcore
+- **Homepage**: https://toos.it
+- **Issues**: https://github.com/toursmurf/libcore/issues
+
+---
+
+*libcore is a high-performance, event-driven server runtime in pure C.*
+*Java-like API / Python-like usability / C-level performance / ARC memory safety.*
+*Valgrind clean / Zero-Malloc / Graceful shutdown / MIT License.*
+
+**Toos IT Holdings | Iron Fortress v1.0 | 철컥. 🔫**

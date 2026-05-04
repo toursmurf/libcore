@@ -1,9 +1,8 @@
-/*
- * File: arc_json_test.c
- * Project: libcore v0.5 (Iron Fortress)
- * Author: InDong KIM (idong322@naver.com) - @toursmurf
- * Copyright (c) 2026 Toos IT Holdings. All rights reserved.
- * License: MIT
+/**
+ * @file arc_json_test.c
+ * @brief 🇰🇷 내장 JSON 파서 및 직렬화/역직렬화(ObjectMapper) 기능 검증 예제입니다.
+ * 🇬🇧 Embedded JSON parser and serialization/deserialization (ObjectMapper) function verification example.
+ * @note  This example strictly follows the ARC memory management rules.
  */
 
 #include <stdio.h>

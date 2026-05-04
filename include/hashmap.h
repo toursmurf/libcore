@@ -38,6 +38,7 @@ struct HashMap {
     // [인터페이스] 의장님 요청 메서드 바인딩
     void (*put)(HashMap* self, const char* key, Object* value);
     Object* (*get)(HashMap* self, const char* key);
+    bool    (*hasKey)(HashMap* self, const char* key); 
     void (*remove)(HashMap* self, const char* key);
     void (*clear)(HashMap* self);
     Object* (*detach)(HashMap *self, const char *key);

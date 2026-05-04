@@ -1,11 +1,11 @@
 CC = gcc
-CFLAGS = -Wall -Wextra  -Wunused-value   -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong    -pthread  -I/usr/include/mysql -I/usr/include/mysql/mysql  -fsanitize=address  -fsanitize=undefined
+CFLAGS = -Wall -Wextra  -Wunused-value   -O2 -D_FORTIFY_SOURCE=2  -fsanitize=address,undefined   -fstack-protector-strong    -pthread  -I/usr/include/mysql -I/usr/include/mysql/mysql   
 SRC_DIR = src
 INC_DIR = include
 LIB_DIR = lib
 TEST_DIR = tests
 EXAMPLE_DIR = examples
-CLIBS=-L/usr/lib64/ -lmariadb  -lcurl
+LIBS=-L/usr/lib64/ -lmariadb  -lcurl   -lssl -lcrypto -lrt
 
 # 코어 라이브러리 소스 및 오브젝트
 SRCS = $(wildcard $(SRC_DIR)/*.c)
@@ -40,7 +40,7 @@ examples: $(EXAMPLE_BINS)
 # 개별 예제 파일을 실행 파일로 컴파일하는 패턴 룰!
 $(EXAMPLE_DIR)/%: $(EXAMPLE_DIR)/%.c $(LIB_DIR)/libcore.a
 	@echo "🛠️  Building 예제: $@"
-	$(CC) $(CFLAGS) -I$(INC_DIR) $(CLIBS)  $< $(LIB_DIR)/libcore.a -o $@ -lm
+	$(CC) $(CFLAGS) -I$(INC_DIR) $(LIBS)  $< $(LIB_DIR)/libcore.a -o $@ -lm
 # ----------------------------------------
 
 clean:

@@ -40,12 +40,21 @@ struct String {
     long long (*toLong)(Object *obj);
     double (*toDouble)(Object *obj);
 
+    // C-String 추출
+    const char* (*c_str)(struct String* self);
+
     // 확장 기능
     String* (*reverse)(String* self);
     String* (*implode)(String* self, ArrayList *array);
     String* (*replace)(String* self, const char* target, const char* replacement);
     ArrayList* (*split)(String* self, const char* delimiter);
     ArrayList* (*explode)(String* self, const char* delimiter);
+
+    // 🔥 정규표현식 매칭 (glibc regex)
+    bool (*matches)(struct String* self, const char* pattern);
+    bool (*eregi)(struct String* self, const char* pattern);
+
+    // ARC/메모리 관리
     void (*free)(String* self);
     void (*destroy)(String* self);
 };
@@ -56,4 +65,4 @@ String* new_String(const char* init_str);
 /* [Static Helper] 문자열 결합 유틸리티 */
 char* string_join(const char* delimiter, const char** str_array, int count);
 
-#endif
+#endif // STRING_OBJ_H

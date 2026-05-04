@@ -1,13 +1,12 @@
-#ifndef TOOS_DB_H
-#define TOOS_DB_H
+#ifndef DB_H
+#define DB_H
 
 #include <pthread.h>
 #include <stdint.h>
+#include <stddef.h>
 #include "object.h"
-#include "string.h" // string.h 대신 우리 명품 string_obj 사용
 #include "hashmap.h"
 #include "arraylist.h"
-#include "json.h"
 
 #ifndef DEFAULT_DB_CONFIG
 #define DEFAULT_DB_CONFIG "./dbconfig.conf"
@@ -19,12 +18,19 @@
 
 extern const Class dbClientClass;
 
+// 🚀 [Zero-Malloc] 64바이트 고정 버퍼로 재접속 옵션 사수!
+typedef struct {
+    int    option;
+    char   value[64];
+    size_t value_size;
+} DBOption;
+
 typedef struct _DBClient DBClient;
 struct _DBClient {
-    Object base;            // 🚀 [상속] ARC 심장 장착!
-    pthread_mutex_t *unused_ptr; // 기존 정렬 유지용 (실제는 아래 lock 사용)
+    Object base;
+    pthread_mutex_t *unused_ptr; // 🚀 [Alignment] 호환성 유지용
     pthread_mutex_t lock;
-    void *conn;             // 네이티브 핸들 은닉
+    void *conn;
     int isConnected;
     int save_log;
 
@@ -34,18 +40,23 @@ struct _DBClient {
     char dbpass[64];
     char charset[32];
     char db_type[32];
-
     int port;
 
     char last_query[16384];
     long long last_insert_id;
     long long last_idx;
 
-    // --- 다형성 인터페이스 (함수 포인터) ---
+    DBOption options[16];
+    int      option_count;
+
+    // --- 다형성 인터페이스 (V-Table: 35개 풀 바인딩) ---
     void       (*setSaveLog)(DBClient *self, int enable);
-    int        (*connect)(DBClient *self);
-    void       (*disconnect)(DBClient *self);
     void       (*writeLog)(DBClient *self, const char* msg, const char* sql, int is_error);
+    void       (*setOption)(DBClient *self, int option, const void *arg, size_t arg_size);
+
+    int        (*connect)(DBClient *self);
+    int        (*reconnect)(DBClient *self);
+    void       (*disconnect)(DBClient *self);
     int        (*sqlQuery)(DBClient *self, const char* sql);
     char* (*escape_string)(DBClient *self, const char* str);
 
@@ -85,14 +96,8 @@ struct _DBClient {
 };
 
 void safe_append(char *dest, size_t dest_size, const char *src);
-
-// 생성자 (코딩 표준 8호)
 DBClient* new_DBClient(void);
-DBClient* new_DBClientDirect(
-    const char* host, const char* dbname, const char* dbid,
-    const char* dbpass, int port, const char* charset, const char* db_type
-);
-
+DBClient* new_DBClientDirect(const char* host, const char* dbname, const char* id, const char* pw, int port, const char* cs, const char* type);
 void bind_mysql(DBClient *db);
 
 #endif

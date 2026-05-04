@@ -32,7 +32,11 @@ static void Semaphore_Finalize(Object* self) {
     sem_destroy(&s->sem);
 }
 
-const Class semaphoreClass = { .name = "Semaphore", .size = sizeof(Semaphore), .finalize = Semaphore_Finalize };
+const Class semaphoreClass = {
+	.name = "Semaphore",
+	.size = sizeof(Semaphore),
+	.finalize = Semaphore_Finalize
+};
 
 Semaphore* new_Semaphore(int initial_value) {
     Semaphore* s = (Semaphore*)malloc(sizeof(Semaphore));

@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdint.h>
+#include <regex.h> // glibc POSIX 정규표현식
 #include "string_obj.h"
 
 extern const Class stringClass;
@@ -9,26 +11,33 @@ extern const Class stringClass;
 /* =========================================
  * [Internal] Helper Functions
  * ========================================= */
-
-// [버그 1 해결] RELEASE 매크로 래퍼 함수 (함수 포인터 바인딩용)
 static void String_release(String* self) {
     RELEASE((Object*)self);
 }
 
 static char* str_replace_all(const char* source, const char* target, const char* replacement) {
     if (!source || !target || !replacement) return strdup(source ? source : "");
-    int target_len = (int)strlen(target);
-    int replacement_len = (int)strlen(replacement);
+    size_t target_len = strlen(target);
+    size_t replacement_len = strlen(replacement);
     if (target_len == 0) return strdup(source);
 
-    int cnt = 0;
+    size_t cnt = 0;
     const char* tmp = source;
     while ((tmp = strstr(tmp, target))) { cnt++; tmp += target_len; }
 
-    char* result = (char*)malloc(strlen(source) + cnt * (replacement_len - target_len) + 1);
+    size_t src_len = strlen(source);
+    size_t new_len;
+    if (replacement_len >= target_len) {
+        size_t diff = replacement_len - target_len;
+        if (cnt > 0 && diff > (SIZE_MAX - src_len - 1) / cnt) return NULL; // overflow guard
+        new_len = src_len + cnt * diff + 1;
+    } else {
+        new_len = src_len - cnt * (target_len - replacement_len) + 1;
+    }
+    char* result = (char*)malloc(new_len);
     if (!result) return NULL;
 
-    int i = 0;
+    size_t i = 0;
     while (*source) {
         if (strstr(source, target) == source) {
             strcpy(&result[i], replacement);
@@ -110,15 +119,29 @@ static String* impl_trim(String* self) {
     return new_s;
 }
 
+// 🚀 [보안 패치] impl_append: Silent Fail 방지, 오버플로우 가드, memcpy 최적화 적용
 static void impl_append(String* self, const char* str) {
-    if (!str) return;
-    int new_len = self->length + (int)strlen(str);
-    char* new_val = (char*)realloc(self->value, new_len + 1);
-    if (new_val) {
-        self->value = new_val;
-        strcat(self->value, str);
-        self->length = new_len;
+    if (!self || !str) return;
+    size_t len = strlen(str);
+    if (len == 0) return;
+
+    if ((size_t)self->length + len < (size_t)self->length) {
+        fprintf(stderr, "[String_append] Error: Integer overflow detected in length.\n");
+        return;
     }
+
+    size_t new_len = (size_t)self->length + len;
+    char* new_val = (char*)realloc(self->value, new_len + 1);
+
+    if (!new_val) {
+        fprintf(stderr, "[String_append] Error: realloc failed! Capacity full.\n");
+        return;
+    }
+
+    self->value = new_val;
+    memcpy(self->value + self->length, str, len);
+    self->length = (int)new_len;
+    self->value[self->length] = '\0';
 }
 
 static String* impl_replace(String* self, const char* target, const char* replacement) {
@@ -128,17 +151,23 @@ static String* impl_replace(String* self, const char* target, const char* replac
     return new_obj;
 }
 
+// 🚀 [긴급 수정] strtok_r 교체 완료! (Thread-Safety 확보)
 static ArrayList* impl_split(String* self, const char* delimiter) {
     ArrayList* list = new_ArrayList(5);
     if (!list) return NULL;
     char* str_copy = strdup(self->value);
-    char* token = strtok(str_copy, delimiter);
+    char* saveptr;
+    char* token = strtok_r(str_copy, delimiter, &saveptr);
     while (token != NULL) {
         list->add(list, (Object*)new_String(token));
-        token = strtok(NULL, delimiter);
+        token = strtok_r(NULL, delimiter, &saveptr);
     }
     free(str_copy);
     return list;
+}
+
+static const char* String_c_str(String* self) {
+    return self ? self->value : NULL;
 }
 
 static String* impl_implode(String* self, ArrayList* array) {
@@ -195,22 +224,48 @@ static void impl_toUpperCase(String* self) {
     for(int i = 0; self->value[i]; i++) self->value[i] = (char)toupper((unsigned char)self->value[i]);
 }
 
+// 🚀 [긴급 수정] 포인터 주소 비교로 타입 안정성 및 성능 극대화!
 static int impl_toInt(Object *obj) {
-    if (!obj || strcmp(obj->type->name, "String") != 0) return 0;
+    if (!obj || obj->type != &stringClass) return 0;
     String *s = (String*)obj;
     return s->value ? atoi(s->value) : 0;
 }
 
 static long long impl_toLong(Object *obj) {
-    if (!obj || strcmp(obj->type->name, "String") != 0) return 0LL;
+    if (!obj || obj->type != &stringClass) return 0LL;
     String *s = (String*)obj;
     return s->value ? atoll(s->value) : 0LL;
 }
 
 static double impl_toDouble(Object *obj) {
-    if (!obj || strcmp(obj->type->name, "String") != 0) return 0.0;
+    if (!obj || obj->type != &stringClass) return 0.0;
     String *s = (String*)obj;
     return s->value ? atof(s->value) : 0.0;
+}
+
+// =========================================
+// 🔥 [신규] 정규표현식 매칭 로직
+// =========================================
+static bool impl_matches(String* self, const char* pattern) {
+    if (!self || !self->value || !pattern) return false;
+    regex_t preg;
+    if (regcomp(&preg, pattern, REG_EXTENDED | REG_NOSUB) != 0) {
+        return false;
+    }
+    int match = regexec(&preg, self->value, 0, NULL, 0);
+    regfree(&preg);
+    return (match == 0);
+}
+
+static bool impl_eregi(String* self, const char* pattern) {
+    if (!self || !self->value || !pattern) return false;
+    regex_t preg;
+    if (regcomp(&preg, pattern, REG_EXTENDED | REG_ICASE | REG_NOSUB) != 0) {
+        return false;
+    }
+    int match = regexec(&preg, self->value, 0, NULL, 0);
+    regfree(&preg);
+    return (match == 0);
 }
 
 /* =========================================
@@ -223,7 +278,7 @@ static void String_ToString(Object *self, char *buffer, size_t len) {
 
 static void String_Finalize(Object *self) {
     String *s = (String*)self;
-    if (s->value) free(s->value); // [의장님 검수] value만 해제
+    if (s->value) free(s->value);
 }
 
 const Class stringClass = {
@@ -242,13 +297,12 @@ String* new_String(const char* init_str) {
 
     Object_Init((Object*)s, &stringClass);
 
-    // [버그 2 해결] strdup NULL 체크
     s->value = strdup(init_str ? init_str : "");
     if (!s->value) { free(s); return NULL; }
 
     s->length = (int)strlen(s->value);
 
-    // 인터페이스 바인딩
+    // 기존 인터페이스 바인딩
     s->length_f = impl_length;
     s->charAt = impl_charAt;
     s->equals = impl_equals;
@@ -268,25 +322,57 @@ String* new_String(const char* init_str) {
     s->toLong = impl_toLong;
     s->toDouble = impl_toDouble;
     s->delete = impl_delete;
+    s->c_str = String_c_str;
 
-    // [버그 1 해결] 래퍼 함수 바인딩
+    // 🔥 정규표현식 매칭 바인딩
+    s->matches = impl_matches;
+    s->eregi = impl_eregi;
+
+    // ARC 관리 래퍼 바인딩
     s->destroy = String_release;
     s->free = String_release;
 
     return s;
 }
 
+// 🚀 [보안 패치] string_join: 정수 오버플로우 방어 및 안전한 memcpy 적용
 char* string_join(const char* delimiter, const char** str_array, int count) {
     if (!delimiter || !str_array || count <= 0) return NULL;
-    int total_len = 0;
-    for (int i = 0; i < count; i++) total_len += (int)strlen(str_array[i]);
-    total_len += ((int)strlen(delimiter) * (count - 1));
+
+    size_t delim_len = strlen(delimiter);
+    size_t total_len = 0;
+
+    for (int i = 0; i < count; i++) {
+        if (!str_array[i]) continue;
+
+        size_t len = strlen(str_array[i]);
+        if (total_len + len < total_len) return NULL;
+
+        total_len += len;
+
+        if (i < count - 1) {
+            if (total_len + delim_len < total_len) return NULL;
+            total_len += delim_len;
+        }
+    }
+
     char* result = (char*)malloc(total_len + 1);
     if (!result) return NULL;
-    result[0] = '\0';
+
+    size_t offset = 0;
     for (int i = 0; i < count; i++) {
-        strcat(result, str_array[i]);
-        if (i < count - 1) strcat(result, delimiter);
+        if (!str_array[i]) continue;
+
+        size_t len = strlen(str_array[i]);
+        memcpy(result + offset, str_array[i], len);
+        offset += len;
+
+        if (i < count - 1) {
+            memcpy(result + offset, delimiter, delim_len);
+            offset += delim_len;
+        }
     }
+
+    result[total_len] = '\0';
     return result;
 }

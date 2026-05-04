@@ -74,6 +74,11 @@ static ArrayList* HM_keys(HashMap* self) {
     return list;
 }
 
+static bool HashMap_hasKey_impl(HashMap* self, const char* key) {
+    if (!self || !key) return false;
+    // 기존의 get 로직을 활용하거나 직접 버킷을 뒤져서 확인
+    return (self->get(self, key) != NULL);
+}
 // 해시맵의 모든 Value를 ArrayList로 반환
 static ArrayList* HM_values(HashMap* self) {
     int init_cap = self->size > 0 ? self->size : 10;
@@ -254,6 +259,7 @@ HashMap* new_HashMap(int initial_capacity) {
     map->keys = HM_keys;
     map->values = HM_values;
     map->destroy = impl_free;
+    map->hasKey = HashMap_hasKey_impl;
 
     return map;
 }
