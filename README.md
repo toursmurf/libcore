@@ -271,12 +271,12 @@ Utilities     Logger / AsyncLogger / Exception
 
 | 문서 / Document | 내용 / Content |
 |---|---|
-| [docs/libcore_api_ko.md](docs/api_ko.md) | API 레퍼런스 한글 / Korean API reference |
-| [docs/libcore_api_en.md](docs/api_en.md) | API Reference English |
-| [docs/libcore_v1_class_diagram.md](docs/class_diagram.md) | 클래스 다이어그램 / Class diagram |
+| [docs/libcore_api_ko.md](docs/libcore_api_ko.md) | API 레퍼런스 한글 / Korean API reference |
+| [docs/libcore_api_en.md](docs/libcore_api_en.md) | API Reference English |
+| [docs/libcore_v1_class_diagram.md](docs/libcore_v1_class_diagram.md) | 클래스 다이어그램 / Class diagram |
 | [docs/mysql_setup.md](docs/mysql_setup.md) | MySQL 연동 / MySQL setup |
-| [docs/examples.ko.md](docs/examples_guide.md) | 예제 가이드 한글  |
-| [docs/examples.en.md](docs/examples_guide.md) |  Examples guide english |
+| [docs/examples.ko.md](docs/examples.ko.md) | 예제 가이드 한글  |
+| [docs/examples.en.md](docs/examples.en.md) |  Examples guide english |
 
 ---
 
