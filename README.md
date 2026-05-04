@@ -312,4 +312,4 @@ MIT License — Free to use, modify, and distribute.
 *Java-like API / Python-like usability / C-level performance / ARC memory safety.*
 *Valgrind clean / Zero-Malloc / Graceful shutdown / MIT License.*
 
-**Toos IT Holdings | Iron Fortress v1.0 | 철컥. 🔫**
+**Toos IT Holdings | Iron Fortress v1.0 
