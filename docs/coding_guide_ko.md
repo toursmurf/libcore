@@ -552,6 +552,7 @@ static const Class _myClass = {
 
 | 문서                                                         | 내용 |
 |------------------------------------------------------------|---|
+| [CODING_CONTRACT_KO.md](CODING_CONTRACT_KO.md)             | 코딩규약  |
 | [libcore_api_ko.md](libcore_api_ko.md)                     | API 레퍼런스 전체 |
 | [libcore_v1_class_diagram.md](libcore_v1_class_diagram.md) | 클래스 다이어그램 |
 | [examples.ko.md](examples.ko.md)                        | 예제 가이드 |

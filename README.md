@@ -269,8 +269,10 @@ Utilities     Logger / AsyncLogger / Exception
 
 | 문서 / Document                                                        | 내용 / Content                       |
 |----------------------------------------------------------------------|------------------------------------|
-| [docs/coding_guide_ko.md](docs/coding_guide_ko.md)                   | 코딩가이드 한글 / Korean Coding guide     |
-| [docs/coding_guide_en.md](docs/coding_guide_en.md)                   | English Coding guide               |
+| [docs/coding_guide_ko.md](docs/coding_guide_ko.md)                   | 코딩가이드 한글 / Korean Coding Guide     |
+| [docs/coding_guide_en.md](docs/coding_guide_en.md)                   | English Coding Guide               |
+| [docs/CODING_CONTRACT_KO.md](docs/CODING_CONTRACT_KO.md)             | 코딩규약 한글 / Korean Coding Contract   |
+| [docs/CODING_CONTRACT_EN.md](docs/CODING_CONTRACT_EN.md)                | English Coding Contract            |
 | [docs/libcore_api_ko.md](docs/libcore_api_ko.md)                     | API 레퍼런스 한글 / Korean API reference |
 | [docs/libcore_api_en.md](docs/libcore_api_en.md)                     | API Reference English              |
 | [docs/libcore_v1_class_diagram.md](docs/libcore_v1_class_diagram.md) | 클래스 다이어그램 / Class diagram          |

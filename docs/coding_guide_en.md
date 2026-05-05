@@ -553,6 +553,7 @@ static const Class _myClass = {
 
 | Doc                                                        | Content |
 |------------------------------------------------------------|---|
+| [CODING_CONTRACT_EN.md](CODING_CONTRACT_EN.md)                | Coding Contract  |
 | [libcore_api_en.md](libcore_api_en.md)                     | Full API Reference |
 | [libcore_v1_class_diagram.md](libcore_v1_class_diagram.md) | Class diagram |
 | [examples.en.md](examples.en.md)                           | Examples guide |
