@@ -1,5 +1,5 @@
-#ifndef LIBCORE_FILE_WATCHER_H
-#define LIBCORE_FILE_WATCHER_H
+#ifndef FILE_WATCHER_H
+#define FILE_WATCHER_H
 
 #include "object.h"
 #include "path.h"
@@ -22,4 +22,4 @@ struct FileWatcher {
 
 FileWatcher* new_FileWatcher(void);
 
-#endif // LIBCORE_FILE_WATCHER_H
+#endif // FILE_WATCHER_H

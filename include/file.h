@@ -1,5 +1,5 @@
-#ifndef LIBCORE_FILE_H
-#define LIBCORE_FILE_H
+#ifndef FILE_H
+#define FILE_H
 
 #include "object.h"
 #include "path.h"
@@ -57,4 +57,4 @@ struct File {
 File* new_File(const char* pathStr);
 bool File_Init(File* self, const char* path);
 void File_Deinit(File* self);
-#endif // LIBCORE_FILE_H
+#endif // FILE_H

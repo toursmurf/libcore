@@ -1,5 +1,5 @@
-#ifndef LIBCORE_DIRECTORY_H
-#define LIBCORE_DIRECTORY_H
+#ifndef DIRECTORY_H
+#define DIRECTORY_H
 
 #include "object.h"
 #include "path.h"
@@ -20,4 +20,4 @@ struct Directory {
 
 Directory* new_Directory(const char* pathStr);
 
-#endif // LIBCORE_DIRECTORY_H
+#endif // DIRECTORY_H

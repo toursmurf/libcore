@@ -1,5 +1,5 @@
-#ifndef LIBCORE_FILE_UTIL_H
-#define LIBCORE_FILE_UTIL_H
+#ifndef FILE_UTIL_H
+#define FILE_UTIL_H
 
 #include "file.h"
 #include "path.h"
@@ -19,4 +19,4 @@ bool        FileUtil_exists(const char* path);
 bool        FileUtil_mkdirs(const char* path);
 void        FileUtil_delete(const char* path);
 
-#endif // LIBCORE_FILE_UTIL_H
+#endif // FILE_UTIL_H

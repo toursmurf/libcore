@@ -1,5 +1,5 @@
-#ifndef LIBCORE_PATH_H
-#define LIBCORE_PATH_H
+#ifndef PATH_H
+#define PATH_H
 
 #include "object.h"
 #include "string_obj.h"
@@ -30,4 +30,4 @@ struct Path {
 
 Path* new_Path(const char* pathStr);
 
-#endif // LIBCORE_PATH_H
+#endif // PATH_H
