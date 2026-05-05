@@ -251,17 +251,15 @@ Utilities     Logger / AsyncLogger / Exception
 
 ## 예제 목록 / Examples
 
-| 파일 / File | 설명 / Description |
-|---|---|
-| `arc_echo_server.c` | TCP 에코 서버 / TCP Echo Server |
-| `arc_reactor_multi_server.c` | TCP+UDP+Unix 멀티플렉싱 / Multiplexing |
-| `arc_chat_server.c` | WebSocket 채팅 서버 / WebSocket Chat |
-| `arc_killer_demo.c` | 고부하 성능 데모 / High-load Demo |
-| `arc_thread_test.c` | ThreadPool 동작 검증 / ThreadPool test |
-| `arc_scheduler_system_monitor.c` | 주기 모니터링 / Periodic monitoring |
-| `arc_json_test.c` | JSON 파서 / JSON parser |
-| `arc_mysql_test.c` | MySQL 연동 / MySQL integration |
-| `all_test_v2.c` | 전체 통합 테스트 / Full integration test |
+| 파일 / File | 설명 / Description                       |
+|---|----------------------------------------|
+| `arc_echo_server.c` | TCP 에코 서버 / TCP Echo Server            |
+| `arc_reactor_multi_server.c` | TCP+UDP+Unix 멀티플렉싱 / Multiplexing      |
+| `arc_chat_server.c` | WebSocket 채팅 서버 / WebSocket Chat       |
+| `arc_thread_test.c` | ThreadPool 동작 검증 / ThreadPool test     |
+| `arc_scheduler_system_monitor.c` | 주기 모니터링 / Periodic monitoring          |
+| `arc_json_test.c` | JSON 파서 / JSON parser                  |
+| `arc_mysql_test.c` | MySQL 연동 / MySQL integration           |
 
 → 전체 목록: [docs/examples.ko.md](docs/examples.ko.md)
 
@@ -271,8 +269,8 @@ Utilities     Logger / AsyncLogger / Exception
 
 | 문서 / Document                                                        | 내용 / Content                       |
 |----------------------------------------------------------------------|------------------------------------|
-| [docs/coding_guide_ko.md](docs/coding_guide_ko.md)                   | 코드가이드 한글 / Korean Code guide       |
-| [docs/coding_guide_en.md](docs/coding_guide_en.md)                   | English Code guide                 |
+| [docs/coding_guide_ko.md](docs/coding_guide_ko.md)                   | 코딩가이드 한글 / Korean Coding guide     |
+| [docs/coding_guide_en.md](docs/coding_guide_en.md)                   | English Coding guide               |
 | [docs/libcore_api_ko.md](docs/libcore_api_ko.md)                     | API 레퍼런스 한글 / Korean API reference |
 | [docs/libcore_api_en.md](docs/libcore_api_en.md)                     | API Reference English              |
 | [docs/libcore_v1_class_diagram.md](docs/libcore_v1_class_diagram.md) | 클래스 다이어그램 / Class diagram          |

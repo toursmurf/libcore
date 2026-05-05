@@ -550,13 +550,12 @@ static const Class _myClass = {
 
 ## 13. 문서 링크
 
-| 문서 | 내용 |
-|---|---|
-| [quickstart.md](quickstart.md) | 빠른 시작 |
-| [api_ko.md](api_ko.md) | API 레퍼런스 전체 |
-| [class_diagram.md](class_diagram.md) | 클래스 다이어그램 |
-| [examples_guide.md](examples_guide.md) | 예제 가이드 |
-| [mysql_setup.md](mysql_setup.md) | MySQL 연동 |
+| 문서                                                         | 내용 |
+|------------------------------------------------------------|---|
+| [libcore_api_ko.md](libcore_api_ko.md)                     | API 레퍼런스 전체 |
+| [libcore_v1_class_diagram.md](libcore_v1_class_diagram.md) | 클래스 다이어그램 |
+| [examples.ko.md](examples.ko.md)                        | 예제 가이드 |
+| [mysql_setup.md](mysql_setup.md)                           | MySQL 연동 |
 
 ---
 

@@ -551,13 +551,12 @@ static const Class _myClass = {
 
 ## 13. Documentation Links
 
-| Doc | Content |
-|---|---|
-| [quickstart.md](quickstart.md) | Quick start |
-| [api_en.md](api_en.md) | Full API Reference |
-| [class_diagram.md](class_diagram.md) | Class diagram |
-| [examples_guide.md](examples_guide.md) | Examples guide |
-| [mysql_setup.md](mysql_setup.md) | MySQL setup |
+| Doc                                                        | Content |
+|------------------------------------------------------------|---|
+| [libcore_api_en.md](libcore_api_en.md)                     | Full API Reference |
+| [libcore_v1_class_diagram.md](libcore_v1_class_diagram.md) | Class diagram |
+| [examples.en.md](examples.en.md)                           | Examples guide |
+| [mysql_setup.md](mysql_setup.md)                           | MySQL setup |
 
 ---
 
