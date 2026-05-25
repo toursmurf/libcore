@@ -59,7 +59,7 @@ void Socket_finalize(Object* obj);
 // ----------------------------------------------------------------------------
 Socket* createServer(const char* url, Exception** out_err);
 Socket* createClient(const char* url, Exception** out_err);
-Socket* createUnixServer(const char* path);
+ocket* createUnixServer(const char* path, Exception** out_err);
 HashMap* parse_url(const char* url);
 
 #endif /* SOCKET_BASE_H */

@@ -409,7 +409,26 @@ Socket* createClient(const char* url, Exception** out_err) {
     return sock;
 }
 
-Socket* createUnixServer(const char* path) {
-    if (!path) return NULL;
-    return (Socket*)new_UnixServer(path);
+/**
+ * @brief Unix 도메인 소켓 서버 생성 팩토리 (Absolute Compliance)
+ */
+Socket* createUnixServer(const char* path, Exception** out_err) {
+    // 🚨 [방어막] 경로 NULL 체크
+    if (!path) {
+        if (out_err) {
+            *out_err = throw_Exception(ERR_SOCK_URL, 0, "Unix socket path is NULL");
+        }
+        return NULL;
+    }
+
+    // 🚀 서버 생성 및 에러 캡처 (errno 보존)
+    Socket* sock = (Socket*)new_UnixServer(path);
+    if (!sock) {
+        if (out_err) {
+            *out_err = throw_Exception(ERR_SOCK_CREATE, errno, "Failed to create Unix server socket");
+        }
+        return NULL;
+    }
+
+    return sock;
 }
