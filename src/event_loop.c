@@ -42,12 +42,12 @@ static EventMask map_epoll_to_events(uint32_t events) {
 }
 
 /* ────────────────────────────────────────
- * 소멸자: 🚨 누수 완전 소각로 🚨
+ * 소멸자: 누수 완전 소각로
  * ──────────────────────────────────────── */
 static void EventLoop_finalize(Object* obj) {
     EventLoop* self = (EventLoop*)obj;
 
-    /* 🚨 1. 명부에 등록된 모든 수감자(소켓/타이머) 강제 석방 (참조 카운트 삭감) */
+    /*  1. 명부에 등록된 모든 수감자(소켓/타이머) 강제 석방 (참조 카운트 삭감) */
     for (int i = 0; i < 65536; i++) {
         if (self->tracked_objs[i] != NULL) {
             RELEASE(self->tracked_objs[i]);
@@ -55,7 +55,7 @@ static void EventLoop_finalize(Object* obj) {
         }
     }
 
-    /* 🚨 2. 커널 자원(epoll) 및 버퍼 반환 */
+    /* 2. 커널 자원(epoll) 및 버퍼 반환 */
     if (self->epoll_fd >= 0) close(self->epoll_fd);
 
     if (self->event_buffer) {
@@ -75,7 +75,7 @@ static int EventLoop_addSocket_impl(EventLoop* self, Socket* sock, EventMask mas
         .data.ptr = sock
     };
 
-    /* 🚨 명부에 등록하고 RETAIN (생명 주기 연장) */
+    /* 명부에 등록하고 RETAIN (생명 주기 연장) */
     if (self->tracked_objs[sock->fd] == NULL) {
         self->tracked_objs[sock->fd] = (Object*)sock;
         RETAIN((Object*)sock);
@@ -84,7 +84,7 @@ static int EventLoop_addSocket_impl(EventLoop* self, Socket* sock, EventMask mas
     if (epoll_ctl(self->epoll_fd, EPOLL_CTL_ADD, sock->fd, &ev) == -1) {
         if (errno == EEXIST && epoll_ctl(self->epoll_fd, EPOLL_CTL_MOD, sock->fd, &ev) == 0) return 0;
 
-        /* 🚨 등록 실패 시 명부에서 삭제하고 RELEASE */
+        /* 등록 실패 시 명부에서 삭제하고 RELEASE */
         self->tracked_objs[sock->fd] = NULL;
         RELEASE((Object*)sock);
         return -1;
@@ -97,7 +97,7 @@ static int EventLoop_delSocket_impl(EventLoop* self, Socket* sock) {
 
     if (epoll_ctl(self->epoll_fd, EPOLL_CTL_DEL, sock->fd, NULL) == -1) return -1;
 
-    /* 🚨 명부에서 삭제하고 RELEASE (생명 주기 반환) */
+    /*명부에서 삭제하고 RELEASE (생명 주기 반환) */
     if (self->tracked_objs[sock->fd] != NULL) {
         self->tracked_objs[sock->fd] = NULL;
         RELEASE((Object*)sock);
@@ -153,7 +153,7 @@ static int EventLoop_poll_impl(EventLoop* self, int timeout_ms) {
     for (int i = 0; i < nfds; i++) {
         Object* obj = (Object*)self->event_buffer[i].data.ptr;
 
-        /* 🚨 이벤트 처리 중 소멸 방지를 위한 임시 RETAIN */
+        /* 이벤트 처리 중 소멸 방지를 위한 임시 RETAIN */
         RETAIN(obj);
 
         if (strcmp(obj->type->name, "Timer") == 0) {
@@ -167,7 +167,7 @@ static int EventLoop_poll_impl(EventLoop* self, int timeout_ms) {
             if (sock->is_open && (triggered & EV_ERROR) && sock->on_error)    sock->on_error(sock, self);
         }
 
-        /* 🚨 임시 RETAIN 해제 */
+        /* 임시 RETAIN 해제 */
         RELEASE(obj);
     }
     return nfds;
@@ -179,7 +179,7 @@ void event_loop_run(EventLoop* self) {
     LOG_I("[LOOP] Event loop active. Press ^C to stop.");
 
     while (self->is_running) {
-        /* 🚨 poll이 시그널에 의해 깨어났을 때 즉시 루프 상단으로 올라가 조건 체크 */
+        /* poll이 시그널에 의해 깨어났을 때 즉시 루프 상단으로 올라가 조건 체크 */
         if (EventLoop_poll_impl(self, 100) < 0 && errno == EINTR) continue;
     }
 
@@ -211,13 +211,13 @@ EventLoop* new_EventLoop(int max_events) {
 
     Object_Init((Object*)self, &_eventLoopClass);
 
-    /* 🚨 모든 멤버 변수 수직 칼각 초기화 */
+    /* 모든 멤버 변수 수직 칼각 초기화 */
     self->epoll_fd     = epfd;
     self->is_running   = true;
     self->max_events   = (max_events > 0) ? max_events : 64;
     self->event_buffer = (struct epoll_event*)calloc(self->max_events, sizeof(struct epoll_event));
 
-    /* 🚨 메서드 포인터 수직 칼각 바인딩 */
+    /* 메서드 포인터 수직 칼각 바인딩 */
     self->addSocket    = EventLoop_addSocket_impl;
     self->delSocket    = EventLoop_delSocket_impl;
     self->addTimer     = event_loop_add_timer;

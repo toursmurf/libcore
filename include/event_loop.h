@@ -25,14 +25,14 @@ struct EventLoop {
     Object              base;
     int                 epoll_fd;
 
-    /* 🚨 volatile: 컴파일러의 레지스터 캐싱을 방지하여 ^C 신호를 즉각 인지함 ✅ */
+    /* volatile: 컴파일러의 레지스터 캐싱을 방지하여 ^C 신호를 즉각 인지함 ✅ */
     volatile bool       is_running;
 
     int                 max_events;
     struct epoll_event* event_buffer;
     struct _Logger* logger;
 
-    /* 🚨 [누수 소각로] RETAIN 객체 수감자 명부 (Dangling Pointer 원천 봉쇄) */
+    /* [누수 소각로] RETAIN 객체 수감자 명부 (Dangling Pointer 원천 봉쇄) */
     Object* tracked_objs[65536];
 
     /* ─── 메서드 포인터 (Method Pointers) ─── */
