@@ -3,6 +3,7 @@
 
 #include "object.h"
 #include "hashmap.h"
+#include "exception.h"
 #include <stdbool.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -56,7 +57,8 @@ void Socket_finalize(Object* obj);
 // ----------------------------------------------------------------------------
 // [트랜스포트 중앙화 팩토리 API 통합]
 // ----------------------------------------------------------------------------
-Socket* createServer(const char* url);
+Socket* createServer(const char* url, Exception** out_err);
+Socket* createClient(const char* url, Exception** out_err);
 Socket* createUnixServer(const char* path);
 HashMap* parse_url(const char* url);
 

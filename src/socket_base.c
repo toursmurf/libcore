@@ -3,6 +3,7 @@
 #include "tcp_socket.h"
 #include "udp_socket.h"
 #include "unix_socket.h"
+#include "exception.h"
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
@@ -206,51 +207,205 @@ HashMap* parse_url(const char* url) {
 // ----------------------------------------------------------------------------
 // [5] 다형성 소켓 통합 팩토리 (Polymorphic Factory)
 // ----------------------------------------------------------------------------
-Socket* createServer(const char* url) {
-    if (!url) return NULL;
-
-    HashMap* info = parse_url(url);
-    if (!info) return NULL;
-
-    const char* scheme = hashmap_get_str(info, "scheme");
-    Socket* sock = NULL;
-
-    if (!scheme) {
-        RELEASE(info);
+/**
+ * @brief 서버 소켓 생성 마스터 팩토리 (Strict Iron Fortress Mode)
+ */
+Socket* createServer(const char* url, Exception** out_err) {
+    // 🚨 [방어막 1] URL 자체 널 체크
+    if (!url) {
+        if (out_err) {
+            *out_err = throw_Exception(ERR_SOCK_URL, 0, "Server URL is NULL");
+        }
         return NULL;
     }
 
-    // strncmp 16자 바운더리 체크 및 포트 유효성 가드 적용
+    HashMap* info = parse_url(url);
+    if (!info) {
+        if (out_err) {
+            *out_err = throw_Exception(ERR_SOCK_URL, 0, "Server URL parsing failed");
+        }
+        return NULL;
+    }
+
+    const char* scheme = hashmap_get_str(info, "scheme");
+    if (!scheme) {
+        if (out_err) {
+            *out_err = throw_Exception(ERR_SOCK_SCHEME, 0, "Missing protocol scheme in URL");
+        }
+        RELEASE((Object*)info);
+        return NULL;
+    }
+
+    Socket* sock = NULL;
+
+    // 🚀 [프로토콜 라우팅 1] TCP Server 분기
     if (strncmp(scheme, "tcp", 16) == 0) {
         const char* host = hashmap_get_str(info, "host");
         const char* port_str = hashmap_get_str(info, "port");
+
         if (host && port_str) {
             int port = atoi(port_str);
+            // 🚨 [방어막 2] 포트 바운더리 체크
             if (port <= 0 || port > 65535) {
-                RELEASE(info);
-                return NULL;
+                if (out_err) {
+                    *out_err = throw_Exception(ERR_SOCK_PORT, 0, "TCP port out of range (1-65535)");
+                }
+            } else {
+                sock = (Socket*)new_TcpServer(host, port);
+                // 🚨 [방어막 3] 시스템 바인드/리스 실패 시 errno 낚아채기
+                if (!sock && out_err) {
+                    *out_err = throw_Exception(ERR_SOCK_CREATE, errno, "Failed to initialize TCP Server Socket");
+                }
             }
-            sock = (Socket*)new_TcpServer(host, port);
+        } else {
+            if (out_err) {
+                *out_err = throw_Exception(ERR_SOCK_URL, 0, "TCP URL components (host/port) missing");
+            }
         }
-    } else if (strncmp(scheme, "udp", 16) == 0) {
+    }
+    // 🚀 [프로토콜 라우팅 2] UDP Server 분기
+    else if (strncmp(scheme, "udp", 16) == 0) {
         const char* host = hashmap_get_str(info, "host");
         const char* port_str = hashmap_get_str(info, "port");
+
         if (host && port_str) {
             int port = atoi(port_str);
             if (port <= 0 || port > 65535) {
-                RELEASE(info);
-                return NULL;
+                if (out_err) {
+                    *out_err = throw_Exception(ERR_SOCK_PORT, 0, "UDP port out of range (1-65535)");
+                }
+            } else {
+                sock = (Socket*)new_UdpServer(host, port);
+                if (!sock && out_err) {
+                    *out_err = throw_Exception(ERR_SOCK_CREATE, errno, "Failed to initialize UDP Server Socket");
+                }
             }
-            sock = (Socket*)new_UdpServer(host, port);
+        } else {
+            if (out_err) {
+                *out_err = throw_Exception(ERR_SOCK_URL, 0, "UDP URL components (host/port) missing");
+            }
         }
-    } else if (strncmp(scheme, "unix", 16) == 0) {
-        const char* path = hashmap_get_str(info, "path");
+    }
+    // 🚀 [프로토콜 라우팅 3] UNIX Domain Server 분기
+    else if (strncmp(scheme, "unix", 16) == 0) {
+        const char* path = hashmap_get_str(info, "path"); // 내부 파서 규격 매핑
+
         if (path) {
             sock = (Socket*)new_UnixServer(path);
+            if (!sock && out_err) {
+                *out_err = throw_Exception(ERR_SOCK_CREATE, errno, "Failed to initialize UNIX Domain Server Socket");
+            }
+        } else {
+            if (out_err) {
+                *out_err = throw_Exception(ERR_SOCK_URL, 0, "UNIX Domain socket path missing");
+            }
+        }
+    }
+    // 🚨 미지원 프로토콜 방어막
+    else {
+        if (out_err) {
+            *out_err = throw_Exception(ERR_SOCK_SCHEME, 0, "Unsupported protocol scheme");
         }
     }
 
-    RELEASE(info);
+    // 🧹 [제국 ARC 율법] 파싱에 쓰인 임시 HashMap 자원 즉시 소각!
+    RELEASE((Object*)info);
+
+    return sock;
+}
+
+/**
+ * @brief 클라이언트 소켓 생성 마스터 팩토리 (TCP/UDP/UNIX 통합)
+ * @param url "tcp://127.0.0.1:8080", "udp://127.0.0.1:9000", "unix:///tmp/app.sock"
+ * @param out_err [OUT] 예외 발생 시 Exception 객체 저장 포인터 (NULL 허용)
+ * @return [OWNED] Socket* (성공 시 소켓 객체 반환, 실패 시 NULL 반환하며 out_err 채움)
+ */
+Socket* createClient(const char* url, Exception** out_err) {
+    // 🚨 [방어막 1] URL 자체 널 체크
+    if (!url) {
+        if (out_err) {
+            *out_err = throw_Exception(ERR_SOCK_URL, 0, "Client URL is NULL");
+        }
+        return NULL;
+    }
+
+    HashMap* info = parse_url(url);
+    if (!info) {
+        if (out_err) {
+            *out_err = throw_Exception(ERR_SOCK_URL, 0, "Client URL parsing failed");
+        }
+        return NULL;
+    }
+
+    const char* scheme = hashmap_get_str(info, "scheme");
+    if (!scheme) {
+        if (out_err) {
+            *out_err = throw_Exception(ERR_SOCK_SCHEME, 0, "Missing protocol scheme in URL");
+        }
+        RELEASE((Object*)info); // 🧹 예외 시에도 잊지 않는 ARC 소각!
+        return NULL;
+    }
+
+    Socket* sock = NULL;
+
+    // 🚀 [프로토콜 라우팅 1] TCP Client 분기
+    if (strncmp(scheme, "tcp", 16) == 0) {
+        const char* host = hashmap_get_str(info, "host");
+        const char* port_str = hashmap_get_str(info, "port");
+
+        if (host && port_str) {
+            int port = atoi(port_str);
+            // 🚨 [방어막 2] 포트 바운더리 체크
+            if (port <= 0 || port > 65535) {
+                if (out_err) {
+                    *out_err = throw_Exception(ERR_SOCK_PORT, 0, "TCP port out of range (1-65535)");
+                }
+            } else {
+                sock = (Socket*)new_TcpClient(host, port);
+                // 🚨 [방어막 3] 접속 실패 시 errno 낚아채기
+                if (!sock && out_err) {
+                    *out_err = throw_Exception(ERR_SOCK_CONNECT, errno, "Failed to connect TCP Client");
+                }
+            }
+        } else {
+            if (out_err) {
+                *out_err = throw_Exception(ERR_SOCK_URL, 0, "TCP URL components (host/port) missing");
+            }
+        }
+    }
+    // 🚀 [프로토콜 라우팅 2] UDP Client 분기
+    else if (strncmp(scheme, "udp", 16) == 0) {
+        // UDP는 비연결형이므로 host/port 바인딩 불필요 (타격 목표는 send 단에서 지정)
+        sock = (Socket*)new_UdpClient();
+        if (!sock && out_err) {
+            *out_err = throw_Exception(ERR_SOCK_CREATE, errno, "Failed to initialize UDP Client Socket");
+        }
+    }
+    // 🚀 [프로토콜 라우팅 3] UNIX Domain Client 분기
+    else if (strncmp(scheme, "unix", 16) == 0) {
+        const char* path = hashmap_get_str(info, "path");
+
+        if (path) {
+            sock = (Socket*)new_UnixClient(path);
+            if (!sock && out_err) {
+                *out_err = throw_Exception(ERR_SOCK_CONNECT, errno, "Failed to connect UNIX Domain Client");
+            }
+        } else {
+            if (out_err) {
+                *out_err = throw_Exception(ERR_SOCK_URL, 0, "UNIX Domain socket path missing");
+            }
+        }
+    }
+    // 🚨 미지원 프로토콜 방어막
+    else {
+        if (out_err) {
+            *out_err = throw_Exception(ERR_SOCK_SCHEME, 0, "Unsupported protocol scheme");
+        }
+    }
+
+    // 🧹 [제국 ARC 율법] 합법 패턴 확인 완료된 HashMap 강제 소각 (메모리 누수 원천 차단)
+    RELEASE((Object*)info);
+
     return sock;
 }
 
