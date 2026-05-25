@@ -2,6 +2,7 @@
 #define SOCKET_BASE_H
 
 #include "object.h"
+#include "hashmap.h"
 #include <stdbool.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -24,13 +25,12 @@ typedef enum {
 
 typedef struct Socket Socket;
 struct Socket {
-    Object  base;    // W1 ARC 엔진 (소문자 object_init 대응)
+    Object  base;            // W1 ARC 엔진 (소문자 object_init 대응)
     int     fd;
     bool    is_open;
     SocketProtocol protocol; // 소켓 정체성 필드
-
-    // --- [👑 통합 VTable: Java Style] ---
-    // TCP/Unix는 host/port에 NULL/0을, UDP는 실제 주소를 사용합니다.
+		void* user_data;
+    // --- [통합 VTable: Java Style] ---
     ssize_t (*send)(Socket* self, const void* buf, size_t len, const char* host, int port);
     ssize_t (*recv)(Socket* self, void* buf, size_t len, char* host, int* port);
 
@@ -39,7 +39,6 @@ struct Socket {
     void    (*close)(Socket* self);
 
     // --- [자식 위임 메서드: Delegation] ---
-    // Socket_init_base에서 NULL로 초기화하며, 자식 생성자에서 직접 구현체를 꽂습니다.
     int     (*bind)      (Socket* self, const char* host, int port);
     int     (*listen)    (Socket* self, int backlog);
     int     (*connect)   (Socket* self, const char* host, int port);
@@ -54,4 +53,11 @@ struct Socket {
 void Socket_init_base(Socket* self, int fd, SocketProtocol protocol);
 void Socket_finalize(Object* obj);
 
-#endif
+// ----------------------------------------------------------------------------
+// [트랜스포트 중앙화 팩토리 API 통합]
+// ----------------------------------------------------------------------------
+Socket* createServer(const char* url);
+Socket* createUnixServer(const char* path);
+HashMap* parse_url(const char* url);
+
+#endif /* SOCKET_BASE_H */

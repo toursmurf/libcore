@@ -1,15 +1,19 @@
 #define _GNU_SOURCE 
 #include "socket_base.h"
-#include <unistd.h> 
+#include "tcp_socket.h"
+#include "udp_socket.h"
+#include "unix_socket.h"
+#include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // [제국 표준 Class 명함]
 static const Class _Socket_Class = {
-		.name = "Socket",
-		.size = sizeof(Socket),
+    .name     = "Socket",
+    .size     = sizeof(Socket),
     .finalize = Socket_finalize
 };
 
@@ -104,27 +108,25 @@ static ssize_t Socket_recv_unified(Socket* self, void* buf, size_t len, char* ho
 // ----------------------------------------------------------------------------
 void Socket_finalize(Object* obj) {
     Socket* self = (Socket*)obj;
-    // VTable에 등록된 close 함수를 호출하여 안전하게 자원 해제
     if (self && self->fd >= 0) self->close(self);
 }
 
 void Socket_init_base(Socket* self, int fd, SocketProtocol protocol) {
     if (!self) return;
 
-    // [W1 제국 표준]: 객체 메타데이터 초기화 (Object_Init 규격 사용)
+    // [W1 제국 표준]: 객체 메타데이터 초기화
     Object_Init((Object*)self, &_Socket_Class);
 
-    self->fd = fd;
-    self->is_open = (fd >= 0);
+    self->fd       = fd;
+    self->is_open  = (fd >= 0);
     self->protocol = protocol;
 
-    // 👑 통합 인터페이스 매핑
-    self->send    = Socket_send_unified;
-    self->recv    = Socket_recv_unified;
-    self->getFD   = Socket_getFD_impl;
-    self->close   = Socket_close_impl;
+    // 통합 인터페이스 매핑
+    self->send  = Socket_send_unified;
+    self->recv  = Socket_recv_unified;
+    self->getFD = Socket_getFD_impl;
+    self->close = Socket_close_impl;
 
-    // 자식 위임 메서드는 초기값 NULL (자식 생성자에서 오버라이딩 유도)
     self->bind    = NULL;
     self->listen  = NULL;
     self->connect = NULL;
@@ -134,4 +136,125 @@ void Socket_init_base(Socket* self, int fd, SocketProtocol protocol) {
         int flags = fcntl(fd, F_GETFL, 0);
         if (flags != -1) fcntl(fd, F_SETFL, flags | O_NONBLOCK);
     }
+}
+
+// ----------------------------------------------------------------------------
+// [4] PHP 스타일 HashMap URL 파서
+// ----------------------------------------------------------------------------
+HashMap* parse_url(const char* url) {
+    if (!url) return NULL;
+
+    HashMap* result = new_HashMap(30);
+    if (!result) return NULL;
+
+    const char* sep = strstr(url, "://");
+    if (!sep) {
+        RELEASE(result);
+        return NULL;
+    }
+
+    char scheme[16] = {0};
+    size_t scheme_len = (size_t)(sep - url);
+    if (scheme_len >= sizeof(scheme)) {
+        scheme_len = sizeof(scheme) - 1;
+    }
+    strncpy(scheme, url, scheme_len);
+    scheme[scheme_len] = '\0';
+    hashmap_put_str(result, "scheme", scheme);
+
+    const char* rest = sep + 3;
+
+    // strncmp 16자 버퍼 경계 체크 가동 및 path 매핑
+    if (strncmp(scheme, "unix", 16) == 0) {
+        hashmap_put_str(result, "path", rest);
+        hashmap_put_str(result, "port", "0");
+        return result;
+    }
+
+    const char* path_start = strchr(rest, '/');
+    if (path_start) {
+        hashmap_put_str(result, "path", path_start);
+    }
+
+    size_t hostport_len = path_start ? (size_t)(path_start - rest) : strlen(rest);
+    char hostport[256] = {0};
+    if (hostport_len >= sizeof(hostport)) {
+        hostport_len = sizeof(hostport) - 1;
+    }
+    strncpy(hostport, rest, hostport_len);
+    hostport[hostport_len] = '\0';
+
+    const char* port_sep = strrchr(hostport, ':');
+    if (port_sep) {
+        char host[256] = {0};
+        size_t host_len = (size_t)(port_sep - hostport);
+        if (host_len >= sizeof(host)) {
+            host_len = sizeof(host) - 1;
+        }
+        strncpy(host, hostport, host_len);
+        host[host_len] = '\0';
+        hashmap_put_str(result, "host", host);
+        hashmap_put_str(result, "port", port_sep + 1);
+    } else {
+        hashmap_put_str(result, "host", hostport);
+        hashmap_put_str(result, "port", "0");
+    }
+
+    return result;
+}
+
+// ----------------------------------------------------------------------------
+// [5] 다형성 소켓 통합 팩토리 (Polymorphic Factory)
+// ----------------------------------------------------------------------------
+Socket* createServer(const char* url) {
+    if (!url) return NULL;
+
+    HashMap* info = parse_url(url);
+    if (!info) return NULL;
+
+    const char* scheme = hashmap_get_str(info, "scheme");
+    Socket* sock = NULL;
+
+    if (!scheme) {
+        RELEASE(info);
+        return NULL;
+    }
+
+    // strncmp 16자 바운더리 체크 및 포트 유효성 가드 적용
+    if (strncmp(scheme, "tcp", 16) == 0) {
+        const char* host = hashmap_get_str(info, "host");
+        const char* port_str = hashmap_get_str(info, "port");
+        if (host && port_str) {
+            int port = atoi(port_str);
+            if (port <= 0 || port > 65535) {
+                RELEASE(info);
+                return NULL;
+            }
+            sock = (Socket*)new_TcpServer(host, port);
+        }
+    } else if (strncmp(scheme, "udp", 16) == 0) {
+        const char* host = hashmap_get_str(info, "host");
+        const char* port_str = hashmap_get_str(info, "port");
+        if (host && port_str) {
+            int port = atoi(port_str);
+            if (port <= 0 || port > 65535) {
+                RELEASE(info);
+                return NULL;
+            }
+            sock = (Socket*)new_UdpServer(host, port);
+        }
+    } else if (strncmp(scheme, "unix", 16) == 0) {
+        const char* path = hashmap_get_str(info, "path");
+        if (path) {
+            sock = (Socket*)new_UnixServer(path);
+        }
+    }
+
+    RELEASE(info);
+    return sock;
+}
+
+Socket* createUnixServer(const char* path) {
+    if (!path) return NULL;
+    return (Socket*)new_UnixServer(path);
 }
