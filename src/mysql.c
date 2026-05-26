@@ -483,7 +483,7 @@ static int DB_copyTable_my(DBClient *self, const char* n, const char* o, int d) 
 }
 
 static char* DB_makeTable_my(DBClient *self, const char* t) {
-    if (!t) return NULL;
+    if (!self || !t) return NULL;
     time_t now = time(NULL);
     struct tm ti_buf;
     localtime_r(&now, &ti_buf);
