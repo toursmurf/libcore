@@ -343,7 +343,7 @@ static void libcore_main(void) {
     lib_mem_kb   = get_peak_rss_kb();
     printf("\nLIB_TIME: %.3fs\n", lib_time_val);
 }
-/* END_RAW_CORE */
+/* END_LIBCORE_CORE */
 
 /* ─────────────────────────────────────────────
  * MAIN
