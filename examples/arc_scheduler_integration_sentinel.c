@@ -1,10 +1,3 @@
-/**
- * @file arc_scheduler_integration_sentinel.c
- * @brief 🇰🇷 고도화된 타이머와 스케줄러를 결합한 감시(Sentinel) 프로세스 예제입니다.
- * 🇬🇧 Sentinel process example combining advanced timers and scheduler.
- * @note  This example strictly follows the ARC memory management rules.
- */
-
 #include "scheduler.h"
 #include "logger.h"
 #include "threadpool.h"
@@ -15,7 +8,7 @@
 #include <errno.h>
 
 extern Logger *logger;
-EventLoop* global_loop = NULL; 
+EventLoop* global_loop = NULL;
 
 #undef LOG_D
 #undef LOG_I
@@ -42,7 +35,7 @@ int main() {
     struct sigaction sa;
     sa.sa_handler = handle_sigint;
     sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0; 
+    sa.sa_flags = 0;
     sigaction(SIGINT, &sa, NULL);
 
     // 2. 인프라 가동
@@ -53,7 +46,9 @@ int main() {
 
     // 3. 임무 배치
     Timer* pulse = new_TimerNamed("Pulse", 500, true, task_pulse_cb, NULL);
-    event_loop_add_timer(global_loop, pulse);
+    if (global_loop->addTimer) {
+      global_loop->addTimer(global_loop, pulse);
+    }
     pulse->start(pulse);
     sched->add(sched, "Resource-Check", 2000, true, task_resource_check, NULL);
 
@@ -61,13 +56,14 @@ int main() {
     LOG_I("[SYSTEM] Sentinel ACTIVE. Press ^C to STOP.");
 
     // 4. 가동 및 정지 (이제 ^C가 완벽히 먹힙니다!)
-    event_loop_run(global_loop); 
+    event_loop_run(global_loop);
 
     // 5. 우아한 퇴근
     LOG_W("[SYSTEM] Loop broken. Cleaning up resources...");
 
-    // 🚨 [핵심] Pulse 타이머를 루프에서 빼내어 ARC 밸런스를 맞춤! ✅
-    event_loop_remove_timer(global_loop, pulse);
+    if (global_loop->removeTimer) {
+      global_loop->removeTimer(global_loop, pulse);
+    }
 
     RELEASE((Object*)pulse);
     RELEASE((Object*)sched);
