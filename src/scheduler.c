@@ -1,3 +1,13 @@
+/*
+ * ────────────────────────────────────────────────────────────────────────
+ * [scheduler.c] 투스it홀딩스 제국 - 고정밀 타이머 스케줄러 엔진
+ * ────────────────────────────────────────────────────────────────────────
+ * 1. 암시적 선언 경고 소각 : event_loop_add_timer 등 글로벌 함수 호출 제거 ✅
+ * 2. VTable 다형성 맵핑    : self->loop->addTimer 등 객체 지향 메서드 체인 적용 ✅
+ * 3. 생명주기 오너십       : Job 및 Timer의 정확한 RETAIN/RELEASE 락온 ✅
+ * ────────────────────────────────────────────────────────────────────────
+ */
+
 #include "scheduler.h"
 #include "logger.h"
 #include "threadpool.h"
@@ -17,17 +27,28 @@ extern Logger *logger;
 /* [INTERNAL] Classes & Callbacks */
 static void ScheduleJob_finalize(Object* obj) {
     ScheduleJob* self = (ScheduleJob*)obj;
-    if (self->timer) { RELEASE((Object*)self->timer); self->timer = NULL; }
+    if (self->timer) { 
+        RELEASE((Object*)self->timer); 
+        self->timer = NULL; 
+    }
     LOG_D("[JOB] Finalized: '%s'", self->name);
 }
 
-static Class Job_Class = { .name = "ScheduleJob", .size = sizeof(ScheduleJob), .finalize = ScheduleJob_finalize };
+static Class Job_Class = { 
+    .name = "ScheduleJob", 
+    .size = sizeof(ScheduleJob), 
+    .finalize = ScheduleJob_finalize 
+};
 
 static void* schedule_job_worker_bridge(void* arg) {
     ScheduleJob* job = (ScheduleJob*)arg;
     job->last_run = time(NULL);
     atomic_fetch_add(&job->run_count, 1);
-    if (job->callback) job->callback(job->user_data);
+    
+    if (job->callback) {
+        job->callback(job->user_data);
+    }
+    
     RELEASE((Object*)job);
     return NULL;
 }
@@ -36,11 +57,13 @@ static void on_scheduler_timer_tick(void* ud) {
     ScheduleJob* job = (ScheduleJob*)ud;
     Scheduler* sched = job->scheduler; 
     RETAIN((Object*)job); 
+    
     // 🚨 threadpool.h 설계도 규격: pool->submit(pool, func, arg) ✅
     if (sched->pool && sched->pool->submit) {
         sched->pool->submit(sched->pool, (TaskRoutine)schedule_job_worker_bridge, job);
     } else {
-        LOG_E("[SCHED] Submit failed!"); RELEASE((Object*)job);
+        LOG_E("[SCHED] Submit failed!"); 
+        RELEASE((Object*)job);
     }
 }
 
@@ -56,8 +79,10 @@ static void Scheduler_finalize(Object* obj) {
         for (int i = 0; i < count; i++) {
             ScheduleJob* job = (ScheduleJob*)self->jobs->get(self->jobs, i);
             if (self->loop && job && job->timer) {
-                // 루프에서 타이머 제거 (루프의 타이머 참조 -1)
-                event_loop_remove_timer(self->loop, job->timer); 
+                // 🚨 [FIX] VTable 직접 호출: 루프에서 타이머 제거 
+                if (self->loop->removeTimer) {
+                    self->loop->removeTimer(self->loop, job->timer);
+                }
             }
             // 스케줄러가 잡고 있던 Job 소유권 해제 (-1)
             RELEASE((Object*)job); 
@@ -82,24 +107,39 @@ static void Scheduler_finalize(Object* obj) {
 }
 
 const Class Scheduler_Class = {
-	.name = "Scheduler",
-	.size = sizeof(Scheduler),
-	.finalize = Scheduler_finalize
+    .name = "Scheduler",
+    .size = sizeof(Scheduler),
+    .finalize = Scheduler_finalize
 };
 
 /* [VTABLE IMPLEMENTATION] */
 static bool Scheduler_addEx_impl(Scheduler* self, const char* name, long ms, bool repeat, JobPriority prio, TimerCallback cb, void* ud) {
     if (!self || !cb) return false;
+    
     ScheduleJob* job = (ScheduleJob*)calloc(1, sizeof(ScheduleJob));
     if (!job) return false;
+    
     Object_Init((Object*)job, &Job_Class);
     snprintf(job->name, sizeof(job->name), "%s", name ? name : "UnnamedJob");
-    job->callback = cb; job->user_data = ud; job->priority = prio; job->scheduler = self; 
+    job->callback = cb; 
+    job->user_data = ud; 
+    job->priority = prio; 
+    job->scheduler = self; 
+    
     job->timer = new_TimerNamed(job->name, ms, repeat, on_scheduler_timer_tick, job);
-    if (!job->timer) { RELEASE((Object*)job); return false; }
+    if (!job->timer) { 
+        RELEASE((Object*)job); 
+        return false; 
+    }
+    
     pthread_mutex_lock(&self->lock);
     self->jobs->add(self->jobs, (Object*)job);
-    event_loop_add_timer(self->loop, job->timer);
+    
+    // 🚨 [FIX] VTable 직접 호출: 루프에 타이머 등록
+    if (self->loop->addTimer) {
+        self->loop->addTimer(self->loop, job->timer);
+    }
+    
     pthread_mutex_unlock(&self->lock);
     LOG_I("[SCHED] Registered: '%s' (%ldms)", job->name, ms);
     return true;
@@ -111,16 +151,25 @@ static bool Scheduler_add_impl(Scheduler* self, const char* name, long ms, bool 
 
 static bool Scheduler_remove_impl(Scheduler* self, const char* name) {
     if (!self || !name) return false;
+    
     pthread_mutex_lock(&self->lock);
     bool found = false;
     int count = self->jobs->getSize(self->jobs);
+    
     for (int i = 0; i < count; i++) {
         ScheduleJob* job = (ScheduleJob*)self->jobs->get(self->jobs, i);
         if (strcmp(job->name, name) == 0) {
             job->timer->stop(job->timer);
-            event_loop_remove_timer(self->loop, job->timer);
+            
+            // 🚨 [FIX] VTable 직접 호출: 루프에서 타이머 제거
+            if (self->loop->removeTimer) {
+                self->loop->removeTimer(self->loop, job->timer);
+            }
+            
             self->jobs->remove(self->jobs, i); 
-            RELEASE((Object*)job); found = true; break;
+            RELEASE((Object*)job); 
+            found = true; 
+            break;
         }
     }
     pthread_mutex_unlock(&self->lock);
@@ -162,19 +211,24 @@ static void Scheduler_stop_impl(Scheduler* self) {
 /* [CONSTRUCTOR] */
 Scheduler* new_Scheduler(ThreadPool* pool, EventLoop* loop) {
     if (!pool || !loop) return NULL;
+    
     Scheduler* self = (Scheduler*)calloc(1, sizeof(Scheduler));
     if (!self) return NULL;
+    
     Object_Init((Object*)self, &Scheduler_Class);
     self->jobs = new_ArrayList(16);
     pthread_mutex_init(&self->lock, NULL);
+    
     self->pool = (ThreadPool*)RETAIN((Object*)pool);
     self->loop = (EventLoop*)RETAIN((Object*)loop);
-    self->add = Scheduler_add_impl; 
-    self->addEx = Scheduler_addEx_impl;
+    
+    self->add    = Scheduler_add_impl; 
+    self->addEx  = Scheduler_addEx_impl;
     self->remove = Scheduler_remove_impl; 
-    self->start = Scheduler_start_impl;
-    self->stop = Scheduler_stop_impl; 
-    self->count = Scheduler_count_impl; // 실제로는 개수 반환 함수 연결 필요
+    self->start  = Scheduler_start_impl;
+    self->stop   = Scheduler_stop_impl; 
+    self->count  = Scheduler_count_impl; 
+    
     LOG_I("[SCHED] Imperial Scheduler ready.");
     return self;
 }

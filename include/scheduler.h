@@ -27,7 +27,7 @@ struct ScheduleJob {
     Timer* timer;      // [OWNED]
     TimerCallback   callback;
     void* user_data;  // [BORROWED]
-    Scheduler* scheduler;  // [Check 1] 지휘부 참조 필드 추가!! ✅
+    Scheduler* scheduler;  // [Check 1] 지휘부 참조 필드 추가!!
     atomic_size_t   run_count;
     time_t          last_run;
     JobPriority     priority;
