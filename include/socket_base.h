@@ -55,12 +55,21 @@ void Socket_init_base(Socket* self, int fd, SocketProtocol protocol);
 void Socket_finalize(Object* obj);
 
 // ----------------------------------------------------------------------------
-// [트랜스포트 중앙화 팩토리 API 통합]
+// [트랜스포트 중앙화 팩토리 API 통합 - 비동기 (EventLoop용)]
 // ----------------------------------------------------------------------------
 Socket* createServer(const char* url, Exception** out_err);
 Socket* createClient(const char* url, Exception** out_err);
 Socket* createUnixServer(const char* path, Exception** out_err);
 Socket* createUnixClient(const char* path, Exception** out_err);
+
+// ----------------------------------------------------------------------------
+// [트랜스포트 중앙화 팩토리 API 통합 - 동기 (멀티스레드 워커용)]  [NEW]
+// ----------------------------------------------------------------------------
+Socket* createSyncServer(const char* url, Exception** out_err);
+Socket* createSyncClient(const char* url, Exception** out_err);
+Socket* createSyncUnixServer(const char* path, Exception** out_err);
+Socket* createSyncUnixClient(const char* path, Exception** out_err);
+
 HashMap* parse_url(const char* url);
 
 #endif /* SOCKET_BASE_H */

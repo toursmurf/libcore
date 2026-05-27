@@ -449,3 +449,54 @@ Socket* createUnixClient(const char* path, Exception** out_err) {
     }
     return sock;
 }
+
+// ============================================================================
+// [6] 멀티스레드 동기화(Sync) 소켓 통합 팩토리 (Blocking Mode)
+// ============================================================================
+
+/**
+ * @brief 소켓의 논블로킹(O_NONBLOCK) 족쇄를 풀어 동기(Blocking) 모드로 전환하는 내부 유틸
+ */
+static void Socket_strip_nonblock(Socket* sock) {
+    if (!sock || sock->fd < 0) return;
+    int flags = fcntl(sock->fd, F_GETFL, 0);
+    if (flags != -1) {
+        fcntl(sock->fd, F_SETFL, flags & ~O_NONBLOCK); // 🚨 논블로킹 플래그 제거!
+    }
+}
+
+/**
+ * @brief 동기(Blocking) 서버 소켓 생성 마스터 팩토리
+ */
+Socket* createSyncServer(const char* url, Exception** out_err) {
+    Socket* sock = createServer(url, out_err);
+    if (sock) Socket_strip_nonblock(sock); // 생성 성공 시 동기 모드로 변환
+    return sock;
+}
+
+/**
+ * @brief 동기(Blocking) 클라이언트 소켓 생성 마스터 팩토리
+ */
+Socket* createSyncClient(const char* url, Exception** out_err) {
+    Socket* sock = createClient(url, out_err);
+    if (sock) Socket_strip_nonblock(sock);
+    return sock;
+}
+
+/**
+ * @brief 동기(Blocking) Unix 도메인 소켓 서버 팩토리
+ */
+Socket* createSyncUnixServer(const char* path, Exception** out_err) {
+    Socket* sock = createUnixServer(path, out_err);
+    if (sock) Socket_strip_nonblock(sock);
+    return sock;
+}
+
+/**
+ * @brief 동기(Blocking) Unix 도메인 소켓 클라이언트 팩토리
+ */
+Socket* createSyncUnixClient(const char* path, Exception** out_err) {
+    Socket* sock = createUnixClient(path, out_err);
+    if (sock) Socket_strip_nonblock(sock);
+    return sock;
+}
