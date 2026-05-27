@@ -152,13 +152,13 @@ static void Logger_log_internal(
 
     // ✅ 콘솔 출력 수정: %" PRIu64 " -> [%s]
 		if (toConsole) {
-			printf("[%s][%s] %s\n",
+			printf("\n[%s][%s] %s\n",
         time_str, level_str[level], buffer);
     }
 
     // ✅ 파일 출력 수정: %" PRIu64 " -> [%s]
     if (fh) {
-      fprintf(fh, "[%s][%s] %s\n",
+      fprintf(fh, "\n[%s][%s] %s\n",
         time_str, level_str[level], buffer);
         fflush(fh);
       }
