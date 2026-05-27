@@ -6,6 +6,8 @@
  * 2. 동적 리포트    : 생산성 비율에 따라 "압도적" vs "개선 필요" 텍스트 자동 변경 ✅
  * 3. 물리적 증명    : RAW vs LIBCORE의 수행 시간(초) 및 Peak RSS(메모리) 비교 ✅
  * 4. RAW 카운터 픽스: 족보(sock_type) 배열 전역 유지로 TCP/Unix 10만 개 완벽 카운트 ✅
+ * 5. 팩토리 통합    : createServer, createUnixServer 등 비동기 통합 팩토리 적용 ✅
+ * 6. 🚨 방어막 갱신 : 클순 부장님 지적 사항(Exception NULL 체크) 완벽 반영 ✅
  * ────────────────────────────────────────────────────────────────────────
  */
 
@@ -73,7 +75,7 @@ static void print_system_banner(void) {
     char buf[256];
     printf("\n");
     printf("╔═════════════════════════════════════════════════════════════╗\n");
-    printf("║          🚀 투스it홀딩스 - Iron Fortress v1.0 벤치마크          ║\n");
+    printf("║          🚀 투스it홀딩스 - Iron Fortress v1.1 벤치마크          ║\n");
     printf("╚═════════════════════════════════════════════════════════════╝\n");
 
     FILE* f = popen("cat /proc/cpuinfo | grep 'model name' | head -n 1 | cut -d ':' -f 2 | sed 's/^ //'", "r");
@@ -322,23 +324,41 @@ static void libcore_main(void) {
     pthread_create(&tid, NULL, client_load, NULL);
     double start = now_sec();
     loop = new_EventLoop(1024);
-    TcpSocket* ts = new_TcpServer("0.0.0.0", TCP_PORT);
-    UdpSocket* us = new_UdpServer("0.0.0.0", UDP_PORT);
-    UnixSocket* xs = new_UnixServer(UNIX_PATH);
+
+    Exception* err = NULL;
+    char tcp_url[64], udp_url[64];
+    snprintf(tcp_url, sizeof(tcp_url), "tcp://0.0.0.0:%d", TCP_PORT);
+    snprintf(udp_url, sizeof(udp_url), "udp://0.0.0.0:%d", UDP_PORT);
+
+    /* 🚀 클순 부장님 지적 사항 완벽 반영: Exception NULL 체크 방어막 가동! */
+    Socket* ts = createServer(tcp_url, &err);
+    if (err) { printf("\n[FATAL] TCP Server 소켓 생성 실패!\n"); exit(1); }
+
+    Socket* us = createServer(udp_url, &err);
+    if (err) { printf("\n[FATAL] UDP Server 소켓 생성 실패!\n"); exit(1); }
+
+    Socket* xs = createUnixServer(UNIX_PATH, &err);
+    if (err) { printf("\n[FATAL] UNIX Server 소켓 생성 실패!\n"); exit(1); }
+
     int rbuf = 20 * 1024 * 1024;
-    setsockopt(us->base.fd, SOL_SOCKET, SO_RCVBUF, &rbuf, sizeof(rbuf));
-    ts->base.on_readable = on_accept;
-    us->base.on_readable = on_read;
-    xs->base.on_readable = on_accept;
-    loop->addSocket(loop, (Socket*)ts, EV_READ);
-    loop->addSocket(loop, (Socket*)us, EV_READ);
-    loop->addSocket(loop, (Socket*)xs, EV_READ);
+    setsockopt(us->fd, SOL_SOCKET, SO_RCVBUF, &rbuf, sizeof(rbuf));
+
+    ts->on_readable = on_accept;
+    us->on_readable = on_read;
+    xs->on_readable = on_accept;
+
+    loop->addSocket(loop, ts, EV_READ);
+    loop->addSocket(loop, us, EV_READ);
+    loop->addSocket(loop, xs, EV_READ);
+
     loop->run(loop);
     pthread_join(tid, NULL);
+
     RELEASE((Object*)ts);
     RELEASE((Object*)us);
     RELEASE((Object*)xs);
     RELEASE((Object*)loop);
+
     lib_time_val = now_sec() - start;
     lib_mem_kb   = get_peak_rss_kb();
     printf("\nLIB_TIME: %.3fs\n", lib_time_val);
