@@ -51,12 +51,12 @@ typedef enum ErrorCode {
     ERR_SOCK_TIMEOUT = 2005,
     ERR_SOCK_REFUSED = 2006,
     ERR_SOCK_RESET   = 2007,
-    ERR_SOCK_AGAIN   = 2008,  // 🚀 [누락 복구] EAGAIN/EWOULDBLOCK
-    ERR_SOCK_CLOSED  = 2009,  // 🚀 [누락 복구] 정상 종료 방어
+    ERR_SOCK_AGAIN   = 2008,  //[누락 복구] EAGAIN/EWOULDBLOCK
+    ERR_SOCK_CLOSED  = 2009,  //[누락 복구] 정상 종료 방어
     ERR_SOCK_PERM    = 2010,
     ERR_SOCK_ADDRUSE = 2011,
     ERR_SOCK_URL     = 2012,
-    ERR_SOCK_SCHEME  = 2013,  // 🚀 [누락 복구] 미지원 프로토콜
+    ERR_SOCK_SCHEME  = 2013,  //[누락 복구] 미지원 프로토콜
     ERR_SOCK_PORT    = 2014
 
 } ErrorCode;
@@ -76,10 +76,10 @@ struct Exception {
 
     ErrorCode code;
     int sys_errno;
-    String* message;      // 🚀 [ARC 규격] char* -> String* (완벽 분리)
-    String* fileName;     // 🚀 [ARC 규격] char* -> String* (완벽 분리)
+    String* message;      //[ARC 규격] char* -> String* (완벽 분리)
+    String* fileName;     //[ARC 규격] char* -> String* (완벽 분리)
     int lineNumber;
-    Exception* cause;     // 🚀 [ARC 체인] 생성자에서 RETAIN, 소멸자에서 RELEASE
+    Exception* cause;     //[ARC 체인] 생성자에서 RETAIN, 소멸자에서 RELEASE
 
     /* 메서드 */
     String* (*getMessage)(Exception*);
