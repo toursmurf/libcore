@@ -432,3 +432,20 @@ Socket* createUnixServer(const char* path, Exception** out_err) {
 
     return sock;
 }
+
+/**
+ * @brief Unix 도메인 소켓 클라이언트 전용 생성 팩토리 🚀 [NEW]
+ */
+Socket* createUnixClient(const char* path, Exception** out_err) {
+    if (!path) {
+        if (out_err) *out_err = throw_Exception(ERR_SOCK_URL, 0, "Unix socket path is NULL");
+        return NULL;
+    }
+
+    Socket* sock = (Socket*)new_UnixClient(path);
+    if (!sock) {
+        if (out_err) *out_err = throw_Exception(ERR_SOCK_CONNECT, errno, "Failed to connect Unix client socket");
+        return NULL;
+    }
+    return sock;
+}
