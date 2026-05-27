@@ -59,6 +59,17 @@ struct HashMap {
     void (*destroy)(HashMap* self);
 };
 
+/* ==============================================================================
+ * 💡 [추가할 내용] C 기본 자료형 변환 헬퍼 (Helper API) 프로토타입
+ * ============================================================================== */
+void        hashmap_put_str (HashMap* self, const char* key, const char* value);
+void        hashmap_put_int (HashMap* self, const char* key, int value);
+void        hashmap_put_long(HashMap* self, const char* key, long value);
+
+const char* hashmap_get_str (HashMap* self, const char* key);
+int         hashmap_get_int (HashMap* self, const char* key);
+long        hashmap_get_long(HashMap* self, const char* key);
+
 /* 생성자: PascalCase 명명 규칙 적용 */
 HashMap* new_HashMap(int initial_capacity);
 

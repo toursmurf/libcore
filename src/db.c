@@ -63,7 +63,7 @@ static void _init_base_methods(DBClient *db) {
     db->save_log = 0;
     db->last_insert_id = 0;
     db->last_idx = 0;
-    db->unused_ptr = NULL;
+    //db->unused_ptr = NULL; //미사용 폐기
     db->option_count = 0;
     pthread_mutex_init(&db->lock, NULL);
 }

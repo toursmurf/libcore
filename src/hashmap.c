@@ -263,3 +263,48 @@ HashMap* new_HashMap(int initial_capacity) {
 
     return map;
 }
+
+/* ==============================================================================
+ * 💡 [추가] C 기본 자료형 변환 헬퍼 (Helper API) 구현체
+ * ============================================================================== */
+
+void hashmap_put_str(HashMap* self, const char* key, const char* value) {
+    if (!self || !key || !value) return;
+    Object* v = (Object*)new_String(value);
+    self->put(self, key, v);
+    RELEASE(v);
+}
+
+void hashmap_put_int(HashMap* self, const char* key, int value) {
+    if (!self || !key) return;
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%d", value);
+    Object* v = (Object*)new_String(buf);
+    self->put(self, key, v);
+    RELEASE(v);
+}
+
+void hashmap_put_long(HashMap* self, const char* key, long value) {
+    if (!self || !key) return;
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%ld", value);
+    Object* v = (Object*)new_String(buf);
+    self->put(self, key, v);
+    RELEASE(v);
+}
+
+const char* hashmap_get_str(HashMap* self, const char* key) {
+    if (!self || !key) return NULL;
+    String* v = (String*)self->get(self, key);
+    return v ? v->value : NULL;
+}
+
+int hashmap_get_int(HashMap* self, const char* key) {
+    const char* str = hashmap_get_str(self, key);
+    return str ? atoi(str) : 0;
+}
+
+long hashmap_get_long(HashMap* self, const char* key) {
+    const char* str = hashmap_get_str(self, key);
+    return str ? atol(str) : 0L;
+}

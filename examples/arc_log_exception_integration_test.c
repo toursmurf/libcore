@@ -16,7 +16,7 @@
 // ==========================================
 Exception* read_config_file() {
     // 가장 깊은 곳에서 발생한 근본 에러(Root Cause)
-    return throw_Exception(ERR_FILE_NOT_FOUND, "config.json 파일을 찾을 수 없습니다.");
+    return throw_Exception(ERR_FILE_NOT_FOUND, 0, "config.json 파일을 찾을 수 없습니다.");
 }
 
 // ==========================================
@@ -27,7 +27,7 @@ Exception* initialize_system() {
     
     if (cause) {
         // 하위 에러를 감싸는 새로운 에러 생성 (내부적으로 cause를 RETAIN 함)
-        Exception* err = throw_ExceptionCause(ERR_CONFIG, "시스템 초기화 실패: 필수 설정 파일 누락", cause);
+        Exception* err = throw_ExceptionCause(ERR_CONFIG, 0, "시스템 초기화 실패: 필수 설정 파일 누락", cause);
         
         // ★ [이돌이 패치] 나(initialize_system)의 소유권을 포기한다!
         // 이제 cause의 생사여탈권은 오직 err 객체만이 가진다!
