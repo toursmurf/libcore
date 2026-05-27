@@ -5,7 +5,7 @@ INC_DIR = include
 LIB_DIR = lib
 TEST_DIR = tests
 EXAMPLE_DIR = examples
-LIBS=-L/usr/lib64/ -lmariadb  -lcurl   -lssl -lcrypto -lrt
+LIBS=-L/usr/lib64/ -lmariadb  -lcurl   -lssl -lcrypto -lrt -luring
 
 # 코어 라이브러리 소스 및 오브젝트
 SRCS = $(wildcard $(SRC_DIR)/*.c)
