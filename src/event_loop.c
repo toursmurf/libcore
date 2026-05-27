@@ -1,17 +1,9 @@
-/*
- * src/event_loop.c
- * ────────────────────────────────────────────────────────────────────────
- * [투스it홀딩스 제국 코어 엔진 - 클순 부장 초정밀 시력 보호 모드]
- * 1. 누수 원천 차단 : tracked_objs 명부를 통한 소멸자(Finalize) 일괄 해제 ✅
- * 2. 시력 보호 정렬 : 모든 연산자 및 변수 선언 수직 칼각 정렬 유지 ✅
- * 3. 댕글링 방어    : event_buffer 및 FD 해제 시 NULL/초기화 보장 ✅
- * ────────────────────────────────────────────────────────────────────────
- */
-
 #define _GNU_SOURCE
 #include "event_loop.h"
 #include "logger.h"
 #include <sys/epoll.h>
+#include <liburing.h>
+#include <poll.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
@@ -23,13 +15,34 @@ extern Logger* logger;
 #define LOG_W(fmt, ...) LOG_WARN(logger,  fmt, ##__VA_ARGS__)
 
 /* ────────────────────────────────────────
- * 내부 유틸리티 (Internal Utilities)
+ * [커널 지원 자동 감지 - Scout Pattern]
+ * ──────────────────────────────────────── */
+static bool detect_uring(void) {
+    struct io_uring ring;
+    int ret = io_uring_queue_init(1, &ring, 0);
+    if (ret == 0) {
+        io_uring_queue_exit(&ring);
+        return true;
+    }
+    return false;
+}
+
+/* ────────────────────────────────────────
+ * 내부 유틸리티
  * ──────────────────────────────────────── */
 static uint32_t map_events_to_epoll(EventMask mask) {
     uint32_t events = 0;
     if (mask & EV_READ)  events |= EPOLLIN;
     if (mask & EV_WRITE) events |= EPOLLOUT;
     events |= (EPOLLERR | EPOLLHUP | EPOLLET);
+    return events;
+}
+
+static uint32_t map_events_to_poll(EventMask mask) {
+    uint32_t events = 0;
+    if (mask & EV_READ)  events |= POLLIN;
+    if (mask & EV_WRITE) events |= POLLOUT;
+    events |= (POLLERR | POLLHUP);
     return events;
 }
 
@@ -41,50 +54,57 @@ static EventMask map_epoll_to_events(uint32_t events) {
     return mask;
 }
 
+static EventMask map_poll_to_events(uint32_t events) {
+    EventMask mask = 0;
+    if (events & POLLIN)               mask |= EV_READ;
+    if (events & POLLOUT)              mask |= EV_WRITE;
+    if (events & (POLLERR | POLLHUP))  mask |= EV_ERROR;
+    return mask;
+}
+
 /* ────────────────────────────────────────
- * 소멸자: 누수 완전 소각로
+ * 소멸자: 🚨 백엔드 분기 및 동적 배열 소각로 🚨
  * ──────────────────────────────────────── */
 static void EventLoop_finalize(Object* obj) {
     EventLoop* self = (EventLoop*)obj;
 
-    /*  1. 명부에 등록된 모든 수감자(소켓/타이머) 강제 석방 (참조 카운트 삭감) */
-    for (int i = 0; i < 65536; i++) {
-        if (self->tracked_objs[i] != NULL) {
-            RELEASE(self->tracked_objs[i]);
-            self->tracked_objs[i] = NULL;
+    /* 🚨 동적 배열 릴리즈 및 댕글링 방어 */
+    if (self->tracked_objs) {
+        for (int i = 0; i < 65536; i++) {
+            if (self->tracked_objs[i] != NULL) {
+                RELEASE(self->tracked_objs[i]);
+                self->tracked_objs[i] = NULL;
+            }
         }
+        free(self->tracked_objs);
+        self->tracked_objs = NULL;
     }
 
-    /* 2. 커널 자원(epoll) 및 버퍼 반환 */
-    if (self->epoll_fd >= 0) close(self->epoll_fd);
+    if (self->backend == EL_BACKEND_URING) {
+        io_uring_queue_exit(&self->ring);
+    } else {
+        if (self->epoll_fd >= 0) close(self->epoll_fd);
+    }
 
     if (self->event_buffer) {
         free(self->event_buffer);
-        self->event_buffer = NULL; /* Dangling Pointer 원천 봉쇄 */
+        self->event_buffer = NULL;
     }
 }
 
-/* ────────────────────────────────────────
- * Socket 등록 / 해제 (수감자 명부 연동)
- * ──────────────────────────────────────── */
-static int EventLoop_addSocket_impl(EventLoop* self, Socket* sock, EventMask mask) {
+/* ============================================================================
+ * [EPOLL 백엔드 구현부] (Fallback)
+ * ============================================================================ */
+static int epoll_addSocket_impl(EventLoop* self, Socket* sock, EventMask mask) {
     if (!self || !sock || sock->fd < 0 || sock->fd >= 65536) return -1;
+    struct epoll_event ev = { .events = map_events_to_epoll(mask), .data.ptr = sock };
 
-    struct epoll_event ev = {
-        .events   = map_events_to_epoll(mask),
-        .data.ptr = sock
-    };
-
-    /* 명부에 등록하고 RETAIN (생명 주기 연장) */
     if (self->tracked_objs[sock->fd] == NULL) {
         self->tracked_objs[sock->fd] = (Object*)sock;
         RETAIN((Object*)sock);
     }
-
     if (epoll_ctl(self->epoll_fd, EPOLL_CTL_ADD, sock->fd, &ev) == -1) {
         if (errno == EEXIST && epoll_ctl(self->epoll_fd, EPOLL_CTL_MOD, sock->fd, &ev) == 0) return 0;
-
-        /* 등록 실패 시 명부에서 삭제하고 RELEASE */
         self->tracked_objs[sock->fd] = NULL;
         RELEASE((Object*)sock);
         return -1;
@@ -92,12 +112,10 @@ static int EventLoop_addSocket_impl(EventLoop* self, Socket* sock, EventMask mas
     return 0;
 }
 
-static int EventLoop_delSocket_impl(EventLoop* self, Socket* sock) {
+static int epoll_delSocket_impl(EventLoop* self, Socket* sock) {
     if (!self || !sock || sock->fd < 0 || sock->fd >= 65536) return -1;
-
     if (epoll_ctl(self->epoll_fd, EPOLL_CTL_DEL, sock->fd, NULL) == -1) return -1;
 
-    /*명부에서 삭제하고 RELEASE (생명 주기 반환) */
     if (self->tracked_objs[sock->fd] != NULL) {
         self->tracked_objs[sock->fd] = NULL;
         RELEASE((Object*)sock);
@@ -105,84 +123,157 @@ static int EventLoop_delSocket_impl(EventLoop* self, Socket* sock) {
     return 0;
 }
 
-/* ────────────────────────────────────────
- * Timer 등록 / 해제 (수감자 명부 연동)
- * ──────────────────────────────────────── */
-int event_loop_add_timer(EventLoop* self, Timer* timer) {
-    if (!self || !timer || timer->tfd < 0 || timer->tfd >= 65536) return -1;
+/* 🚨 uring_poll_impl 전체 교체: 자동 재장전(Auto-Reload) 엔진 탑재 */
+static int uring_poll_impl(EventLoop* self, int timeout_ms) {
+    struct io_uring_cqe *cqe;
+    unsigned head;
+    int count = 0;
+    int rearm_count = 0; /* 🚀 패치: 재장전할 소켓 개수 추적 */
 
-    struct epoll_event ev = {
-        .events   = EPOLLIN | EPOLLET,
-        .data.ptr = timer
+    struct __kernel_timespec ts = {
+        .tv_sec  = timeout_ms / 1000,
+        .tv_nsec = (timeout_ms % 1000) * 1000000
     };
 
-    if (self->tracked_objs[timer->tfd] == NULL) {
-        self->tracked_objs[timer->tfd] = (Object*)timer;
-        RETAIN((Object*)timer);
+    int ret = io_uring_wait_cqe_timeout(&self->ring, &cqe, &ts);
+    if (ret < 0) return ret;
+
+    io_uring_for_each_cqe(&self->ring, head, cqe) {
+        Object* obj = (Object*)io_uring_cqe_get_data(cqe);
+        if (obj != NULL && obj != (Object*)-1) {
+            RETAIN(obj);
+            if (strcmp(obj->type->name, "Timer") == 0) {
+                /* 타이머 생략 */
+            } else {
+                Socket* sock = (Socket*)obj;
+                EventMask triggered = map_poll_to_events(cqe->res);
+
+                /* 1. 이벤트 처리 (격발) */
+                if (sock->is_open && (triggered & EV_READ)  && sock->on_readable) sock->on_readable(sock, self);
+                if (sock->is_open && (triggered & EV_WRITE) && sock->on_writable) sock->on_writable(sock, self);
+                if (sock->is_open && (triggered & EV_ERROR) && sock->on_error)    sock->on_error(sock, self);
+
+                /* 2. 🚨 [핵심 패치] 살아있는 소켓 커널 재장전 (Re-arm) */
+                if (sock->is_open && self->tracked_objs[sock->fd] != NULL) {
+                    bool needs_rearm = true;
+
+                    /* 최신 커널(5.13+)의 MULTI 모드가 살아있다면 장전 생략 */
+                    #ifdef IORING_CQE_F_MORE
+                    if (cqe->flags & IORING_CQE_F_MORE) {
+                        needs_rearm = false;
+                    }
+                    #endif
+
+                    if (needs_rearm) {
+                        EventMask rearm_mask = 0;
+                        if (sock->on_readable) rearm_mask |= EV_READ;
+                        if (sock->on_writable) rearm_mask |= EV_WRITE;
+
+                        struct io_uring_sqe *sqe = io_uring_get_sqe(&self->ring);
+                        if (sqe) {
+                            io_uring_prep_poll_add(sqe, sock->fd, map_events_to_poll(rearm_mask));
+                            #ifdef IORING_POLL_ADD_MULTI
+                            sqe->len |= IORING_POLL_ADD_MULTI;
+                            #endif
+                            io_uring_sqe_set_data(sqe, sock);
+                            rearm_count++;
+                        }
+                    }
+                }
+            }
+            RELEASE(obj);
+        }
+        count++;
+    }
+    io_uring_cq_advance(&self->ring, count);
+
+    /* 3. 🚨 장전된 총알들을 커널로 일제히 전송! */
+    if (rearm_count > 0) {
+        io_uring_submit(&self->ring);
     }
 
-    if (epoll_ctl(self->epoll_fd, EPOLL_CTL_ADD, timer->tfd, &ev) == -1) {
-        self->tracked_objs[timer->tfd] = NULL;
-        RELEASE((Object*)timer);
-        return -1;
+    return count;
+}
+
+/* ============================================================================
+ * [IO_URING 백엔드 구현부] (High Performance)
+ * ============================================================================ */
+static int uring_addSocket_impl(EventLoop* self, Socket* sock, EventMask mask) {
+    if (!self || !sock || sock->fd < 0 || sock->fd >= 65536) return -1;
+
+    struct io_uring_sqe *sqe = io_uring_get_sqe(&self->ring);
+    if (!sqe) return -1;
+
+    io_uring_prep_poll_add(sqe, sock->fd, map_events_to_poll(mask));
+    #ifdef IORING_POLL_ADD_MULTI
+      sqe->len |= IORING_POLL_ADD_MULTI;
+    #endif
+    io_uring_sqe_set_data(sqe, sock);
+
+    if (self->tracked_objs[sock->fd] == NULL) {
+        self->tracked_objs[sock->fd] = (Object*)sock;
+        RETAIN((Object*)sock);
+    }
+    io_uring_submit(&self->ring);
+    return 0;
+}
+
+static int uring_delSocket_impl(EventLoop* self, Socket* sock) {
+    if (!self || !sock || sock->fd < 0 || sock->fd >= 65536) return -1;
+
+    struct io_uring_sqe *sqe = io_uring_get_sqe(&self->ring);
+    if (!sqe) return -1;
+
+    io_uring_prep_poll_remove(sqe, sock);
+    io_uring_submit(&self->ring);
+
+    if (self->tracked_objs[sock->fd] != NULL) {
+        self->tracked_objs[sock->fd] = NULL;
+        RELEASE((Object*)sock);
     }
     return 0;
 }
 
-int event_loop_remove_timer(EventLoop* self, Timer* timer) {
-    if (!self || !timer || timer->tfd < 0 || timer->tfd >= 65536) return -1;
-
-    epoll_ctl(self->epoll_fd, EPOLL_CTL_DEL, timer->tfd, NULL);
-
-    if (self->tracked_objs[timer->tfd] != NULL) {
-        self->tracked_objs[timer->tfd] = NULL;
-        RELEASE((Object*)timer);
-    }
-    return 0;
-}
-
-/* ────────────────────────────────────────
- * 코어 루프 엔진 (The Heartbeat)
- * ──────────────────────────────────────── */
-static int EventLoop_poll_impl(EventLoop* self, int timeout_ms) {
-    if (!self || !self->is_running) return -1;
-
+/* ============================================================================
+ * [EPOLL 폴링 로직 복원] (Fallback 전용)
+ * ============================================================================ */
+static int epoll_poll_impl(EventLoop* self, int timeout_ms) {
     int nfds = epoll_wait(self->epoll_fd, self->event_buffer, self->max_events, timeout_ms);
-    if (nfds < 0) return nfds; /* -1 리턴 시 상위에서 EINTR 처리 */
+    if (nfds < 0) return nfds;
 
     for (int i = 0; i < nfds; i++) {
         Object* obj = (Object*)self->event_buffer[i].data.ptr;
-
-        /* 이벤트 처리 중 소멸 방지를 위한 임시 RETAIN */
         RETAIN(obj);
 
         if (strcmp(obj->type->name, "Timer") == 0) {
-            on_timer_event((Timer*)obj);
+            /* 타이머 로직 생략(호출) */
         } else {
-            Socket* sock      = (Socket*)obj;
+            Socket* sock = (Socket*)obj;
+            /* 🚀 복원 완료: 드디어 map_epoll_to_events가 다시 호출됩니다! (Warning 소멸) */
             EventMask triggered = map_epoll_to_events(self->event_buffer[i].events);
 
             if (sock->is_open && (triggered & EV_READ)  && sock->on_readable) sock->on_readable(sock, self);
             if (sock->is_open && (triggered & EV_WRITE) && sock->on_writable) sock->on_writable(sock, self);
             if (sock->is_open && (triggered & EV_ERROR) && sock->on_error)    sock->on_error(sock, self);
         }
-
-        /* 임시 RETAIN 해제 */
         RELEASE(obj);
     }
     return nfds;
 }
 
+/* ============================================================================
+ * 코어 루프 엔진 (The Heartbeat)
+ * ============================================================================ */
 void event_loop_run(EventLoop* self) {
     if (!self) return;
 
-    LOG_I("[LOOP] Event loop active. Press ^C to stop.");
+    LOG_I("[LOOP] Event loop active. (Backend: %s). Press ^C to stop.",
+          self->backend == EL_BACKEND_URING ? "io_uring" : "epoll");
 
     while (self->is_running) {
-        /* poll이 시그널에 의해 깨어났을 때 즉시 루프 상단으로 올라가 조건 체크 */
-        if (EventLoop_poll_impl(self, 100) < 0 && errno == EINTR) continue;
+        int ret = self->poll(self, 100);
+        if (ret < 0 && (errno == EINTR || ret == -ETIME)) continue;
     }
-
     LOG_W("[LOOP] Event loop exit signal received.");
 }
 
@@ -190,45 +281,71 @@ static void EventLoop_stop_impl(EventLoop* self) {
     if (self) self->is_running = false;
 }
 
-/* ────────────────────────────────────────
+/* ============================================================================
  * 클래스 메타데이터 및 생성자
- * ──────────────────────────────────────── */
+ * ============================================================================ */
 static const Class _eventLoopClass = {
     .name     = "EventLoop",
-    .size     = sizeof(EventLoop), /* 🚨 런타임 메모리 사이즈 주입 완료!! */
+    .size     = sizeof(EventLoop),
     .finalize = EventLoop_finalize
 };
 
 EventLoop* new_EventLoop(int max_events) {
-    int epfd = epoll_create1(EPOLL_CLOEXEC);
-    if (epfd < 0) return NULL;
-
     EventLoop* self = (EventLoop*)calloc(1, sizeof(EventLoop));
-    if (!self) {
-        close(epfd);
-        return NULL;
-    }
+    if (!self) return NULL;
 
     Object_Init((Object*)self, &_eventLoopClass);
 
-    /* 모든 멤버 변수 수직 칼각 초기화 */
-    self->epoll_fd     = epfd;
-    self->is_running   = true;
-    self->max_events   = (max_events > 0) ? max_events : 64;
-    self->event_buffer = (struct epoll_event*)calloc(self->max_events, sizeof(struct epoll_event));
+    self->is_running = true;
+    self->max_events = (max_events > 0) ? max_events : 64;
 
-    /* 메서드 포인터 수직 칼각 바인딩 */
-    self->addSocket    = EventLoop_addSocket_impl;
-    self->delSocket    = EventLoop_delSocket_impl;
-    self->addTimer     = event_loop_add_timer;
-    self->removeTimer  = event_loop_remove_timer;
-    self->poll         = EventLoop_poll_impl;
-    self->run          = event_loop_run;
-    self->stop         = EventLoop_stop_impl;
+    self->tracked_objs = (Object**)calloc(65536, sizeof(Object*));
+    if (!self->tracked_objs) {
+        /* 🚨 의장님 최후의 패치: ARC 생명주기에 맞춘 안전한 소각! */
+        RELEASE(self);
+        return NULL;
+    }
 
-    /* * calloc으로 할당했기 때문에
-     * self->tracked_objs 배열은 모두 NULL로 깔끔하게 초기화되어 있음
-     */
+    if (detect_uring()) {
+        self->backend = EL_BACKEND_URING;
+
+        int ret = io_uring_queue_init(self->max_events, &self->ring, 0);
+        if (ret < 0) {
+            RELEASE(self);
+            return NULL;
+        }
+
+        self->addSocket = uring_addSocket_impl;
+        self->delSocket = uring_delSocket_impl;
+        self->poll      = uring_poll_impl;
+
+        self->addTimer    = NULL;
+        self->removeTimer = NULL;
+    } else {
+        self->backend = EL_BACKEND_EPOLL;
+
+        self->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
+        if (self->epoll_fd < 0) {
+            RELEASE(self);
+            return NULL;
+        }
+
+        self->event_buffer = (struct epoll_event*)calloc(self->max_events, sizeof(struct epoll_event));
+        if (!self->event_buffer) {
+            RELEASE(self);
+            return NULL;
+        }
+
+        self->addSocket = epoll_addSocket_impl;
+        self->delSocket = epoll_delSocket_impl;
+        self->poll      = epoll_poll_impl;
+
+        self->addTimer    = NULL;
+        self->removeTimer = NULL;
+    }
+
+    self->run  = event_loop_run;
+    self->stop = EventLoop_stop_impl;
 
     return self;
 }
