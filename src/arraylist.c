@@ -33,8 +33,13 @@ const Class arrayListClass = {
     .finalize = ArrayList_Finalize
 };
 
+// 🚨 [의장님 패치] 타입 체커 inline 화
+static inline bool is_arraylist(Object *obj) {
+    return (obj && GET_CLASS(obj) == &arrayListClass);
+}
+
 /* =========================================
- * [Internal] Iterator Implementation
+ * [Internal] Iterator Implementation (🚨 복구 완료!)
  * ========================================= */
 static bool iter_hasNext(ArrayListIterator *self) {
     if (!self) {
@@ -53,6 +58,7 @@ static Object* iter_next(ArrayListIterator *self) {
         return NULL;
     }
 
+    // 이터레이터는 리스트의 항목을 잠시 빌려오는(Borrowed) 개념
     Object* item = self->list->get(self->list, self->currentIndex);
 
     self->currentIndex++;
@@ -63,9 +69,9 @@ static Object* iter_next(ArrayListIterator *self) {
 static void Iterator_Finalize(Object *obj) {
     ArrayListIterator *self = (ArrayListIterator*)obj;
 
+    // [중요] 이터레이터가 생성 시 RETAIN 했던 리스트의 소유권을 반납!
     if (self->list) {
         RELEASE(self->list);
-
         self->list = NULL;
     }
 }
@@ -92,6 +98,7 @@ static ArrayListIterator* impl_iterator(ArrayList *self) {
 
     Object_Init((Object*)iter, &arrayListIteratorClass);
 
+    // [핵심] 이터레이터가 살아있는 동안 리스트가 소멸되지 않도록 소유권 공유
     iter->list = (ArrayList*)RETAIN(self);
     iter->currentIndex = 0;
     iter->hasNext = iter_hasNext;
@@ -106,30 +113,34 @@ static ArrayListIterator* impl_iterator(ArrayList *self) {
 
 // 🚨 [S급 방어] 내부 확장을 담당하는 헬퍼 함수. 실패 시 false 반환
 static bool impl_ensureCapacity_internal(ArrayList* self, int min_capacity) {
-    if (min_capacity > self->capacity) {
-        int new_cap = self->capacity * 2;
-
-        if (new_cap < min_capacity) {
-            new_cap = min_capacity;
-        }
-
-        Object **new_items = (Object**)realloc(self->items, sizeof(Object*) * new_cap);
-
-        // 🚨 [S급 방어] realloc 실패 시 용량 증가 중단 및 false 반환 (OOM 감지)
-        if (!new_items) {
-            return false;
-        }
-
-        self->items = new_items;
-        self->capacity = new_cap;
+    if (min_capacity <= self->capacity) {
+        return true;
     }
+
+    int new_cap = self->capacity * 2;
+
+    if (new_cap < min_capacity) {
+        new_cap = min_capacity;
+    }
+
+    Object **new_items = (Object**)realloc(self->items, sizeof(Object*) * new_cap);
+
+    if (!new_items) {
+        return false;
+    }
+
+    self->items = new_items;
+    self->capacity = new_cap;
 
     return true;
 }
 
-// 기존 VTable 시그니처(void 반환) 유지를 위한 래퍼 함수
 static void impl_ensureCapacity(ArrayList* self, int min_capacity) {
+    pthread_mutex_lock(&self->lock);
+
     impl_ensureCapacity_internal(self, min_capacity);
+
+    pthread_mutex_unlock(&self->lock);
 }
 
 static void impl_add(ArrayList *self, Object *item) {
@@ -232,7 +243,7 @@ static Object* impl_detach(ArrayList *self, int index) {
     Object *item = NULL;
 
     if (index >= 0 && index < self->size) {
-        item = self->items[index];
+        item = self->items[index]; // 알맹이를 챙긴다 (RELEASE 안 함!)
 
         for (int i = index; i < self->size - 1; i++) {
             self->items[i] = self->items[i + 1];
@@ -246,8 +257,6 @@ static Object* impl_detach(ArrayList *self, int index) {
 
     return item;
 }
-
-// 🚨 [패치 완료] 미사용 함수 ArrayList_release 제거 완료!
 
 static int impl_getSize(ArrayList *self) {
     if (!self) {
@@ -272,7 +281,6 @@ static void impl_clear(ArrayList *self) {
 
     for(int i = 0; i < self->size; i++) {
         RELEASE(self->items[i]);
-
         self->items[i] = NULL;
     }
 
@@ -290,6 +298,7 @@ static void impl_trimToSize(ArrayList* self) {
 
     if (self->size < self->capacity) {
         int new_cap = (self->size == 0) ? 1 : self->size;
+
         Object** new_items = (Object**)realloc(self->items, new_cap * sizeof(Object*));
 
         if (new_items) {
@@ -374,6 +383,7 @@ ArrayList* new_ArrayList(int initial_capacity) {
 
     list->capacity = initial_capacity;
     list->size = 0;
+
     list->items = (Object**)calloc(list->capacity, sizeof(Object*));
 
     if (!list->items) {

@@ -62,9 +62,18 @@ const Class hashMapClass = {
     .finalize = HashMap_Finalize
 };
 
+// 🚨 [의장님 패치] 타입 체커 inline 화
+static inline bool is_hashmap(Object *obj) {
+    return (obj && GET_CLASS(obj) == &hashMapClass);
+}
+
 /* =========================================
  * [Methods] Implementation
  * ========================================= */
+
+// 전방 선언 (hasKey 등 내부 참조용)
+static Object* impl_get(HashMap *self, const char *key);
+
 static ArrayList* HM_keys(HashMap* self) {
     if (!self) {
         return NULL;
@@ -99,16 +108,6 @@ static ArrayList* HM_keys(HashMap* self) {
     return list;
 }
 
-static Object* impl_get(HashMap *self, const char *key);
-
-static bool HashMap_hasKey_impl(HashMap* self, const char* key) {
-    if (!self || !key) {
-        return false;
-    }
-
-    return (impl_get(self, key) != NULL);
-}
-
 static ArrayList* HM_values(HashMap* self) {
     if (!self) {
         return NULL;
@@ -137,6 +136,14 @@ static ArrayList* HM_values(HashMap* self) {
     return list;
 }
 
+static bool HashMap_hasKey_impl(HashMap* self, const char* key) {
+    if (!self || !key) {
+        return false;
+    }
+
+    return (impl_get(self, key) != NULL);
+}
+
 static void impl_put(HashMap *self, const char *key, Object *value) {
     if (!self) {
         return;
@@ -155,9 +162,11 @@ static void impl_put(HashMap *self, const char *key, Object *value) {
     HashNode *node = self->buckets[index];
 
     while (node) {
+        // 🚨 [의장님 패치] strncmp(MAX_KEY_LEN)으로 일관성 통일
         if (strncmp(node->key, key, MAX_KEY_LEN) == 0) {
             RELEASE(node->value);
             node->value = RETAIN(value);
+
             pthread_mutex_unlock(&self->lock);
             return;
         }
@@ -175,7 +184,7 @@ static void impl_put(HashMap *self, const char *key, Object *value) {
 
     newNode->key = strdup(key);
 
-    // 🚨 [S급 방어] strdup 실패(OOM) 시 앞서 할당한 껍데기를 파기(Rollback)하고 즉시 중단
+    // 🚨 [S급 방어] strdup 실패(OOM) 시 껍데기를 파기(Rollback)하고 즉시 중단
     if (!newNode->key) {
         free(newNode);
         pthread_mutex_unlock(&self->lock);
@@ -204,8 +213,10 @@ static Object* impl_get(HashMap *self, const char *key) {
     HashNode *node = self->buckets[index];
 
     while (node) {
+        // 🚨 [의장님 패치] strncmp(MAX_KEY_LEN)으로 일관성 통일
         if (strncmp(node->key, key, MAX_KEY_LEN) == 0) {
             Object *val = node->value;
+
             pthread_mutex_unlock(&self->lock);
             return val;
         }
@@ -232,6 +243,7 @@ static void impl_remove(HashMap *self, const char *key) {
     HashNode *prev = NULL;
 
     while (node) {
+        // 🚨 [의장님 패치] strncmp(MAX_KEY_LEN)으로 일관성 통일
         if (strncmp(node->key, key, MAX_KEY_LEN) == 0) {
             if (prev) {
                 prev->next = node->next;
@@ -269,7 +281,8 @@ static Object* impl_detach(HashMap *self, const char *key) {
     Object *extracted_value = NULL;
 
     while (node) {
-        if (strcmp(node->key, key) == 0) {
+        // 🚨 [의장님 패치 복구 완료] strcmp -> strncmp(MAX_KEY_LEN)으로 일관성 통일!!!
+        if (strncmp(node->key, key, MAX_KEY_LEN) == 0) {
             if (prev) {
                 prev->next = node->next;
             } else {
@@ -413,11 +426,13 @@ HashMap* new_HashMap(int initial_capacity) {
     map->forEach = impl_forEach;
     map->getSize = impl_getSize;
     map->isEmpty = impl_isEmpty;
-    map->free = impl_free;
+
     map->keys = HM_keys;
     map->values = HM_values;
-    map->destroy = impl_free;
     map->hasKey = HashMap_hasKey_impl;
+
+    map->free = impl_free;
+    map->destroy = impl_free;
 
     return map;
 }
