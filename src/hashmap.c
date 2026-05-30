@@ -9,9 +9,11 @@
 static unsigned int hash_str(const char *str) {
     unsigned int hash = 5381;
     int c;
+
     while ((c = *str++)) {
         hash = ((hash << 5) + hash) + c;
     }
+
     return hash;
 }
 
@@ -20,26 +22,37 @@ static unsigned int hash_str(const char *str) {
  * ========================================= */
 static void HashMap_ToString(Object *self, char *buffer, size_t len) {
     HashMap *map = (HashMap*)self;
+
     snprintf(buffer, len, "HashMap(size=%d, cap=%d)", map->size, map->capacity);
 }
 
 static void HashMap_Finalize(Object *self) {
     HashMap *map = (HashMap*)self;
+
     if (map->buckets) {
         for (int i = 0; i < map->capacity; i++) {
             HashNode *node = map->buckets[i];
+
             while (node) {
                 HashNode *next = node->next;
-                if (node->key) free(node->key);
-                if (node->value) RELEASE(node->value); // [ARC] 수동 destroy 대신 RELEASE 호출
+
+                if (node->key) {
+                    free(node->key);
+                }
+
+                if (node->value) {
+                    RELEASE(node->value);
+                }
+
                 free(node);
                 node = next;
             }
         }
+
         free(map->buckets);
     }
+
     pthread_mutex_destroy(&map->lock);
-    // 메모리 해제는 상위 destroy()에서 처리됨
 }
 
 const Class hashMapClass = {
@@ -52,100 +65,166 @@ const Class hashMapClass = {
 /* =========================================
  * [Methods] Implementation
  * ========================================= */
-
-// 해시맵의 모든 Key를 ArrayList로 반환
-// 해시맵의 모든 Key를 ArrayList로 반환
 static ArrayList* HM_keys(HashMap* self) {
+    if (!self) {
+        return NULL;
+    }
+
     int init_cap = self->size > 0 ? self->size : 10;
     ArrayList* list = new_ArrayList(init_cap);
 
+    if (!list) {
+        return NULL;
+    }
+
     pthread_mutex_lock(&self->lock);
+
     for (int i = 0; i < self->capacity; i++) {
         HashNode* node = self->buckets[i];
+
         while (node != NULL) {
-            // [개선] 딥 카피 대신 String 객체화 후 RETAIN 가능 (여기선 의장님 스타일 유지)
             String* key_str = new_String(node->key);
-            list->add(list, (Object*)key_str);
-            RELEASE(key_str);
+
+            if (key_str) {
+                list->add(list, (Object*)key_str);
+                RELEASE(key_str);
+            }
+
             node = node->next;
         }
     }
+
     pthread_mutex_unlock(&self->lock);
+
     return list;
 }
+
+static Object* impl_get(HashMap *self, const char *key);
 
 static bool HashMap_hasKey_impl(HashMap* self, const char* key) {
-    if (!self || !key) return false;
-    // 기존의 get 로직을 활용하거나 직접 버킷을 뒤져서 확인
-    return (self->get(self, key) != NULL);
+    if (!self || !key) {
+        return false;
+    }
+
+    return (impl_get(self, key) != NULL);
 }
-// 해시맵의 모든 Value를 ArrayList로 반환
+
 static ArrayList* HM_values(HashMap* self) {
+    if (!self) {
+        return NULL;
+    }
+
     int init_cap = self->size > 0 ? self->size : 10;
     ArrayList* list = new_ArrayList(init_cap);
 
+    if (!list) {
+        return NULL;
+    }
+
     pthread_mutex_lock(&self->lock);
+
     for (int i = 0; i < self->capacity; i++) {
         HashNode* node = self->buckets[i];
-        while (node != NULL) {
-            // 🚨 기존: list->add(list, RETAIN(node->value));
-            // add 내부에서 이미 RETAIN 하므로, 여기서 또 RETAIN 하면 중복입니다!
-            list->add(list, node->value); // ✅ [수정] 주소만 넘기면 add가 알아서 RETAIN 함
 
+        while (node != NULL) {
+            list->add(list, node->value);
             node = node->next;
         }
     }
+
     pthread_mutex_unlock(&self->lock);
+
     return list;
 }
 
-
 static void impl_put(HashMap *self, const char *key, Object *value) {
+    if (!self) {
+        return;
+    }
+
+    // 🚨 [S급 방어] 악의적인 NULL 키 접근 원천 차단
+    if (!key) {
+        return;
+    }
+
     pthread_mutex_lock(&self->lock);
+
     unsigned int h = hash_str(key);
     int index = h % self->capacity;
 
     HashNode *node = self->buckets[index];
+
     while (node) {
         if (strncmp(node->key, key, MAX_KEY_LEN) == 0) {
-            // [ARC] 기존 값은 RELEASE 하고 새 값을 RETAIN
             RELEASE(node->value);
             node->value = RETAIN(value);
             pthread_mutex_unlock(&self->lock);
             return;
         }
+
         node = node->next;
     }
 
     HashNode *newNode = (HashNode*)malloc(sizeof(HashNode));
+
+    // 🚨 [S급 방어] HashNode 껍데기 할당 실패(OOM) 시 메모리 릭 없이 즉시 중단
+    if (!newNode) {
+        pthread_mutex_unlock(&self->lock);
+        return;
+    }
+
     newNode->key = strdup(key);
-    newNode->value = RETAIN(value); // [ARC] 소유권 획득
+
+    // 🚨 [S급 방어] strdup 실패(OOM) 시 앞서 할당한 껍데기를 파기(Rollback)하고 즉시 중단
+    if (!newNode->key) {
+        free(newNode);
+        pthread_mutex_unlock(&self->lock);
+        return;
+    }
+
+    newNode->value = RETAIN(value);
     newNode->next = self->buckets[index];
+
     self->buckets[index] = newNode;
     self->size++;
+
     pthread_mutex_unlock(&self->lock);
 }
 
 static Object* impl_get(HashMap *self, const char *key) {
+    if (!self || !key) {
+        return NULL;
+    }
+
     pthread_mutex_lock(&self->lock);
+
     unsigned int h = hash_str(key);
     int index = h % self->capacity;
 
     HashNode *node = self->buckets[index];
+
     while (node) {
         if (strncmp(node->key, key, MAX_KEY_LEN) == 0) {
             Object *val = node->value;
             pthread_mutex_unlock(&self->lock);
-            return val; // [Borrowed] 호출자는 RETAIN 해서 쓰거나 그냥 사용
+            return val;
         }
+
         node = node->next;
     }
+
     pthread_mutex_unlock(&self->lock);
+
     return NULL;
 }
 
 static void impl_remove(HashMap *self, const char *key) {
+    if (!self || !key) {
+        return;
+    }
+
     pthread_mutex_lock(&self->lock);
+
     unsigned int h = hash_str(key);
     int index = h % self->capacity;
 
@@ -154,23 +233,34 @@ static void impl_remove(HashMap *self, const char *key) {
 
     while (node) {
         if (strncmp(node->key, key, MAX_KEY_LEN) == 0) {
-            if (prev) prev->next = node->next;
-            else self->buckets[index] = node->next;
+            if (prev) {
+                prev->next = node->next;
+            } else {
+                self->buckets[index] = node->next;
+            }
 
             free(node->key);
-            RELEASE(node->value); // [ARC] 안전하게 참조 카운트 감소
+            RELEASE(node->value);
             free(node);
+
             self->size--;
             break;
         }
+
         prev = node;
         node = node->next;
     }
+
     pthread_mutex_unlock(&self->lock);
 }
 
 static Object* impl_detach(HashMap *self, const char *key) {
+    if (!self || !key) {
+        return NULL;
+    }
+
     pthread_mutex_lock(&self->lock);
+
     unsigned int h = hash_str(key);
     int index = h % self->capacity;
 
@@ -180,73 +270,141 @@ static Object* impl_detach(HashMap *self, const char *key) {
 
     while (node) {
         if (strcmp(node->key, key) == 0) {
-            if (prev) prev->next = node->next;
-            else self->buckets[index] = node->next;
+            if (prev) {
+                prev->next = node->next;
+            } else {
+                self->buckets[index] = node->next;
+            }
 
-            extracted_value = node->value; // 알맹이만 챙김 (RELEASE 안 함)
+            extracted_value = node->value;
 
             free(node->key);
             free(node);
+
             self->size--;
             break;
         }
+
         prev = node;
         node = node->next;
     }
+
     pthread_mutex_unlock(&self->lock);
 
-    return extracted_value; // 호출자가 소유권을 그대로 이어받음
+    return extracted_value;
 }
 
 static void impl_clear(HashMap *self) {
+    if (!self) {
+        return;
+    }
+
     pthread_mutex_lock(&self->lock);
+
     for (int i = 0; i < self->capacity; i++) {
         HashNode *node = self->buckets[i];
+
         while (node) {
             HashNode *next = node->next;
+
             free(node->key);
-            RELEASE(node->value); // [ARC] 연쇄 해제 터트림
+            RELEASE(node->value);
             free(node);
+
             node = next;
         }
+
         self->buckets[i] = NULL;
     }
+
     self->size = 0;
+
     pthread_mutex_unlock(&self->lock);
 }
 
 static void impl_forEach(HashMap *self, void (*action)(const char* key, Object* value)) {
+    if (!self || !action) {
+        return;
+    }
+
     pthread_mutex_lock(&self->lock);
+
     for (int i = 0; i < self->capacity; i++) {
         HashNode *node = self->buckets[i];
+
         while (node) {
             action(node->key, node->value);
             node = node->next;
         }
     }
+
     pthread_mutex_unlock(&self->lock);
 }
 
-static int impl_getSize(HashMap *self) { return self->size; }
-static bool impl_isEmpty(HashMap *self) { return self->size == 0; }
-static void impl_free(HashMap *self) { RELEASE((Object*)self); }
+static int impl_getSize(HashMap *self) {
+    if (!self) {
+        return 0;
+    }
+
+    pthread_mutex_lock(&self->lock);
+
+    int s = self->size;
+
+    pthread_mutex_unlock(&self->lock);
+
+    return s;
+}
+
+static bool impl_isEmpty(HashMap *self) {
+    if (!self) {
+        return true;
+    }
+
+    pthread_mutex_lock(&self->lock);
+
+    bool empty = (self->size == 0);
+
+    pthread_mutex_unlock(&self->lock);
+
+    return empty;
+}
+
+static void impl_free(HashMap *self) {
+    if (!self) {
+        return;
+    }
+
+    RELEASE((Object*)self);
+}
 
 /* =========================================
  * [Constructor] new_HashMap
  * ========================================= */
 HashMap* new_HashMap(int initial_capacity) {
-    if (initial_capacity <= 0) initial_capacity = 16;
+    if (initial_capacity <= 0) {
+        initial_capacity = 16;
+    }
 
     HashMap *map = (HashMap*)malloc(sizeof(HashMap));
+
+    if (!map) {
+        return NULL;
+    }
+
     Object_Init((Object*)map, &hashMapClass);
 
     map->capacity = initial_capacity;
     map->size = 0;
     map->buckets = (HashNode**)calloc(map->capacity, sizeof(HashNode*));
+
+    if (!map->buckets) {
+        free(map);
+        return NULL;
+    }
+
     map->loadFactor = 0.75f;
     pthread_mutex_init(&map->lock, NULL);
 
-    // 인터페이스 함수 포인터 바인딩
     map->put = impl_put;
     map->get = impl_get;
     map->remove = impl_remove;
@@ -269,42 +427,68 @@ HashMap* new_HashMap(int initial_capacity) {
  * ============================================================================== */
 
 void hashmap_put_str(HashMap* self, const char* key, const char* value) {
-    if (!self || !key || !value) return;
+    if (!self || !key || !value) {
+        return;
+    }
+
     Object* v = (Object*)new_String(value);
-    self->put(self, key, v);
-    RELEASE(v);
+
+    if (v) {
+        self->put(self, key, v);
+        RELEASE(v);
+    }
 }
 
 void hashmap_put_int(HashMap* self, const char* key, int value) {
-    if (!self || !key) return;
+    if (!self || !key) {
+        return;
+    }
+
     char buf[32];
     snprintf(buf, sizeof(buf), "%d", value);
+
     Object* v = (Object*)new_String(buf);
-    self->put(self, key, v);
-    RELEASE(v);
+
+    if (v) {
+        self->put(self, key, v);
+        RELEASE(v);
+    }
 }
 
 void hashmap_put_long(HashMap* self, const char* key, long value) {
-    if (!self || !key) return;
+    if (!self || !key) {
+        return;
+    }
+
     char buf[64];
     snprintf(buf, sizeof(buf), "%ld", value);
+
     Object* v = (Object*)new_String(buf);
-    self->put(self, key, v);
-    RELEASE(v);
+
+    if (v) {
+        self->put(self, key, v);
+        RELEASE(v);
+    }
 }
 
 const char* hashmap_get_str(HashMap* self, const char* key) {
-    if (!self || !key) return NULL;
+    if (!self || !key) {
+        return NULL;
+    }
+
     String* v = (String*)self->get(self, key);
+
     return v ? v->value : NULL;
 }
 
 int hashmap_get_int(HashMap* self, const char* key) {
     const char* str = hashmap_get_str(self, key);
+
     return str ? atoi(str) : 0;
 }
 
 long hashmap_get_long(HashMap* self, const char* key) {
     const char* str = hashmap_get_str(self, key);
+
     return str ? atol(str) : 0L;
 }

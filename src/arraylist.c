@@ -8,20 +8,23 @@
  * ========================================= */
 static void ArrayList_ToString(Object *self, char *buffer, size_t len) {
     ArrayList *list = (ArrayList*)self;
+
     snprintf(buffer, len, "ArrayList(size=%d, cap=%d)", list->size, list->capacity);
 }
 
-// arraylist.c 수정본
 static void ArrayList_Finalize(Object* self) {
-     ArrayList* list = (ArrayList*)self;
-     if (list->items) {
-         for (int i = 0; i < list->size; i++)
-             RELEASE(list->items[i]);
-         free(list->items);
-     }
-     pthread_mutex_destroy(&list->lock);
-     // free(list) 없음! destroy()가 알아서!
- }
+    ArrayList* list = (ArrayList*)self;
+
+    if (list->items) {
+        for (int i = 0; i < list->size; i++) {
+            RELEASE(list->items[i]);
+        }
+
+        free(list->items);
+    }
+
+    pthread_mutex_destroy(&list->lock);
+}
 
 const Class arrayListClass = {
     .name = "ArrayList",
@@ -34,26 +37,36 @@ const Class arrayListClass = {
  * [Internal] Iterator Implementation
  * ========================================= */
 static bool iter_hasNext(ArrayListIterator *self) {
-   if (!self || !self->list) return false;
-       return (self->currentIndex < self->list->getSize(self->list));
+    if (!self) {
+        return false;
+    }
+
+    if (!self->list) {
+        return false;
+    }
+
+    return (self->currentIndex < self->list->getSize(self->list));
 }
 
 static Object* iter_next(ArrayListIterator *self) {
-    if (!iter_hasNext(self)) return NULL;
-    // 이터레이터는 리스트의 항목을 잠시 빌려오는(Borrowed) 개념
-    return self->list->get(self->list, self->currentIndex++);
+    if (!iter_hasNext(self)) {
+        return NULL;
+    }
+
+    Object* item = self->list->get(self->list, self->currentIndex);
+
+    self->currentIndex++;
+
+    return item;
 }
 
-// 3. 이터레이터 소멸 시 (ARC Finalize)
 static void Iterator_Finalize(Object *obj) {
     ArrayListIterator *self = (ArrayListIterator*)obj;
 
-    // [중요] 이터레이터가 생성 시 RETAIN 했던 리스트의 소유권을 반납!
     if (self->list) {
         RELEASE(self->list);
         self->list = NULL;
     }
-    // Object 자체 메모리는 destroy()가 해제함
 }
 
 const Class arrayListIteratorClass = {
@@ -65,19 +78,21 @@ const Class arrayListIteratorClass = {
     .hashCode = NULL
 };
 
-// 4. 이터레이터 생성자 (ArrayList의 메서드로 바인딩됨)
 static ArrayListIterator* impl_iterator(ArrayList *self) {
-    if (!self) return NULL;
+    if (!self) {
+        return NULL;
+    }
 
     ArrayListIterator *iter = (ArrayListIterator*)malloc(sizeof(ArrayListIterator));
-    if (!iter) return NULL; // ✅ 방어적 프로그래밍
+
+    if (!iter) {
+        return NULL;
+    }
 
     Object_Init((Object*)iter, &arrayListIteratorClass);
 
-    // [핵심] 이터레이터가 살아있는 동안 리스트가 소멸되지 않도록 소유권 공유
     iter->list = (ArrayList*)RETAIN(self);
     iter->currentIndex = 0;
-
     iter->hasNext = iter_hasNext;
     iter->next = iter_next;
 
@@ -87,140 +102,303 @@ static ArrayListIterator* impl_iterator(ArrayList *self) {
 /* =========================================
  * [Methods] Implementation
  * ========================================= */
-static void impl_ensureCapacity(ArrayList* self, int min_capacity) {
+
+// 🚨 [S급 방어] 내부 확장을 담당하는 헬퍼 함수. 실패 시 false 반환
+static bool impl_ensureCapacity_internal(ArrayList* self, int min_capacity) {
     if (min_capacity > self->capacity) {
         int new_cap = self->capacity * 2;
-        if (new_cap < min_capacity) new_cap = min_capacity;
+
+        if (new_cap < min_capacity) {
+            new_cap = min_capacity;
+        }
 
         Object **new_items = (Object**)realloc(self->items, sizeof(Object*) * new_cap);
-        if (new_items) {
-            self->items = new_items;
-            self->capacity = new_cap;
+
+        // 🚨 [S급 방어] realloc 실패 시 용량 증가 중단 및 false 반환 (OOM 감지)
+        if (!new_items) {
+            return false;
         }
+
+        self->items = new_items;
+        self->capacity = new_cap;
     }
+
+    return true;
+}
+
+// 기존 VTable 시그니처(void 반환) 유지를 위한 래퍼 함수
+static void impl_ensureCapacity(ArrayList* self, int min_capacity) {
+    impl_ensureCapacity_internal(self, min_capacity);
 }
 
 static void impl_add(ArrayList *self, Object *item) {
+    if (!self) {
+        return;
+    }
+
     pthread_mutex_lock(&self->lock);
-    impl_ensureCapacity(self, self->size + 1);
-    // [ARC] 리스트가 객체를 보관하므로 소유권 획득
+
+    // 🚨 [S급 방어] 용량 확보 실패(OOM) 시 배열 범위 초과 쓰기(OOB) 즉각 차단
+    if (!impl_ensureCapacity_internal(self, self->size + 1)) {
+        pthread_mutex_unlock(&self->lock);
+        return;
+    }
+
     self->items[self->size++] = RETAIN(item);
+
     pthread_mutex_unlock(&self->lock);
 }
 
 static bool impl_isEmpty(ArrayList *self) {
-    return self->size == 0;
+    if (!self) {
+        return true;
+    }
+
+    pthread_mutex_lock(&self->lock);
+
+    bool empty = (self->size == 0);
+
+    pthread_mutex_unlock(&self->lock);
+
+    return empty;
 }
 
 static Object* impl_get(ArrayList *self, int index) {
+    if (!self) {
+        return NULL;
+    }
+
     pthread_mutex_lock(&self->lock);
+
     Object *item = NULL;
+
     if (index >= 0 && index < self->size) {
         item = self->items[index];
     }
+
     pthread_mutex_unlock(&self->lock);
-    return item; // [Borrowed] 호출자가 소유하고 싶으면 RETAIN 호출
+
+    return item;
 }
 
 static void impl_remove(ArrayList *self, int index) {
+    if (!self) {
+        return;
+    }
+
     pthread_mutex_lock(&self->lock);
+
     if (index >= 0 && index < self->size) {
-        // [ARC] 리스트에서 빠지므로 소유권 반납
         RELEASE(self->items[index]);
 
         for (int i = index; i < self->size - 1; i++) {
             self->items[i] = self->items[i + 1];
         }
+
         self->size--;
         self->items[self->size] = NULL;
     }
+
     pthread_mutex_unlock(&self->lock);
 }
 
-// 🚀 [의장님 명품 로직] 살려서 꺼내기 (소유권 이전)
-static Object* impl_detach(ArrayList *self, int index) {
+static void impl_removeResult(ArrayList* self, int index) {
+    if (!self) {
+        return;
+    }
+
     pthread_mutex_lock(&self->lock);
+
+    if (index >= 0 && index < self->size) {
+        for (int i = index; i < self->size - 1; i++) {
+            self->items[i] = self->items[i + 1];
+        }
+
+        self->size--;
+        self->items[self->size] = NULL;
+    }
+
+    pthread_mutex_unlock(&self->lock);
+}
+
+static Object* impl_detach(ArrayList *self, int index) {
+    if (!self) {
+        return NULL;
+    }
+
+    pthread_mutex_lock(&self->lock);
+
     Object *item = NULL;
 
     if (index >= 0 && index < self->size) {
-        item = self->items[index]; // 알맹이를 챙긴다 (RELEASE 안 함!)
+        item = self->items[index];
 
         for (int i = index; i < self->size - 1; i++) {
             self->items[i] = self->items[i + 1];
         }
+
         self->size--;
         self->items[self->size] = NULL;
     }
+
     pthread_mutex_unlock(&self->lock);
 
-    return item; // 이제 리턴받은 자가 이 객체의 주인이 됨
+    return item;
 }
 
-// ✅ 수정: 래퍼 함수 추가
 static void ArrayList_release(ArrayList* self) {
     RELEASE((Object*)self);
 }
 
 static int impl_getSize(ArrayList *self) {
+    if (!self) {
+        return 0;
+    }
+
     pthread_mutex_lock(&self->lock);
+
     int s = self->size;
+
     pthread_mutex_unlock(&self->lock);
+
     return s;
 }
 
 static void impl_clear(ArrayList *self) {
-    pthread_mutex_lock(&self->lock);
-    for(int i=0; i<self->size; i++) {
-        RELEASE(self->items[i]); // 전원 소유권 반납
+    if (!self) {
+        return;
     }
+
+    pthread_mutex_lock(&self->lock);
+
+    for(int i = 0; i < self->size; i++) {
+        RELEASE(self->items[i]);
+        self->items[i] = NULL;
+    }
+
     self->size = 0;
+
+    pthread_mutex_unlock(&self->lock);
+}
+
+static void impl_trimToSize(ArrayList* self) {
+    if (!self) {
+        return;
+    }
+
+    pthread_mutex_lock(&self->lock);
+
+    if (self->size < self->capacity) {
+        int new_cap = (self->size == 0) ? 1 : self->size;
+        Object** new_items = (Object**)realloc(self->items, new_cap * sizeof(Object*));
+
+        if (new_items) {
+            self->items = new_items;
+            self->capacity = new_cap;
+        }
+    }
+
     pthread_mutex_unlock(&self->lock);
 }
 
 static void impl_forEach(ArrayList* self, ArrayListActionFunc action) {
+    if (!self || !action) {
+        return;
+    }
+
     pthread_mutex_lock(&self->lock);
-    for(int i=0; i<self->size; i++) {
+
+    for(int i = 0; i < self->size; i++) {
         action(self->items[i]);
     }
+
     pthread_mutex_unlock(&self->lock);
 }
 
-static void impl_sort(ArrayList* self, ArrayListCompareFunc compare) {
+static void* impl_find(ArrayList* self, void* target, ArrayListCompareFunc compare) {
+    if (!self || !compare) {
+        return NULL;
+    }
+
     pthread_mutex_lock(&self->lock);
-    qsort(self->items, self->size, sizeof(Object*), (int (*)(const void *, const void *))compare);
+
+    void* result = NULL;
+
+    for(int i = 0; i < self->size; i++) {
+        if (compare(self->items[i], target) == 0) {
+            result = self->items[i];
+            break;
+        }
+    }
+
     pthread_mutex_unlock(&self->lock);
+
+    return result;
+}
+
+static void impl_sort(ArrayList* self, ArrayListCompareFunc compare) {
+    if (!self || !compare || self->size <= 1) {
+        return;
+    }
+
+    pthread_mutex_lock(&self->lock);
+
+    qsort(self->items, self->size, sizeof(Object*), (int (*)(const void *, const void *))compare);
+
+    pthread_mutex_unlock(&self->lock);
+}
+
+static void impl_destroy(ArrayList* self) {
+    if (!self) {
+        return;
+    }
+
+    RELEASE((Object*)self);
 }
 
 /* =========================================
  * [Constructor] new_ArrayList
  * ========================================= */
 ArrayList* new_ArrayList(int initial_capacity) {
-    if (initial_capacity <= 0) initial_capacity = 10;
+    if (initial_capacity <= 0) {
+        initial_capacity = 10;
+    }
 
     ArrayList *list = (ArrayList*)malloc(sizeof(ArrayList));
-    if (!list) return NULL;
+
+    if (!list) {
+        return NULL;
+    }
+
     Object_Init((Object*)list, &arrayListClass);
 
     list->capacity = initial_capacity;
     list->size = 0;
     list->items = (Object**)calloc(list->capacity, sizeof(Object*));
+
+    if (!list->items) {
+        free(list);
+        return NULL;
+    }
+
     pthread_mutex_init(&list->lock, NULL);
 
-    // 인터페이스 바인딩
     list->add = impl_add;
     list->get = impl_get;
     list->remove = impl_remove;
+    list->removeResult = impl_removeResult;
     list->detach = impl_detach;
     list->getSize = impl_getSize;
     list->clear = impl_clear;
     list->ensureCapacity = impl_ensureCapacity;
     list->forEach = impl_forEach;
+    list->find = impl_find;
     list->sort = impl_sort;
     list->iterator = impl_iterator;
     list->isEmpty = impl_isEmpty;
+    list->trimToSize = impl_trimToSize;
 
-    // 편의용 바인딩
-    list->destroy = ArrayList_release;
+    list->destroy = impl_destroy;
 
     return list;
 }
