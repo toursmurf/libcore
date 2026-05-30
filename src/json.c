@@ -683,6 +683,14 @@ static Object* parse_number(ParseContext *ctx) {
         return NULL;
     }
 
+		//소수점 뒤에 숫자가 없는 1. 같은 케이스 차단
+    const char *p = (start == ctx->ptr) ? start : start - 1;
+    const char *dot = strchr(p, '.');
+    if (dot && !isdigit((unsigned char)*(dot + 1))) {
+         report_error(ctx, "Decimal point without digit!");
+         return NULL;
+    }
+
     errno = 0;
     char *end;
     double d = strtod(ctx->ptr, &end);
