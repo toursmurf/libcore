@@ -65,6 +65,7 @@ static void Iterator_Finalize(Object *obj) {
 
     if (self->list) {
         RELEASE(self->list);
+
         self->list = NULL;
     }
 }
@@ -246,9 +247,7 @@ static Object* impl_detach(ArrayList *self, int index) {
     return item;
 }
 
-static void ArrayList_release(ArrayList* self) {
-    RELEASE((Object*)self);
-}
+// 🚨 [패치 완료] 미사용 함수 ArrayList_release 제거 완료!
 
 static int impl_getSize(ArrayList *self) {
     if (!self) {
@@ -273,6 +272,7 @@ static void impl_clear(ArrayList *self) {
 
     for(int i = 0; i < self->size; i++) {
         RELEASE(self->items[i]);
+
         self->items[i] = NULL;
     }
 
@@ -397,7 +397,6 @@ ArrayList* new_ArrayList(int initial_capacity) {
     list->iterator = impl_iterator;
     list->isEmpty = impl_isEmpty;
     list->trimToSize = impl_trimToSize;
-
     list->destroy = impl_destroy;
 
     return list;
