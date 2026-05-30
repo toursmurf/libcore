@@ -3,45 +3,121 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
+#include <errno.h>
 #include "json.h"
 #include "hashmap.h"
 #include "arraylist.h"
 
-/* =================================================================
- * [핵심] 재귀 깊이 제한 및 클래스 조회 매크로
- * ================================================================= */
 #define MAX_JSON_DEPTH 64
 #define GET_CLASS(obj) ( *( (const Class**) (obj) ) )
 
+/* 🚨 [의장님 V20 패치] 문자열 비용(strncmp)을 제거하고 압도적인 O(1) 클래스 포인터 직접 비교 도입! */
+extern const Class jsonNodeClass; // VTable 전방 선언
+
+static inline int is_json_value(Object *obj) {
+    return (obj && GET_CLASS(obj) == &jsonValueClass);
+}
+
+static inline int is_hashmap(Object *obj) {
+    return (obj && GET_CLASS(obj) == &hashMapClass);
+}
+
+static inline int is_arraylist(Object *obj) {
+    return (obj && GET_CLASS(obj) == &arrayListClass);
+}
+
+static inline int is_json_node(Object *obj) {
+    return (obj && GET_CLASS(obj) == &jsonNodeClass);
+}
+
 /* =================================================================
- * [Internal] StringBuilder (OOM 방어)
+ * [0] ParseContext 및 에러 추적 시스템
+ * ================================================================= */
+typedef struct {
+    const char *json_start;
+    const char *ptr;
+    int depth;
+    char *err_buf;
+    size_t err_len;
+    int has_error;
+} ParseContext;
+
+static void report_error(ParseContext *ctx, const char *msg) {
+    if (ctx->has_error) {
+        return;
+    }
+
+    ctx->has_error = 1;
+
+    int line = 1;
+    int col = 1;
+
+    for (const char *p = ctx->json_start; p < ctx->ptr; p++) {
+        if (*p == '\n') {
+            line++;
+            col = 1;
+        } else {
+            col++;
+        }
+    }
+
+    if (ctx->err_buf && ctx->err_len > 0) {
+        snprintf(ctx->err_buf, ctx->err_len, "[Line %d, Col %d] %s", line, col, msg);
+    }
+}
+
+/* =================================================================
+ * [Internal] StringBuilder & Helpers
  * ================================================================= */
 typedef struct {
     char *buffer;
     size_t length;
     size_t capacity;
+    int failed;
 } StringBuilder;
 
 static void sb_init(StringBuilder *sb) {
     sb->capacity = 256;
+    sb->length = 0;
+    sb->failed = 0;
+
     sb->buffer = (char*)malloc(sb->capacity);
 
-    if (sb->buffer) {
-        sb->length = 0;
+    if (!sb->buffer) {
+        sb->failed = 1;
+    } else {
         sb->buffer[0] = '\0';
     }
 }
 
+static void sb_append_char(StringBuilder *sb, char c) {
+    if (sb->failed) {
+        return;
+    }
+
+    if (sb->length + 2 > sb->capacity) {
+        size_t new_cap = sb->capacity * 2;
+        char *tmp = (char*)realloc(sb->buffer, new_cap);
+
+        if (!tmp) {
+            sb->failed = 1;
+            return;
+        }
+
+        sb->buffer = tmp;
+        sb->capacity = new_cap;
+    }
+
+    sb->buffer[sb->length++] = c;
+    sb->buffer[sb->length] = '\0';
+}
+
 static void sb_append(StringBuilder *sb, const char *str) {
-    if (!str) {
+    if (sb->failed) {
         return;
     }
 
-    if (!sb) {
-        return;
-    }
-
-    if (!sb->buffer) {
+    if (!str || !sb->buffer) {
         return;
     }
 
@@ -54,13 +130,14 @@ static void sb_append(StringBuilder *sb, const char *str) {
             new_cap *= 2;
         }
 
-        char* new_buf = (char*)realloc(sb->buffer, new_cap);
+        char *tmp = (char*)realloc(sb->buffer, new_cap);
 
-        if (!new_buf) {
+        if (!tmp) {
+            sb->failed = 1;
             return;
         }
 
-        sb->buffer = new_buf;
+        sb->buffer = tmp;
         sb->capacity = new_cap;
     }
 
@@ -69,14 +146,58 @@ static void sb_append(StringBuilder *sb, const char *str) {
     sb->buffer[sb->length] = '\0';
 }
 
-static void sb_append_char(StringBuilder *sb, char c) {
-    char tmp[2];
-    tmp[0] = c;
-    tmp[1] = '\0';
-    sb_append(sb, tmp);
+static void sb_append_escaped(StringBuilder *sb, const char *str) {
+    if (sb->failed) {
+        return;
+    }
+
+    if (!str) {
+        return;
+    }
+
+    sb_append_char(sb, '\"');
+
+    while (*str) {
+        switch (*str) {
+            case '\"':
+                sb_append(sb, "\\\"");
+                break;
+            case '\\':
+                sb_append(sb, "\\\\");
+                break;
+            case '\b':
+                sb_append(sb, "\\b");
+                break;
+            case '\f':
+                sb_append(sb, "\\f");
+                break;
+            case '\n':
+                sb_append(sb, "\\n");
+                break;
+            case '\r':
+                sb_append(sb, "\\r");
+                break;
+            case '\t':
+                sb_append(sb, "\\t");
+                break;
+            default:
+                sb_append_char(sb, *str);
+                break;
+        }
+        str++;
+    }
+
+    sb_append_char(sb, '\"');
 }
 
 static char* sb_finish(StringBuilder *sb) {
+    if (sb->failed) {
+        if (sb->buffer) {
+            free(sb->buffer);
+        }
+        return NULL;
+    }
+
     return sb->buffer;
 }
 
@@ -86,28 +207,26 @@ static char* sb_finish(StringBuilder *sb) {
 static void JsonValue_Finalize(Object *self) {
     JsonValue *v = (JsonValue*)self;
 
-    if (v->type == J_STRING) {
-        if (v->string) {
-            free(v->string);
-        }
+    if (v->type == J_STRING && v->string) {
+        free(v->string);
     }
 }
 
-static void JsonValue_ToString(Object *self, char *buffer, size_t len) {
+static void JsonValue_ToString(Object *self, char *buf, size_t len) {
     JsonValue *v = (JsonValue*)self;
 
     switch(v->type) {
         case J_STRING:
-            snprintf(buffer, len, "\"%s\"", v->string);
+            snprintf(buf, len, "\"%s\"", v->string);
             break;
         case J_NUMBER:
-            snprintf(buffer, len, "%g", v->number);
+            snprintf(buf, len, "%g", v->number);
             break;
         case J_BOOL:
-            snprintf(buffer, len, "%s", v->boolean ? "true" : "false");
+            snprintf(buf, len, "%s", v->boolean ? "true" : "false");
             break;
         case J_NULL:
-            snprintf(buffer, len, "null");
+            snprintf(buf, len, "null");
             break;
     }
 }
@@ -120,17 +239,30 @@ const Class jsonValueClass = {
 };
 
 JsonValue* new_json_string(const char *s) {
-    JsonValue *v = (JsonValue*)malloc(sizeof(JsonValue));
+    JsonValue *v = (JsonValue*)calloc(1, sizeof(JsonValue));
+
+    if (!v) {
+        return NULL;
+    }
 
     Object_Init((Object*)v, &jsonValueClass);
     v->type = J_STRING;
     v->string = strdup(s ? s : "");
 
+    if (!v->string) {
+        free(v);
+        return NULL;
+    }
+
     return v;
 }
 
 JsonValue* new_json_number(double d) {
-    JsonValue *v = (JsonValue*)malloc(sizeof(JsonValue));
+    JsonValue *v = (JsonValue*)calloc(1, sizeof(JsonValue));
+
+    if (!v) {
+        return NULL;
+    }
 
     Object_Init((Object*)v, &jsonValueClass);
     v->type = J_NUMBER;
@@ -140,7 +272,11 @@ JsonValue* new_json_number(double d) {
 }
 
 JsonValue* new_json_bool(int b) {
-    JsonValue *v = (JsonValue*)malloc(sizeof(JsonValue));
+    JsonValue *v = (JsonValue*)calloc(1, sizeof(JsonValue));
+
+    if (!v) {
+        return NULL;
+    }
 
     Object_Init((Object*)v, &jsonValueClass);
     v->type = J_BOOL;
@@ -150,7 +286,11 @@ JsonValue* new_json_bool(int b) {
 }
 
 JsonValue* new_json_null(void) {
-    JsonValue *v = (JsonValue*)malloc(sizeof(JsonValue));
+    JsonValue *v = (JsonValue*)calloc(1, sizeof(JsonValue));
+
+    if (!v) {
+        return NULL;
+    }
 
     Object_Init((Object*)v, &jsonValueClass);
     v->type = J_NULL;
@@ -159,213 +299,662 @@ JsonValue* new_json_null(void) {
 }
 
 /* =================================================================
- * [2] Core Parsing Engine (🚀 파싱 깊이 제한 가드 적용)
+ * [2] Tree Equality
  * ================================================================= */
-static const char *skip_ws(const char *json) {
-    while (*json && isspace((unsigned char)*json)) {
-        json++;
+static int impl_json_equals(Object *o1, Object *o2) {
+    if (o1 == o2) {
+        return 1;
     }
 
-    return json;
+    if (!o1 || !o2) {
+        return 0;
+    }
+
+    if (GET_CLASS(o1) != GET_CLASS(o2)) {
+        return 0;
+    }
+
+    if (is_json_value(o1)) {
+        JsonValue *v1 = (JsonValue*)o1;
+        JsonValue *v2 = (JsonValue*)o2;
+
+        if (v1->type != v2->type) {
+            return 0;
+        }
+
+        if (v1->type == J_NULL) {
+            return 1;
+        }
+
+        if (v1->type == J_BOOL) {
+            return v1->boolean == v2->boolean;
+        }
+
+        if (v1->type == J_NUMBER) {
+            return (v1->number == v2->number);
+        }
+
+        if (v1->type == J_STRING) {
+            if (!v1->string || !v2->string) {
+                return v1->string == v2->string;
+            }
+            return strcmp(v1->string, v2->string) == 0;
+        }
+    } else if (is_arraylist(o1)) {
+        ArrayList *l1 = (ArrayList*)o1;
+        ArrayList *l2 = (ArrayList*)o2;
+
+        if (l1->getSize(l1) != l2->getSize(l2)) {
+            return 0;
+        }
+
+        for (int i = 0; i < l1->getSize(l1); i++) {
+            if (!impl_json_equals(l1->get(l1, i), l2->get(l2, i))) {
+                return 0;
+            }
+        }
+        return 1;
+    } else if (is_hashmap(o1)) {
+        HashMap *m1 = (HashMap*)o1;
+        HashMap *m2 = (HashMap*)o2;
+        int count1 = 0;
+        int count2 = 0;
+
+        for (int i = 0; i < m1->capacity; i++) {
+            HashNode *n = m1->buckets[i];
+            while (n) {
+                count1++;
+                n = n->next;
+            }
+        }
+
+        for (int i = 0; i < m2->capacity; i++) {
+            HashNode *n = m2->buckets[i];
+            while (n) {
+                count2++;
+                n = n->next;
+            }
+        }
+
+        if (count1 != count2) {
+            return 0;
+        }
+
+        for (int i = 0; i < m1->capacity; i++) {
+            HashNode *n = m1->buckets[i];
+            while (n) {
+                Object *val2 = m2->get(m2, n->key);
+                if (!val2 || !impl_json_equals(n->value, val2)) {
+                    return 0;
+                }
+                n = n->next;
+            }
+        }
+        return 1;
+    }
+
+    return 0;
 }
 
-static Object* parse_value(const char **ptr, int depth);
+/* =================================================================
+ * [3] Core Parsing Engine
+ * ================================================================= */
+static void skip_ws(ParseContext *ctx) {
+    while (*(ctx->ptr) && isspace((unsigned char)*(ctx->ptr))) {
+        ctx->ptr++;
+    }
+}
 
-static char* parse_string_raw(const char **ptr) {
-    const char *start = *ptr + 1;
+static int is_valid_boundary(char c) {
+    return (isspace((unsigned char)c) || c == ',' || c == '}' || c == ']' || c == '\0');
+}
+
+static int hex_to_int(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
+static Object* parse_value(ParseContext *ctx);
+
+static char* parse_string_raw(ParseContext *ctx) {
+    const char *start = ctx->ptr + 1;
     const char *end = start;
 
     while (*end && *end != '\"') {
         if (*end == '\\' && *(end+1)) {
+            end += 2;
+        } else {
+            if ((unsigned char)*end <= 0x1F) {
+                ctx->ptr = end;
+                report_error(ctx, "Unescaped control character in string!");
+                return NULL;
+            }
             end++;
         }
-        end++;
     }
 
-    int len = (int)(end - start);
-    char *str = (char*)malloc(len + 1);
-
-    if (str) {
-        if (len > 0) {
-            memcpy(str, start, (size_t)len);
-        }
-        str[len] = '\0';
-    }
-
-    *ptr = end + 1;
-    return str;
-}
-
-static Object* parse_number(const char **ptr) {
-    char *end;
-    double d = strtod(*ptr, &end);
-    *ptr = end;
-
-    return (Object*)new_json_number(d);
-}
-
-static Object* parse_object(const char **ptr, int depth) {
-    HashMap *map = new_HashMap(16);
-    (*ptr)++;
-
-    while (**ptr) {
-        *ptr = skip_ws(*ptr);
-
-        if (**ptr == '}') {
-            (*ptr)++;
-            return (Object*)map;
-        }
-
-        if (**ptr != '\"') {
-            break;
-        }
-
-        char *key = parse_string_raw(ptr);
-        *ptr = skip_ws(*ptr);
-
-        if (**ptr != ':') {
-            free(key);
-            break;
-        }
-
-        (*ptr)++;
-        // 🚀 재귀 호출 시 깊이 증가!
-        Object *val = parse_value(ptr, depth + 1);
-
-        if (val) {
-            map->put(map, key, val);
-            RELEASE(val);
-        }
-
-        free(key);
-        *ptr = skip_ws(*ptr);
-
-        if (**ptr == ',') {
-            (*ptr)++;
-        } else if (**ptr != '}') {
-            break;
-        }
-    }
-
-    return (Object*)map;
-}
-
-static Object* parse_array(const char **ptr, int depth) {
-    ArrayList *list = new_ArrayList(10);
-    (*ptr)++;
-
-    while (**ptr) {
-        *ptr = skip_ws(*ptr);
-
-        if (**ptr == ']') {
-            (*ptr)++;
-            return (Object*)list;
-        }
-
-        // 🚀 재귀 호출 시 깊이 증가!
-        Object *val = parse_value(ptr, depth + 1);
-
-        if (val) {
-            list->add(list, val);
-            RELEASE(val);
-        }
-
-        *ptr = skip_ws(*ptr);
-
-        if (**ptr == ',') {
-            (*ptr)++;
-        } else if (**ptr != ']') {
-            break;
-        }
-    }
-
-    return (Object*)list;
-}
-
-static Object* parse_value(const char **ptr, int depth) {
-    // 🚀 [보안 패치] 파싱 깊이 제한 (스택 오버플로우 방어)
-    if (depth > MAX_JSON_DEPTH) {
-        fprintf(stderr, "[JSON] Parsing Error: Depth limit exceeded!\n");
+    if (*end != '\"') {
+        ctx->ptr = end;
+        report_error(ctx, "Unterminated string!");
         return NULL;
     }
 
-    *ptr = skip_ws(*ptr);
-    char c = **ptr;
+    int len = (int)(end - start);
+    char *str = (char*)malloc((size_t)len * 3 + 1);
+
+    if (!str) {
+        ctx->ptr = end + 1;
+        report_error(ctx, "OOM in parse_string_raw buffer allocation!");
+        return NULL;
+    }
+
+    const char *src = start;
+    char *dst = str;
+
+    while (src < end) {
+        if (*src == '\\') {
+            src++;
+
+            if (*src == 'u') {
+                src++;
+                int cp = 0;
+                int valid = 1;
+
+                for (int i = 0; i < 4; i++) {
+                    if (src >= end) {
+                        valid = 0;
+                        break;
+                    }
+                    int h = hex_to_int(*src);
+                    if (h < 0) {
+                        valid = 0;
+                        break;
+                    }
+                    cp = (cp << 4) | h;
+                    src++;
+                }
+
+                if (!valid) {
+                    ctx->ptr = src;
+                    report_error(ctx, "Invalid unicode escape!");
+                    free(str);
+                    return NULL;
+                }
+
+                if (cp >= 0xD800 && cp <= 0xDBFF) {
+                    if (src < end - 5 && *src == '\\' && *(src+1) == 'u') {
+                        src += 2;
+                        int cp2 = 0;
+                        int valid2 = 1;
+
+                        for (int i = 0; i < 4; i++) {
+                            int h = hex_to_int(*src);
+                            if (h < 0) {
+                                valid2 = 0;
+                                break;
+                            }
+                            cp2 = (cp2 << 4) | h;
+                            src++;
+                        }
+
+                        if (valid2 && cp2 >= 0xDC00 && cp2 <= 0xDFFF) {
+                            cp = 0x10000 + (((cp - 0xD800) << 10) | (cp2 - 0xDC00));
+                        } else {
+                            ctx->ptr = src;
+                            report_error(ctx, "Invalid low surrogate pair!");
+                            free(str);
+                            return NULL;
+                        }
+                    } else {
+                        ctx->ptr = src;
+                        report_error(ctx, "Missing low surrogate pair!");
+                        free(str);
+                        return NULL;
+                    }
+                } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
+                    ctx->ptr = src;
+                    report_error(ctx, "Isolated low surrogate!");
+                    free(str);
+                    return NULL;
+                }
+
+                if (cp <= 0x7F) {
+                    *dst++ = (char)cp;
+                } else if (cp <= 0x7FF) {
+                    *dst++ = (char)(0xC0 | (cp >> 6));
+                    *dst++ = (char)(0x80 | (cp & 0x3F));
+                } else if (cp <= 0xFFFF) {
+                    *dst++ = (char)(0xE0 | (cp >> 12));
+                    *dst++ = (char)(0x80 | ((cp >> 6) & 0x3F));
+                    *dst++ = (char)(0x80 | (cp & 0x3F));
+                } else {
+                    *dst++ = (char)(0xF0 | (cp >> 18));
+                    *dst++ = (char)(0x80 | ((cp >> 12) & 0x3F));
+                    *dst++ = (char)(0x80 | ((cp >> 6) & 0x3F));
+                    *dst++ = (char)(0x80 | (cp & 0x3F));
+                }
+                continue;
+            }
+
+            switch (*src) {
+                case '\"':
+                    *dst++ = '\"';
+                    break;
+                case '\\':
+                    *dst++ = '\\';
+                    break;
+                case '/':
+                    *dst++ = '/';
+                    break;
+                case 'b':
+                    *dst++ = '\b';
+                    break;
+                case 'f':
+                    *dst++ = '\f';
+                    break;
+                case 'n':
+                    *dst++ = '\n';
+                    break;
+                case 'r':
+                    *dst++ = '\r';
+                    break;
+                case 't':
+                    *dst++ = '\t';
+                    break;
+                default:
+                    *dst++ = *src;
+                    break;
+            }
+            src++;
+        } else {
+            unsigned char byte1 = (unsigned char)*src;
+
+            if (byte1 >= 0x80) {
+                int expected_len = 0;
+
+                if ((byte1 & 0xE0) == 0xC0) {
+                    expected_len = 2;
+
+                    if (src + 1 < end) {
+                        if (byte1 == 0xC0 || byte1 == 0xC1) {
+                            ctx->ptr = src;
+                            report_error(ctx, "Overlong UTF-8 sequence detected!");
+                            free(str);
+                            return NULL;
+                        }
+                    }
+                } else if ((byte1 & 0xF0) == 0xE0) {
+                    expected_len = 3;
+
+                    if (src + 1 < end) {
+                        unsigned char byte2 = (unsigned char)*(src + 1);
+
+                        if (byte1 == 0xE0 && byte2 < 0xA0) {
+                            ctx->ptr = src;
+                            report_error(ctx, "Overlong UTF-8 sequence detected!");
+                            free(str);
+                            return NULL;
+                        }
+
+                        if (byte1 == 0xED && byte2 >= 0xA0) {
+                            ctx->ptr = src;
+                            report_error(ctx, "UTF-16 surrogate directly encoded in UTF-8!");
+                            free(str);
+                            return NULL;
+                        }
+                    }
+                } else if ((byte1 & 0xF8) == 0xF0) {
+                    expected_len = 4;
+
+                    if (byte1 > 0xF4) {
+                        ctx->ptr = src;
+                        report_error(ctx, "UTF-8 sequence exceeds U+10FFFF!");
+                        free(str);
+                        return NULL;
+                    }
+
+                    if (src + 1 < end) {
+                        unsigned char byte2 = (unsigned char)*(src + 1);
+
+                        if (byte1 == 0xF0 && byte2 < 0x90) {
+                            ctx->ptr = src;
+                            report_error(ctx, "Overlong UTF-8 sequence detected!");
+                            free(str);
+                            return NULL;
+                        }
+
+                        if (byte1 == 0xF4 && byte2 >= 0x90) {
+                            ctx->ptr = src;
+                            report_error(ctx, "UTF-8 sequence exceeds U+10FFFF!");
+                            free(str);
+                            return NULL;
+                        }
+                    }
+                } else {
+                    ctx->ptr = src;
+                    report_error(ctx, "Invalid UTF-8 starting byte!");
+                    free(str);
+                    return NULL;
+                }
+
+                if (src + expected_len > end) {
+                    ctx->ptr = src;
+                    report_error(ctx, "Incomplete UTF-8 sequence!");
+                    free(str);
+                    return NULL;
+                }
+
+                for (int i = 1; i < expected_len; i++) {
+                    if (((unsigned char)src[i] & 0xC0) != 0x80) {
+                        ctx->ptr = src;
+                        report_error(ctx, "Invalid UTF-8 continuation byte!");
+                        free(str);
+                        return NULL;
+                    }
+                }
+            }
+            *dst++ = *src++;
+        }
+    }
+
+    *dst = '\0';
+    ctx->ptr = end + 1;
+
+    return str;
+}
+
+static Object* parse_number(ParseContext *ctx) {
+    const char *start = ctx->ptr;
+
+    if (*start == '-') {
+        start++;
+    }
+
+    if (*start == '0' && isdigit((unsigned char)*(start + 1))) {
+        report_error(ctx, "Leading zero not allowed in JSON number!");
+        return NULL;
+    }
+
+    errno = 0;
+    char *end;
+    double d = strtod(ctx->ptr, &end);
+
+    if (end == ctx->ptr) {
+        report_error(ctx, "Invalid number!");
+        return NULL;
+    }
+
+    if (errno == ERANGE) {
+        if (d == 0.0) {
+            errno = 0;
+        } else {
+            report_error(ctx, "Number out of range (Overflow)!");
+            return NULL;
+        }
+    }
+
+    if (isinf(d) || isnan(d)) {
+        report_error(ctx, "Number out of range (Infinity/NaN)!");
+        return NULL;
+    }
+
+    if (
+        (*(end - 1) == 'e' || *(end - 1) == 'E') ||
+        ( (*(end - 1) == '+' || *(end - 1) == '-') && (*(end - 2) == 'e' || *(end - 2) == 'E') )
+    ) {
+        report_error(ctx, "Invalid exponent format!");
+        return NULL;
+    }
+
+    if (!is_valid_boundary(*end)) {
+        ctx->ptr = end;
+        report_error(ctx, "Invalid boundary after number!");
+        return NULL;
+    }
+
+    ctx->ptr = end;
+
+    Object *obj = (Object*)new_json_number(d);
+
+    if (!obj) {
+        report_error(ctx, "OOM creating JsonValue (number)!");
+        return NULL;
+    }
+
+    return obj;
+}
+
+static Object* parse_object(ParseContext *ctx) {
+    HashMap *map = new_HashMap(16);
+
+    if (!map) {
+        report_error(ctx, "OOM in Object creation!");
+        return NULL;
+    }
+
+    ctx->ptr++;
+    ctx->depth++;
+
+    while (*(ctx->ptr)) {
+        skip_ws(ctx);
+
+        if (*(ctx->ptr) == '}') {
+            ctx->ptr++;
+            ctx->depth--;
+            return (Object*)map;
+        }
+
+        if (*(ctx->ptr) != '\"') {
+            report_error(ctx, "Expected string key!");
+            goto fail;
+        }
+
+        char *key = parse_string_raw(ctx);
+
+        if (!key) {
+            goto fail;
+        }
+
+        skip_ws(ctx);
+
+        if (*(ctx->ptr) != ':') {
+            report_error(ctx, "Expected ':'!");
+            free(key);
+            goto fail;
+        }
+
+        ctx->ptr++;
+
+        Object *val = parse_value(ctx);
+
+        if (!val) {
+            free(key);
+            goto fail;
+        }
+
+        map->put(map, key, val);
+
+        RELEASE(val);
+        free(key);
+
+        skip_ws(ctx);
+
+        if (*(ctx->ptr) == ',') {
+            ctx->ptr++;
+            skip_ws(ctx);
+
+            if (*(ctx->ptr) == '}') {
+                report_error(ctx, "Trailing comma in object!");
+                goto fail;
+            }
+        } else if (*(ctx->ptr) != '}') {
+            report_error(ctx, "Expected ',' or '}'!");
+            goto fail;
+        }
+    }
+
+    report_error(ctx, "Unterminated object!");
+
+fail:
+    ctx->depth--;
+    RELEASE((Object*)map);
+
+    return NULL;
+}
+
+static Object* parse_array(ParseContext *ctx) {
+    ArrayList *list = new_ArrayList(10);
+
+    if (!list) {
+        report_error(ctx, "OOM in Array creation!");
+        return NULL;
+    }
+
+    ctx->ptr++;
+    ctx->depth++;
+
+    while (*(ctx->ptr)) {
+        skip_ws(ctx);
+
+        if (*(ctx->ptr) == ']') {
+            ctx->ptr++;
+            ctx->depth--;
+            return (Object*)list;
+        }
+
+        Object *val = parse_value(ctx);
+
+        if (!val) {
+            goto fail;
+        }
+
+        list->add(list, val);
+
+        RELEASE(val);
+
+        skip_ws(ctx);
+
+        if (*(ctx->ptr) == ',') {
+            ctx->ptr++;
+            skip_ws(ctx);
+
+            if (*(ctx->ptr) == ']') {
+                report_error(ctx, "Trailing comma in array!");
+                goto fail;
+            }
+        } else if (*(ctx->ptr) != ']') {
+            report_error(ctx, "Expected ',' or ']'!");
+            goto fail;
+        }
+    }
+
+    report_error(ctx, "Unterminated array!");
+
+fail:
+    ctx->depth--;
+    RELEASE((Object*)list);
+
+    return NULL;
+}
+
+static Object* parse_value(ParseContext *ctx) {
+    if (ctx->depth > MAX_JSON_DEPTH) {
+        report_error(ctx, "Depth limit exceeded!");
+        return NULL;
+    }
+
+    skip_ws(ctx);
+
+    char c = *(ctx->ptr);
 
     if (c == '\0') {
         return NULL;
     }
 
     if (c == '\"') {
-        char *s = parse_string_raw(ptr);
+        char *s = parse_string_raw(ctx);
+
+        if (!s) {
+            return NULL;
+        }
+
         Object *o = (Object*)new_json_string(s);
+
+        if (!o) {
+            report_error(ctx, "OOM creating JsonValue (string)!");
+        }
+
         free(s);
         return o;
     }
 
     if (c == '-' || (c >= '0' && c <= '9')) {
-        return parse_number(ptr);
+        return parse_number(ctx);
     }
 
     if (c == '{') {
-        return parse_object(ptr, depth);
+        return parse_object(ctx);
     }
 
     if (c == '[') {
-        return parse_array(ptr, depth);
+        return parse_array(ctx);
     }
 
-    if (strncmp(*ptr, "true", 4) == 0) {
-        *ptr += 4;
-        return (Object*)new_json_bool(1);
+    if (strncmp(ctx->ptr, "true", 4) == 0 && is_valid_boundary((ctx->ptr)[4])) {
+        ctx->ptr += 4;
+        Object *o = (Object*)new_json_bool(1);
+
+        if (!o) {
+            report_error(ctx, "OOM creating JsonValue (bool)!");
+        }
+
+        return o;
     }
 
-    if (strncmp(*ptr, "false", 5) == 0) {
-        *ptr += 5;
-        return (Object*)new_json_bool(0);
+    if (strncmp(ctx->ptr, "false", 5) == 0 && is_valid_boundary((ctx->ptr)[5])) {
+        ctx->ptr += 5;
+        Object *o = (Object*)new_json_bool(0);
+
+        if (!o) {
+            report_error(ctx, "OOM creating JsonValue (bool)!");
+        }
+
+        return o;
     }
 
-    if (strncmp(*ptr, "null", 4) == 0) {
-        *ptr += 4;
-        return (Object*)new_json_null();
+    if (strncmp(ctx->ptr, "null", 4) == 0 && is_valid_boundary((ctx->ptr)[4])) {
+        ctx->ptr += 4;
+        Object *o = (Object*)new_json_null();
+
+        if (!o) {
+            report_error(ctx, "OOM creating JsonValue (null)!");
+        }
+
+        return o;
     }
+
+    report_error(ctx, "Unexpected token!");
 
     return NULL;
 }
 
-static Object* impl_parse(const char *json_str) {
-    if (!json_str) {
-        return NULL;
-    }
-
-    const char *ptr = json_str;
-    // 🚀 깊이 0부터 시작!
-    return parse_value(&ptr, 0);
-}
-
 /* =================================================================
- * [3] Core Stringify Engine
+ * [4] Stringify Engine
  * ================================================================= */
-static void stringify_recursive(Object *obj, StringBuilder *sb, int depth);
-
-static void stringify_arraylist(ArrayList *list, StringBuilder *sb, int depth) {
-    sb_append_char(sb, '[');
-
-    for (int i = 0; i < list->getSize(list); i++) {
-        if (i > 0) {
-            sb_append_char(sb, ',');
-        }
-
-        Object *val = list->get(list, i);
-        stringify_recursive(val, sb, depth + 1);
+static void stringify_recursive(Object *obj, StringBuilder *sb, int depth) {
+    if (sb->failed) {
+        return;
     }
 
-    sb_append_char(sb, ']');
-}
-
-static void stringify_recursive(Object *obj, StringBuilder *sb, int depth) {
     if (depth > MAX_JSON_DEPTH) {
-        fprintf(stderr, "[JSON] Stringify Error: Depth limit exceeded!\n");
         sb_append(sb, "\"#DEPTH_LIMIT_EXCEEDED#\"");
         return;
     }
@@ -375,21 +964,31 @@ static void stringify_recursive(Object *obj, StringBuilder *sb, int depth) {
         return;
     }
 
-    const Class *cls = GET_CLASS(obj);
+    if (is_json_value(obj)) {
+        JsonValue *jv = (JsonValue*)obj;
 
-    // 🚀 [보안 패치] strcmp로 명확한 비교 수행
-    if (strcmp(cls->name, "JsonValue") == 0) {
-        char buf[64];
-        cls->toString(obj, buf, sizeof(buf));
-        sb_append(sb, buf);
-    }
-    else if (strcmp(cls->name, "JSONNode") == 0) {
-        stringify_recursive( ((JSONNode*)obj)->core_data, sb, depth + 1 );
-    }
-    else if (strcmp(cls->name, "ArrayList") == 0) {
-        stringify_arraylist((ArrayList*)obj, sb, depth);
-    }
-    else if (strcmp(cls->name, "HashMap") == 0) {
+        if (jv->type == J_STRING) {
+            sb_append_escaped(sb, jv->string);
+        } else {
+            char buf[64];
+            GET_CLASS(obj)->toString(obj, buf, sizeof(buf));
+            sb_append(sb, buf);
+        }
+    } else if (is_json_node(obj)) {
+        stringify_recursive(((JSONNode*)obj)->core_data, sb, depth + 1);
+    } else if (is_arraylist(obj)) {
+        ArrayList *list = (ArrayList*)obj;
+        sb_append_char(sb, '[');
+
+        for (int i = 0; i < list->getSize(list); i++) {
+            if (i > 0) {
+                sb_append_char(sb, ',');
+            }
+            stringify_recursive(list->get(list, i), sb, depth + 1);
+        }
+
+        sb_append_char(sb, ']');
+    } else if (is_hashmap(obj)) {
         HashMap *map = (HashMap*)obj;
         sb_append_char(sb, '{');
         int first = 1;
@@ -402,12 +1001,9 @@ static void stringify_recursive(Object *obj, StringBuilder *sb, int depth) {
                     sb_append_char(sb, ',');
                 }
 
-                sb_append_char(sb, '\"');
-                sb_append(sb, node->key);
-                sb_append(sb, "\":");
-
+                sb_append_escaped(sb, node->key);
+                sb_append_char(sb, ':');
                 stringify_recursive(node->value, sb, depth + 1);
-
                 first = 0;
                 node = node->next;
             }
@@ -415,29 +1011,24 @@ static void stringify_recursive(Object *obj, StringBuilder *sb, int depth) {
 
         sb_append_char(sb, '}');
     }
-    else {
-        char buf[256];
-        if (cls->toString) {
-            cls->toString(obj, buf, sizeof(buf));
-            sb_append_char(sb, '\"');
-            sb_append(sb, buf);
-            sb_append_char(sb, '\"');
-        } else {
-            sb_append(sb, "\"unknown\"");
-        }
-    }
 }
 
+/**
+ * @brief 객체를 JSON 문자열로 변환합니다.
+ * @warning 내부 메모리 할당 실패(OOM) 시 NULL을 반환할 수 있습니다!
+ * @warning 호출자는 반드시 반환값이 NULL인지 검사한 후 사용해야 합니다. (예: printf("%s", json) 직접 호출 금지)
+ */
 static char* impl_stringify(Object *obj) {
     StringBuilder sb;
     sb_init(&sb);
 
     stringify_recursive(obj, &sb, 0);
+
     return sb_finish(&sb);
 }
 
 /* =================================================================
- * [4] JSONNode Wrapper
+ * [5] JSONNode Wrapper & Constructor
  * ================================================================= */
 static void JSONNode_Finalize(Object *self) {
     JSONNode *node = (JSONNode*)self;
@@ -454,20 +1045,23 @@ const Class jsonNodeClass = {
     .finalize = JSONNode_Finalize
 };
 
-static int node_isObject(JSONNode *self) { return self->is_object_flag; }
-static int node_isArray(JSONNode *self)  { return self->is_array_flag; }
+static int node_isObject(JSONNode *self) {
+    return self->is_object_flag;
+}
+
+static int node_isArray(JSONNode *self) {
+    return self->is_array_flag;
+}
 
 static void node_put(JSONNode *self, const char *key, Object *val) {
     if (self->is_object_flag && self->core_data) {
-        HashMap *map = (HashMap*)self->core_data;
-        map->put(map, key, val);
+        ((HashMap*)self->core_data)->put((HashMap*)self->core_data, key, val);
     }
 }
 
 static Object* node_get(JSONNode *self, const char *key) {
     if (self->is_object_flag && self->core_data) {
-        HashMap *map = (HashMap*)self->core_data;
-        return map->get(map, key);
+        return ((HashMap*)self->core_data)->get((HashMap*)self->core_data, key);
     }
 
     return NULL;
@@ -476,12 +1070,8 @@ static Object* node_get(JSONNode *self, const char *key) {
 static const char* node_getString(JSONNode *self, const char *key) {
     Object *val = node_get(self, key);
 
-    if (val && strcmp(GET_CLASS(val)->name, "JsonValue") == 0) {
-        JsonValue *jv = (JsonValue*)val;
-
-        if (jv->type == J_STRING) {
-            return jv->string;
-        }
+    if (is_json_value(val) && ((JsonValue*)val)->type == J_STRING) {
+        return ((JsonValue*)val)->string;
     }
 
     return NULL;
@@ -490,12 +1080,8 @@ static const char* node_getString(JSONNode *self, const char *key) {
 static int node_getInt(JSONNode *self, const char *key) {
     Object *val = node_get(self, key);
 
-    if (val && strcmp(GET_CLASS(val)->name, "JsonValue") == 0) {
-        JsonValue *jv = (JsonValue*)val;
-
-        if (jv->type == J_NUMBER) {
-            return (int)jv->number;
-        }
+    if (is_json_value(val) && ((JsonValue*)val)->type == J_NUMBER) {
+        return (int)((JsonValue*)val)->number;
     }
 
     return 0;
@@ -503,15 +1089,13 @@ static int node_getInt(JSONNode *self, const char *key) {
 
 static void node_add(JSONNode *self, Object *val) {
     if (self->is_array_flag && self->core_data) {
-        ArrayList *list = (ArrayList*)self->core_data;
-        list->add(list, val);
+        ((ArrayList*)self->core_data)->add((ArrayList*)self->core_data, val);
     }
 }
 
 static Object* node_getIndex(JSONNode *self, int index) {
     if (self->is_array_flag && self->core_data) {
-        ArrayList *list = (ArrayList*)self->core_data;
-        return list->get(list, index);
+        return ((ArrayList*)self->core_data)->get((ArrayList*)self->core_data, index);
     }
 
     return NULL;
@@ -519,8 +1103,7 @@ static Object* node_getIndex(JSONNode *self, int index) {
 
 static int node_length(JSONNode *self) {
     if (self->is_array_flag && self->core_data) {
-        ArrayList *list = (ArrayList*)self->core_data;
-        return list->getSize(list);
+        return ((ArrayList*)self->core_data)->getSize((ArrayList*)self->core_data);
     }
 
     return 0;
@@ -531,69 +1114,179 @@ static char* node_toString(JSONNode *self) {
         return impl_stringify(self->core_data);
     }
 
-    return strdup("null");
-}
+    char *null_str = strdup("null");
 
-/* =================================================================
- * [5] Magic Constructor
- * ================================================================= */
-JSONNode* new_JSON(const char *json_str_or_null) {
-    JSONNode *node = (JSONNode*)malloc(sizeof(JSONNode));
-    Object_Init((Object*)node, &jsonNodeClass);
-
-    node->isObject = node_isObject;
-    node->isArray  = node_isArray;
-    node->put      = node_put;
-    node->get      = node_get;
-    node->getString = node_getString;
-    node->getInt   = node_getInt;
-    node->add      = node_add;
-    node->getIndex = node_getIndex;
-    node->length   = node_length;
-    node->toString = node_toString;
-
-    if (!json_str_or_null || strlen(json_str_or_null) == 0) {
-        node->core_data = (Object*)new_HashMap(16);
-        node->is_object_flag = 1;
-        node->is_array_flag = 0;
-        return node;
+    if (!null_str) {
+        return NULL;
     }
 
-    Object *parsed = impl_parse(json_str_or_null);
-    node->core_data = parsed;
+    return null_str;
+}
 
-    if (parsed) {
-        const Class *cls = GET_CLASS(parsed);
+static int node_equals(JSONNode *self, JSONNode *other) {
+    if (!self || !other) {
+        return 0;
+    }
 
-        if (strcmp(cls->name, "HashMap") == 0) {
-            node->is_object_flag = 1;
-            node->is_array_flag = 0;
-        } else if (strcmp(cls->name, "ArrayList") == 0) {
-            node->is_object_flag = 0;
-            node->is_array_flag = 1;
-        } else {
-            node->is_object_flag = 0;
-            node->is_array_flag = 0;
-        }
-    } else {
+    return impl_json_equals(self->core_data, other->core_data);
+}
+
+static JSONNode* alloc_JSONNode(int is_obj) {
+    JSONNode *node = (JSONNode*)calloc(1, sizeof(JSONNode));
+
+    if (!node) {
+        return NULL;
+    }
+
+    Object_Init((Object*)node, &jsonNodeClass);
+    node->isObject = node_isObject;
+    node->isArray = node_isArray;
+    node->put = node_put;
+    node->get = node_get;
+    node->getString = node_getString;
+    node->getInt = node_getInt;
+    node->add = node_add;
+    node->getIndex = node_getIndex;
+    node->length = node_length;
+    node->toString = node_toString;
+    node->equals = node_equals;
+
+    node->is_object_flag = is_obj;
+    node->is_array_flag = !is_obj;
+
+    if (is_obj) {
         node->core_data = (Object*)new_HashMap(16);
-        node->is_object_flag = 1;
-        node->is_array_flag = 0;
+    } else {
+        node->core_data = (Object*)new_ArrayList(10);
+    }
+
+    if (!node->core_data) {
+        RELEASE((Object*)node);
+        return NULL;
     }
 
     return node;
 }
 
+JSONNode* new_JSON_Object(void) {
+    return alloc_JSONNode(1);
+}
+
+JSONNode* new_JSON_Array(void) {
+    return alloc_JSONNode(0);
+}
+
+ParseResult parse_JSON(const char *json_str) {
+    ParseResult res;
+
+    res.root = NULL;
+    res.success = 0;
+    memset(res.error, 0, sizeof(res.error));
+
+    if (!json_str || strlen(json_str) == 0) {
+        snprintf(res.error, sizeof(res.error), "Empty input string.");
+        return res;
+    }
+
+    ParseContext ctx = { json_str, json_str, 0, res.error, sizeof(res.error), 0 };
+    Object *parsed = parse_value(&ctx);
+
+    if (!parsed) {
+        if (!ctx.has_error) {
+            snprintf(res.error, sizeof(res.error), "Empty or whitespace-only JSON.");
+        }
+        return res;
+    }
+
+    if (ctx.has_error) {
+        RELEASE(parsed);
+        return res;
+    }
+
+    skip_ws(&ctx);
+
+    if (*(ctx.ptr) != '\0') {
+        snprintf(res.error, sizeof(res.error), "Garbage data after root element.");
+        RELEASE(parsed);
+        return res;
+    }
+
+    JSONNode *node = (JSONNode*)calloc(1, sizeof(JSONNode));
+
+    if (!node) {
+        snprintf(res.error, sizeof(res.error), "OOM while allocating root JSONNode.");
+        RELEASE(parsed);
+        return res;
+    }
+
+    Object_Init((Object*)node, &jsonNodeClass);
+    node->isObject = node_isObject;
+    node->isArray = node_isArray;
+    node->put = node_put;
+    node->get = node_get;
+    node->getString = node_getString;
+    node->getInt = node_getInt;
+    node->add = node_add;
+    node->getIndex = node_getIndex;
+    node->length = node_length;
+    node->toString = node_toString;
+    node->equals = node_equals;
+
+    node->core_data = parsed;
+
+    if (is_hashmap(parsed)) {
+        node->is_object_flag = 1;
+        node->is_array_flag = 0;
+    } else if (is_arraylist(parsed)) {
+        node->is_object_flag = 0;
+        node->is_array_flag = 1;
+    }
+
+    res.success = 1;
+    res.root = node;
+
+    return res;
+}
+
+static Object* impl_parse(const char *json_str) {
+    if (!json_str) {
+        return NULL;
+    }
+
+    ParseContext ctx = { json_str, json_str, 0, NULL, 0, 0 };
+
+    return parse_value(&ctx);
+}
+
 /* =================================================================
- * [6] ObjectMapper & Legacy Interfaces
+ * [6] Legacy & 하위 호환성 래퍼 구현
  * ================================================================= */
+JSONNode* new_JSON(const char *json_str_or_null) {
+    if (!json_str_or_null || strlen(json_str_or_null) == 0) {
+        return new_JSON_Object();
+    }
+
+    if (strcmp(json_str_or_null, "[]") == 0) {
+        return new_JSON_Array();
+    }
+
+    ParseResult res = parse_JSON(json_str_or_null);
+
+    if (res.success) {
+        return res.root;
+    } else {
+        fprintf(stderr, "[Legacy Wrapper] 파싱 실패: %s\n", res.error);
+        return NULL;
+    }
+}
+
 static char* om_writeValueAsString(Object *obj) {
     if (!obj) {
         return strdup("null");
     }
 
-    if (strcmp(GET_CLASS(obj)->name, "JSONNode") == 0) {
-        return impl_stringify( ((JSONNode*)obj)->core_data );
+    if (is_json_node(obj)) {
+        return impl_stringify(((JSONNode*)obj)->core_data);
     }
 
     return impl_stringify(obj);
