@@ -30,9 +30,9 @@ struct AppContext {
 
 AppContext* new_AppContext();
 
-// 🚨 통합 서비스 추출 매크로 ✅
-#define APP_GET_SERVICE(app, TYPE) \
-    ((TYPE*) (app)->getService((app), &TYPE##_Class))
+//표준 REG_GET 이름 통일 및 타입 안전 매크로
+#define REG_GET(app, TYPE) \
+    ((TYPE*)((app)->getService((app), &TYPE##_Class)))
 
 // 🚨 유일한 전역 사령관 선언 ✅
 extern AppContext* g_app;

@@ -83,8 +83,8 @@ int main() {
     // ---------------------------------------------------------
     // STEP 5: 서비스 활용 (Scheduler 가동)
     // ---------------------------------------------------------
-    // 다시 꺼내서 쓰기 (APP_GET_SERVICE 매크로 활용!)
-    Scheduler* registered_sched = APP_GET_SERVICE(g_app, Scheduler);
+    // 다시 꺼내서 쓰기 (REG_GET 매크로 활용!)
+    Scheduler* registered_sched = REG_GET(g_app, Scheduler);
     if (registered_sched) {
         registered_sched->addEx(registered_sched, "Heartbeat", 2000, true,
                                 JOB_PRIO_NORMAL, task_heartbeat, NULL);
