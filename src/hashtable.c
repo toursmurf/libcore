@@ -1,302 +1,349 @@
-#include "hashtable.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "hashmap.h"
 
-/* =========================================
- * [Internal] Helper: rehash (ARC 보존)
- * ========================================= */
-static void rehash(Hashtable *self) {
-    size_t oldCap = self->capacity;
-    HashtableEntry **oldTable = self->table;
-
-    size_t newCap = oldCap * 2 + 1;
-    HashtableEntry **newTable = (HashtableEntry**)calloc(newCap, sizeof(HashtableEntry*));
-    if (!newTable) return;
-
-    self->capacity = newCap;
-    self->threshold = (size_t)(newCap * self->loadFactor);
-    self->table = newTable;
-    self->modCount++;
-
-    for (size_t i = 0; i < oldCap; i++) {
-        HashtableEntry *e = oldTable[i];
-        while (e) {
-            HashtableEntry *next = e->next;
-            size_t newIdx = e->hash % newCap;
-            e->next = newTable[newIdx];
-            newTable[newIdx] = e;
-            e = next;
-        }
+static unsigned int hash_str(const char *str) {
+    unsigned int hash = 5381;
+    int c;
+    while ((c = *str++)) {
+        hash = ((hash << 5) + hash) + c;
     }
-    free(oldTable);
+    return hash;
 }
 
-/* =========================================
- * [Object] Override: 생명주기 관리
- * ========================================= */
-static void Hashtable_Finalize(Object *self) {
-    Hashtable *ht = (Hashtable*)self;
-    for (size_t i = 0; i < (size_t)ht->capacity; i++) {
-        HashtableEntry *e = ht->table[i];
-        while (e) {
-            HashtableEntry *next = e->next;
-            RELEASE(e->key);
-            RELEASE(e->value);
-            free(e);
-            e = next;
-        }
-    }
-    free(ht->table);
-    pthread_mutex_destroy(&ht->lock);
+static void HashMap_ToString(Object *self, char *buffer, size_t len) {
+    HashMap *map = (HashMap*)self;
+    snprintf(buffer, len, "HashMap(size=%d, cap=%d)", map->size, map->capacity);
 }
 
-const Class hashtableClass = {
-    .name = "Hashtable",
-    .size = sizeof(Hashtable),
-    .finalize = Hashtable_Finalize
+static void HashMap_Finalize(Object *self) {
+    HashMap *map = (HashMap*)self;
+    if (map->buckets) {
+        for (int i = 0; i < map->capacity; i++) {
+            HashNode *node = map->buckets[i];
+            while (node) {
+                HashNode *next = node->next;
+                if (node->key) free(node->key);
+                if (node->value) RELEASE(node->value);
+                free(node);
+                node = next;
+            }
+        }
+        free(map->buckets);
+    }
+    pthread_mutex_destroy(&map->lock);
+}
+
+const Class hashMapClass = {
+    .name = "HashMap",
+    .size = sizeof(HashMap),
+    .toString = HashMap_ToString,
+    .finalize = HashMap_Finalize
 };
 
-/* =========================================
- * [Methods] Implementation
- * ========================================= */
-static size_t ht_size(Hashtable *self) {
+static Object* impl_get(HashMap *self, const char *key);
+
+static ArrayList* HM_keys(HashMap* self) {
+    if (!self) return NULL;
+    int init_cap = self->size > 0 ? self->size : 10;
+    ArrayList* list = new_ArrayList(init_cap);
+    if (!list) return NULL;
+
     pthread_mutex_lock(&self->lock);
-    size_t s = self->count;
+    for (int i = 0; i < self->capacity; i++) {
+        HashNode* node = self->buckets[i];
+        while (node != NULL) {
+            String* key_str = new_String(node->key);
+            if (key_str) {
+                list->add(list, (Object*)key_str);
+                RELEASE(key_str);
+            }
+            node = node->next;
+        }
+    }
+    pthread_mutex_unlock(&self->lock);
+    return list;
+}
+
+static ArrayList* HM_values(HashMap* self) {
+    if (!self) return NULL;
+    int init_cap = self->size > 0 ? self->size : 10;
+    ArrayList* list = new_ArrayList(init_cap);
+    if (!list) return NULL;
+
+    pthread_mutex_lock(&self->lock);
+    for (int i = 0; i < self->capacity; i++) {
+        HashNode* node = self->buckets[i];
+        while (node != NULL) {
+            list->add(list, node->value);
+            node = node->next;
+        }
+    }
+    pthread_mutex_unlock(&self->lock);
+    return list;
+}
+
+static bool HashMap_hasKey_impl(HashMap* self, const char* key) {
+    if (!self || !key) return false;
+    return (impl_get(self, key) != NULL);
+}
+
+static void impl_put(HashMap *self, const char *key, Object *value) {
+    if (!self || !key) return;
+
+    pthread_mutex_lock(&self->lock);
+    unsigned int h = hash_str(key);
+    int index = h % self->capacity;
+
+    HashNode *node = self->buckets[index];
+    while (node) {
+        if (strncmp(node->key, key, MAX_KEY_LEN) == 0) {
+            RELEASE(node->value);
+            node->value = RETAIN(value);
+            pthread_mutex_unlock(&self->lock);
+            return;
+        }
+        node = node->next;
+    }
+
+    HashNode *newNode = (HashNode*)malloc(sizeof(HashNode));
+    if (!newNode) {
+        pthread_mutex_unlock(&self->lock);
+        return;
+    }
+
+    newNode->key = strdup(key);
+    if (!newNode->key) {
+        free(newNode);
+        pthread_mutex_unlock(&self->lock);
+        return;
+    }
+
+    newNode->value = RETAIN(value);
+    newNode->next = self->buckets[index];
+    self->buckets[index] = newNode;
+    self->size++;
+    pthread_mutex_unlock(&self->lock);
+}
+
+static Object* impl_get(HashMap *self, const char *key) {
+    if (!self || !key) return NULL;
+
+    pthread_mutex_lock(&self->lock);
+    unsigned int h = hash_str(key);
+    int index = h % self->capacity;
+
+    HashNode *node = self->buckets[index];
+    while (node) {
+        if (strncmp(node->key, key, MAX_KEY_LEN) == 0) {
+            Object *val = node->value;
+            pthread_mutex_unlock(&self->lock);
+            return val;
+        }
+        node = node->next;
+    }
+    pthread_mutex_unlock(&self->lock);
+    return NULL;
+}
+
+static void impl_remove(HashMap *self, const char *key) {
+    if (!self || !key) return;
+
+    pthread_mutex_lock(&self->lock);
+    unsigned int h = hash_str(key);
+    int index = h % self->capacity;
+
+    HashNode *node = self->buckets[index];
+    HashNode *prev = NULL;
+
+    while (node) {
+        if (strncmp(node->key, key, MAX_KEY_LEN) == 0) {
+            if (prev) prev->next = node->next;
+            else self->buckets[index] = node->next;
+
+            free(node->key);
+            RELEASE(node->value);
+            free(node);
+            self->size--;
+            break;
+        }
+        prev = node;
+        node = node->next;
+    }
+    pthread_mutex_unlock(&self->lock);
+}
+
+static Object* impl_detach(HashMap *self, const char *key) {
+    if (!self || !key) return NULL;
+
+    pthread_mutex_lock(&self->lock);
+    unsigned int h = hash_str(key);
+    int index = h % self->capacity;
+
+    HashNode *node = self->buckets[index];
+    HashNode *prev = NULL;
+    Object *extracted_value = NULL;
+
+    while (node) {
+        if (strncmp(node->key, key, MAX_KEY_LEN) == 0) {
+            if (prev) prev->next = node->next;
+            else self->buckets[index] = node->next;
+
+            extracted_value = node->value;
+            free(node->key);
+            free(node);
+            self->size--;
+            break;
+        }
+        prev = node;
+        node = node->next;
+    }
+    pthread_mutex_unlock(&self->lock);
+    return extracted_value;
+}
+
+static void impl_clear(HashMap *self) {
+    if (!self) return;
+
+    pthread_mutex_lock(&self->lock);
+    for (int i = 0; i < self->capacity; i++) {
+        HashNode *node = self->buckets[i];
+        while (node) {
+            HashNode *next = node->next;
+            free(node->key);
+            RELEASE(node->value);
+            free(node);
+            node = next;
+        }
+        self->buckets[i] = NULL;
+    }
+    self->size = 0;
+    pthread_mutex_unlock(&self->lock);
+}
+
+static void impl_forEach(HashMap *self, void (*action)(const char* key, Object* value)) {
+    if (!self || !action) return;
+
+    pthread_mutex_lock(&self->lock);
+    for (int i = 0; i < self->capacity; i++) {
+        HashNode *node = self->buckets[i];
+        while (node) {
+            action(node->key, node->value);
+            node = node->next;
+        }
+    }
+    pthread_mutex_unlock(&self->lock);
+}
+
+static void impl_iterate(HashMap *self, HashMapIterator fn, void* ctx) {
+    if (!self || !fn) return;
+
+    pthread_mutex_lock(&self->lock);
+    for (int i = 0; i < self->capacity; i++) {
+        HashNode *node = self->buckets[i];
+        while (node) {
+            if (!fn(node->key, node->value, ctx)) {
+                pthread_mutex_unlock(&self->lock);
+                return;
+            }
+            node = node->next;
+        }
+    }
+    pthread_mutex_unlock(&self->lock);
+}
+
+static int impl_getSize(HashMap *self) {
+    if (!self) return 0;
+    pthread_mutex_lock(&self->lock);
+    int s = self->size;
     pthread_mutex_unlock(&self->lock);
     return s;
 }
 
-static bool ht_isEmpty(Hashtable *self) {
-    return ht_size(self) == 0;
-}
-
-static bool ht_containsKey(Hashtable *self, Object *key) {
-    if (key == NULL) return false;
+static bool impl_isEmpty(HashMap *self) {
+    if (!self) return true;
     pthread_mutex_lock(&self->lock);
-    size_t hash = (size_t)hashCode(key);
-    HashtableEntry *e = self->table[hash % self->capacity];
-    while (e) {
-        if (e->hash == hash && equals(e->key, key)) {
-            pthread_mutex_unlock(&self->lock);
-            return true;
-        }
-        e = e->next;
-    }
+    bool empty = (self->size == 0);
     pthread_mutex_unlock(&self->lock);
-    return false;
+    return empty;
 }
 
-static Object* ht_put(Hashtable *self, Object *key, Object *value) {
-    if (key == NULL || value == NULL) return NULL;
-    pthread_mutex_lock(&self->lock);
-
-    if (self->count >= self->threshold) rehash(self);
-
-    size_t hash = (size_t)hashCode(key);
-    size_t idx = hash % self->capacity;
-
-    HashtableEntry *e = self->table[idx];
-    while (e) {
-        if (e->hash == hash && equals(e->key, key)) {
-            Object *old = e->value;
-            e->value = RETAIN(value);
-            pthread_mutex_unlock(&self->lock);
-            return old;
-        }
-        e = e->next;
-    }
-
-    HashtableEntry *newEntry = (HashtableEntry*)malloc(sizeof(HashtableEntry));
-    newEntry->key = RETAIN(key);
-    newEntry->value = RETAIN(value);
-    newEntry->hash = hash;
-    newEntry->next = self->table[idx];
-    self->table[idx] = newEntry;
-
-    self->count++;
-    self->modCount++;
-    pthread_mutex_unlock(&self->lock);
-    return NULL;
-}
-
-static Object* ht_get(Hashtable *self, Object *key) {
-    if (key == NULL) return NULL;
-    pthread_mutex_lock(&self->lock);
-    size_t hash = (size_t)hashCode(key);
-    HashtableEntry *e = self->table[hash % self->capacity];
-    while (e) {
-        if (e->hash == hash && equals(e->key, key)) {
-            Object *val = e->value;
-            pthread_mutex_unlock(&self->lock);
-            return val;
-        }
-        e = e->next;
-    }
-    pthread_mutex_unlock(&self->lock);
-    return NULL;
-}
-
-static Object* ht_remove(Hashtable *self, Object *key) {
-    if (key == NULL) return NULL;
-    pthread_mutex_lock(&self->lock);
-    size_t hash = (size_t)hashCode(key);
-    size_t idx = hash % self->capacity;
-    HashtableEntry *prev = NULL;
-    HashtableEntry *e = self->table[idx];
-    while (e) {
-        if (e->hash == hash && equals(e->key, key)) {
-            if (prev) prev->next = e->next;
-            else self->table[idx] = e->next;
-            Object *old = e->value;
-            RELEASE(e->key);
-            free(e);
-            self->count--;
-            self->modCount++;
-            pthread_mutex_unlock(&self->lock);
-            return old;
-        }
-        prev = e;
-        e = e->next;
-    }
-    pthread_mutex_unlock(&self->lock);
-    return NULL;
-}
-
-static void ht_clear(Hashtable *self) {
-    pthread_mutex_lock(&self->lock);
-    for (size_t i = 0; i < (size_t)self->capacity; i++) {
-        HashtableEntry *e = self->table[i];
-        while (e) {
-            HashtableEntry *next = e->next;
-            RELEASE(e->key);
-            RELEASE(e->value);
-            free(e);
-            e = next;
-        }
-        self->table[i] = NULL;
-    }
-    self->count = 0;
-    self->modCount++;
-    pthread_mutex_unlock(&self->lock);
-}
-
-static ArrayList* ht_keys(Hashtable *self) {
-    pthread_mutex_lock(&self->lock);
-    ArrayList *list = new_ArrayList(self->count);
-    for (size_t i = 0; i < (size_t)self->capacity; i++) {
-        HashtableEntry *e = self->table[i];
-        while (e) {
-            list->add(list, RETAIN(e->key));
-            e = e->next;
-        }
-    }
-    pthread_mutex_unlock(&self->lock);
-    return list;
-}
-
-static ArrayList* ht_values(Hashtable *self) {
-    pthread_mutex_lock(&self->lock);
-    ArrayList *list = new_ArrayList(self->count);
-    for (size_t i = 0; i < (size_t)self->capacity; i++) {
-        HashtableEntry *e = self->table[i];
-        while (e) {
-            list->add(list, RETAIN(e->value));
-            e = e->next;
-        }
-    }
-    pthread_mutex_unlock(&self->lock);
-    return list;
-}
-
-/* =========================================
- * [Internal] Iterator Implementation
- * ========================================= */
-static bool it_hasNext(HashtableIterator *self) {
-    return self->currentEntry != NULL;
-}
-
-static bool it_next(HashtableIterator *self, Object **outKey, Object **outValue) {
-    if (self->ht->modCount != self->expectedModCount) return false;
-    if (!self->currentEntry) return false;
-
-    if (outKey) *outKey = self->currentEntry->key;
-    if (outValue) *outValue = self->currentEntry->value;
-
-    self->lastReturned = self->currentEntry;
-
-    if (self->currentEntry->next) {
-        self->currentEntry = self->currentEntry->next;
-    } else {
-        self->currentEntry = NULL;
-        while (self->currentBucketIndex < (size_t) self->ht->capacity) {
-            HashtableEntry *e = self->ht->table[self->currentBucketIndex++];
-            if (e) {
-                self->currentEntry = e;
-                break;
-            }
-        }
-    }
-    return true;
-}
-
-static void Iterator_Finalize(Object *self) {
-	(void)self;
-}
-const Class hashtableIteratorClass = { "HashtableIterator", sizeof(HashtableIterator), .finalize = Iterator_Finalize };
-
-static HashtableIterator* ht_iterator(Hashtable *self) {
-    HashtableIterator *it = (HashtableIterator*)malloc(sizeof(HashtableIterator));
-    Object_Init((Object*)it, &hashtableIteratorClass);
-    pthread_mutex_lock(&self->lock);
-    it->ht = self;
-    it->currentBucketIndex = 0;
-    it->currentEntry = NULL;
-    it->lastReturned = NULL;
-    it->expectedModCount = self->modCount;
-    while (it->currentBucketIndex < (size_t)self->capacity) {
-        HashtableEntry *e = self->table[it->currentBucketIndex++];
-        if (e) {
-            it->currentEntry = e;
-            break;
-        }
-    }
-    pthread_mutex_unlock(&self->lock);
-    it->hasNext = it_hasNext;
-    it->next = it_next;
-    return it;
-}
-
-static void Hashtable_release(Hashtable* self) {
+static void impl_free(HashMap *self) {
+    if (!self) return;
     RELEASE((Object*)self);
 }
 
-/* =========================================
- * [Constructor] new_Hashtable
- * ========================================= */
-Hashtable* new_Hashtable(size_t initialCapacity, float loadFactor) {
-    Hashtable *ht = (Hashtable*)malloc(sizeof(Hashtable));
-    Object_Init((Object*)ht, &hashtableClass);
+HashMap* new_HashMap(int initial_capacity) {
+    if (initial_capacity <= 0) initial_capacity = 16;
+    HashMap *map = (HashMap*)malloc(sizeof(HashMap));
+    if (!map) return NULL;
 
-    ht->capacity = (initialCapacity == 0) ? 11 : initialCapacity;
-    ht->loadFactor = (loadFactor <= 0) ? 0.75f : loadFactor;
-    ht->threshold = (size_t)(ht->capacity * ht->loadFactor);
-    ht->count = 0;
-    ht->modCount = 0;
-    ht->table = (HashtableEntry**)calloc(ht->capacity, sizeof(HashtableEntry*));
-    pthread_mutex_init(&ht->lock, NULL);
+    Object_Init((Object*)map, &hashMapClass);
 
-    ht->put = ht_put;
-    ht->get = ht_get;
-    ht->remove = ht_remove;
-    ht->containsKey = ht_containsKey;
-    ht->size = ht_size;
-    ht->isEmpty = ht_isEmpty;
-    ht->clear = ht_clear;
-    ht->keys = ht_keys;
-    ht->values = ht_values;
-    ht->iterator = ht_iterator;
-    ht->destroy = Hashtable_release;
+    map->capacity = initial_capacity;
+    map->size = 0;
+    map->buckets = (HashNode**)calloc(map->capacity, sizeof(HashNode*));
+    if (!map->buckets) {
+        free(map);
+        return NULL;
+    }
 
-    return ht;
+    map->loadFactor = 0.75f;
+    pthread_mutex_init(&map->lock, NULL);
+
+    map->put = impl_put;
+    map->get = impl_get;
+    map->remove = impl_remove;
+    map->detach = impl_detach;
+    map->clear = impl_clear;
+    map->forEach = impl_forEach;
+    map->iterate = impl_iterate;
+    map->getSize = impl_getSize;
+    map->isEmpty = impl_isEmpty;
+    map->keys = HM_keys;
+    map->values = HM_values;
+    map->hasKey = HashMap_hasKey_impl;
+    map->free = impl_free;
+    map->destroy = impl_free;
+
+    return map;
+}
+
+void hashmap_put_str(HashMap* self, const char* key, const char* value) {
+    if (!self || !key || !value) return;
+    Object* v = (Object*)new_String(value);
+    if (v) { self->put(self, key, v); RELEASE(v); }
+}
+
+void hashmap_put_int(HashMap* self, const char* key, int value) {
+    if (!self || !key) return;
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%d", value);
+    Object* v = (Object*)new_String(buf);
+    if (v) { self->put(self, key, v); RELEASE(v); }
+}
+
+void hashmap_put_long(HashMap* self, const char* key, long value) {
+    if (!self || !key) return;
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%ld", value);
+    Object* v = (Object*)new_String(buf);
+    if (v) { self->put(self, key, v); RELEASE(v); }
+}
+
+const char* hashmap_get_str(HashMap* self, const char* key) {
+    if (!self || !key) return NULL;
+    String* v = (String*)self->get(self, key);
+    return v ? v->value : NULL;
+}
+
+int hashmap_get_int(HashMap* self, const char* key) {
+    const char* str = hashmap_get_str(self, key);
+    return str ? atoi(str) : 0;
+}
+
+long hashmap_get_long(HashMap* self, const char* key) {
+    const char* str = hashmap_get_str(self, key);
+    return str ? atol(str) : 0L;
 }
