@@ -1,40 +1,56 @@
-#ifndef ARRAYLIST_H
-#define ARRAYLIST_H
-
-#include <pthread.h>
-#include <stdbool.h>
-#include <stdlib.h>
+#ifndef ARRAYLIST_H  
+#define ARRAYLIST_H  
+  
+#include <pthread.h>  
+#include <stdbool.h>  
+#include <stdlib.h>  
 #include "object.h"
 
-typedef struct ArrayList ArrayList;
+typedef void (*ArrayListActionFunc)(Object* item);  
+typedef int (*ArrayListCompareFunc)(const void* itemA, const void* itemB);  
+
+extern const Class arrayListClass;  
+extern const Class arrayListIteratorClass;  
+
 typedef struct ArrayListIterator ArrayListIterator;
+typedef struct ArrayList ArrayList;
 
-typedef void (*ArrayListActionFunc)(Object* item);
-typedef int (*ArrayListCompareFunc)(const void* itemA, const void* itemB);
+struct ArrayListIterator {  
+    Object base;  
+    ArrayList *list;  
+    int currentIndex;  
 
-extern const Class arrayListClass;
-extern const Class arrayListIteratorClass;
+    bool (*hasNext)(ArrayListIterator *self);  
+    Object* (*next)(ArrayListIterator *self);  
+};  
 
-/* [ArrayListIterator] ARC 대응 이터레이터 */
-struct ArrayListIterator {
-    Object base;
-    ArrayList *list;
-    int currentIndex;
+struct ArrayList {  
+    Object base;  
+    Object** items;
+    int size;  
+    int capacity;  
+    pthread_mutex_t lock;  
+    
+    void (*add)(ArrayList* self, Object* item);  
+    Object* (*get)(ArrayList* self, int index);  
+    void (*remove)(ArrayList* self, int index);      
+    void (*removeResult)(ArrayList* self, int index);
+    int (*getSize)(ArrayList* self);  
+    void (*clear)(ArrayList* self);  
+    bool (*isEmpty)(ArrayList* self);  
+    void (*trimToSize)(ArrayList* self);  
+    void (*ensureCapacity)(ArrayList* self, int min_capacity);  
+    void (*forEach)(ArrayList* self, ArrayListActionFunc action);
+    void* (*find)(ArrayList* self, void* target, ArrayListCompareFunc compare); 
+    void (*sort)(ArrayList* self, ArrayListCompareFunc compare);
+    ArrayListIterator* (*iterator)(ArrayList* self);  
+    void (*destroy)(ArrayList* self);
+    Object* (*detach)(ArrayList *self, int index);
+};  
 
-    bool (*hasNext)(ArrayListIterator *self);
-    Object* (*next)(ArrayListIterator *self);
-};
+ArrayList* new_ArrayList(int initial_capacity);  
 
-/* [ArrayList] 가상 함수 인터페이스 + ARC Owning 강화 */
-struct ArrayList {
-    Object base;
-    Object** items;        // [ARC] 모든 데이터는 Object 상속 객체로 관리
-    int size;
-    int capacity;
-    pthread_mutex_t lock;
-    void (*add)(ArrayList* self, Object* item);
-    Object* (*get)(ArrayList* self, int index);
-    void (*remove)(ArrayList* self, int index);      // 삭제 시 RELEASE
+#endif    void (*remove)(ArrayList* self, int index);      // 삭제 시 RELEASE
     void (*removeResult)(ArrayList* self, int index); // 삭제만 수행
     int (*getSize)(ArrayList* self);
     void (*clear)(ArrayList* self);
