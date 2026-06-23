@@ -34,4 +34,4 @@ uint8_t* asn1_encode_ip(uint8_t* buf, const uint8_t ip[4]);
 uint8_t* asn1_encode_string(uint8_t* buf, const char* str, size_t len);
 uint8_t* asn1_encode_oid(uint8_t* buf, const char* oid_str);
 
-#endifㄴ
+#endif // ASN1_H
