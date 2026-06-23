@@ -2,6 +2,31 @@
 #include <stdio.h>
 #include <unistd.h>
 
+void process_with_tag(ArrayList* results) {
+    int count = results->getSize(results);
+    for (int i = 0; i < count; i++) {
+        SnmpVarBind* vb = (SnmpVarBind*)results->get(results, i);
+
+        // 🚀 strstr 대신 tag 필드로 깔끔하게 분기 (이것이 근본!)
+        switch (vb->tag) {
+            case ASN1_COUNTER32:
+                printf("[Traffic] %s : %s octets\n", vb->oid, vb->value_str);
+                break;
+            case ASN1_GAUGE32:
+                printf("[CPU Load] %s : %s %%\n", vb->oid, vb->value_str);
+                break;
+            case ASN1_TIMETICKS:
+                printf("[Uptime] %s : %s ticks\n", vb->oid, vb->value_str);
+                break;
+            case ASN1_IPADDRESS:
+                printf("[Admin IP] %s : %s\n", vb->oid, vb->value_str);
+                break;
+            default:
+                printf("[Generic] %s : %s\n", vb->oid, vb->value_str);
+        }
+    }
+}
+
 void example_snmp_get_and_bulk() {
     printf("\n--- [1] SNMP 데이터 수집 테스트 ---\n");
 
@@ -86,6 +111,22 @@ int main(int argc, char* argv[]) {
     example_snmp_get_and_bulk();
     example_trap_send_receive();
 
+		ㄴCoreSnmp* nms = new_Snmp(SNMP_TRANS_UDP, "2c", "public");
+    uint8_t raw_buf[2048];
+    size_t actual_len = 0; // 🚀 실제 수신 길이 저장 변수
+
+    // 1. sendGet 호출 시 실제 수신 길이를 받아옴
+    if (nms->sendGet(nms, "192.168.1.1", "1.3.6.1.2.1.1.3.0", raw_buf, 2048, &actual_len) == CORE_OK) {
+        ArrayList* list = new_ArrayList(1);
+
+        // 🚀 정확한 actual_len을 전달 (하드코딩 1024 안녕!)
+        snmp_asn_decode_response(raw_buf, actual_len, list);
+
+        process_with_tag(list);
+        RELEASE_NULL((Object**)&list);
+    }
+
+    RELEASE_NULL((Object**)&nms);
     printf("====================================================\n");
     printf("   🔥 NMS 프로세스 종료 (Valgrind Leak: 0 Bytes) 🔥   \n");
     printf("====================================================\n");
