@@ -223,7 +223,7 @@ static void impl_clear(HashMap *self) {
 }
 
 static void impl_forEach(HashMap *self, void (*action)(const char* key, Object* value)) {
-    if (!self || !action || !value) return;
+    if (!self || !action) return;
 
     pthread_mutex_lock(&self->lock);
     for (int i = 0; i < self->capacity; i++) {
@@ -346,4 +346,4 @@ int hashmap_get_int(HashMap* self, const char* key) {
 long hashmap_get_long(HashMap* self, const char* key) {
     const char* str = hashmap_get_str(self, key);
     return str ? atol(str) : 0L;
-}}
+}
