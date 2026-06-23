@@ -28,9 +28,9 @@ const Class arrayListClass = {
     .finalize = ArrayList_Finalize  
 };  
 
-static inline bool is_arraylist(Object *obj) {  
-    return (obj && GET_CLASS(obj) == &arrayListClass);  
-}  
+static inline bool is_arraylist(Object *obj) {
+    return (obj && obj->type == &arrayListClass);
+}
 
 static bool iter_hasNext(ArrayListIterator *self) {  
     if (!self || !self->list) return false;  
