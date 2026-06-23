@@ -50,21 +50,4 @@ struct ArrayList {
 
 ArrayList* new_ArrayList(int initial_capacity);  
 
-#endif    void (*remove)(ArrayList* self, int index);      // 삭제 시 RELEASE
-    void (*removeResult)(ArrayList* self, int index); // 삭제만 수행
-    int (*getSize)(ArrayList* self);
-    void (*clear)(ArrayList* self);
-    bool (*isEmpty)(ArrayList* self);
-    void (*trimToSize)(ArrayList* self);
-    void (*ensureCapacity)(ArrayList* self, int min_capacity);
-    void (*forEach)(ArrayList* self, ArrayListActionFunc action);
-    void* (*find)(ArrayList* self, void* target, ArrayListCompareFunc compare);
-    void (*sort)(ArrayList* self, ArrayListCompareFunc compare);
-    ArrayListIterator* (*iterator)(ArrayList* self);
-    void (*destroy)(ArrayList* self);
-    Object* (*detach)(ArrayList *self, int index); // 소유권 이전 (RELEASE 안 함)
-};
-
-ArrayList* new_ArrayList(int initial_capacity);
-
 #endif // ARRAYLIST_H

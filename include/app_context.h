@@ -17,7 +17,7 @@ struct AppContext {
 
     bool initialized;
 
-    bool (*init)       (AppContext* self);
+    bool (*init)       (AppContext* self, const char* config_path); // 🚀 파라미터 일치!
     void (*destroy_all)(AppContext* self);
 
     void    (*setConfig)   (AppContext* self, const char* key, const char* val);
@@ -30,11 +30,7 @@ struct AppContext {
 
 AppContext* new_AppContext();
 
-//표준 REG_GET 이름 통일 및 타입 안전 매크로
-#define REG_GET(app, TYPE) \
-    ((TYPE*)((app)->getService((app), &TYPE##_Class)))
-
 // 🚨 유일한 전역 사령관 선언 ✅
 extern AppContext* g_app;
 
-#endif
+#endif // APP_CONTEXT_H

@@ -17,9 +17,10 @@ static void AppContext_finalize(Object* obj) {
     }
 
     // 🚨 의존성 역순에 따른 RELEASE_NULL 체인 (Dangling Pointer 원천 차단)
-    RELEASE_NULL((Object**)&self->reg);
-    RELEASE_NULL((Object**)&self->runtime);
-    RELEASE_NULL((Object**)&self->config);
+    // ❌ 캐스팅((Object**)&) 완전 제거!!
+    RELEASE_NULL(self->reg);
+    RELEASE_NULL(self->runtime);
+    RELEASE_NULL(self->config);
 }
 
 // 🚨 static const Class 적용 (.rodata 읽기 전용 메모리 박제)
