@@ -14,11 +14,12 @@ static Class SnmpTrap_Class = {
     .finalize = SnmpTrap_finalize
 };
 
-// 🚨 [부활] SnmpTrap 객체 생성자 완벽하게 복구!!
-SnmpTrap* new_SnmpTrap(void) {
+정SnmpTrap* new_SnmpTrap(void) {
     SnmpTrap* self = (SnmpTrap*)calloc(1, sizeof(SnmpTrap));
 
-    if (!self) return NULL;
+    if (!self) {
+        return NULL;
+    }
 
     Object_Init((Object*)self, &SnmpTrap_Class);
 
@@ -40,7 +41,9 @@ const Class CoreSnmp_Class_Instance = {
 };
 
 static ErrorCode startListen_impl(CoreSnmp* self, int port) {
-    if (!self) return ERR_INVALID;
+    if (!self) {
+        return ERR_INVALID;
+    }
 
     if (self->trap_receiver) {
         RELEASE_NULL(self->trap_receiver);
@@ -51,7 +54,9 @@ static ErrorCode startListen_impl(CoreSnmp* self, int port) {
 
     self->trap_receiver = createServer(url, NULL);
 
-    if (!self->trap_receiver) return ERR_NET_CONNECT;
+    if (!self->trap_receiver) {
+        return ERR_NET_CONNECT;
+    }
 
     self->trap_port = port;
 
@@ -87,7 +92,9 @@ static inline const char* get_sec_name(CoreSnmp* self) {
 }
 
 static ErrorCode sendGet_impl(CoreSnmp* self, const char* ip, const char* oid, void* out, size_t sz, size_t* out_len) {
-    if (!self || !self->snmp_sender || !ip || !oid) return ERR_INVALID;
+    if (!self || !self->snmp_sender || !ip || !oid) {
+        return ERR_INVALID;
+    }
 
     uint8_t pdu[1024];
     size_t pdu_len = snmp_asn_encode_pdu(pdu, sizeof(pdu), 0xA0, get_version_val(self->version), get_sec_name(self), oid, 0, 0, NULL);
@@ -111,7 +118,9 @@ static ErrorCode sendGet_impl(CoreSnmp* self, const char* ip, const char* oid, v
 }
 
 static ErrorCode sendGetNext_impl(CoreSnmp* self, const char* ip, const char* oid, void* out, size_t sz, size_t* out_len) {
-    if (!self || !self->snmp_sender || !ip || !oid) return ERR_INVALID;
+    if (!self || !self->snmp_sender || !ip || !oid) {
+        return ERR_INVALID;
+    }
 
     uint8_t pdu[1024];
     size_t pdu_len = snmp_asn_encode_pdu(pdu, sizeof(pdu), 0xA1, get_version_val(self->version), get_sec_name(self), oid, 0, 0, NULL);
@@ -134,37 +143,35 @@ static ErrorCode sendGetNext_impl(CoreSnmp* self, const char* ip, const char* oi
     return ERR_NET_TIMEOUT;
 }
 
+/* 🚨 재시도 루프 완전 제거 적용 완료! */
 static ErrorCode sendGetBulk_impl(CoreSnmp* self, const char* ip, const char* oid, int non_repeaters, int max_repetitions, ArrayList* out_varbinds) {
-    if (!self || !self->snmp_sender || !ip || !oid) return ERR_INVALID;
+    if (!self || !self->snmp_sender || !ip || !oid) {
+        return ERR_INVALID;
+    }
 
     uint8_t pdu[1024];
     size_t pdu_len = snmp_asn_encode_pdu(pdu, sizeof(pdu), 0xA5, get_version_val(self->version), get_sec_name(self), oid, non_repeaters, max_repetitions, NULL);
 
-    int retry = 0;
+    if (self->snmp_sender->send(self->snmp_sender, pdu, pdu_len, ip, self->agent_port) < 0) {
+        return ERR_NET_CONNECT;
+    }
 
-    while (retry < 2) {
-        if (self->snmp_sender->send(self->snmp_sender, pdu, pdu_len, ip, self->agent_port) < 0) {
-            return ERR_NET_CONNECT;
+    char recv_ip[64];
+    uint8_t raw_out[4096];
+    int port;
+
+    ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, raw_out, sizeof(raw_out), recv_ip, &port);
+
+    if (recvd > 0) {
+        if (out_varbinds) {
+            snmp_asn_decode_response(raw_out, (size_t)recvd, out_varbinds);
         }
 
-        char recv_ip[64];
-        uint8_t raw_out[4096];
-        int port;
-        ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, raw_out, sizeof(raw_out), recv_ip, &port);
-
-        if (recvd > 0) {
-            if (out_varbinds) {
-                snmp_asn_decode_response(raw_out, (size_t)recvd, out_varbinds);
-            }
-
-            if (out_varbinds && out_varbinds->getSize(out_varbinds) == 0) {
-                return ERR_NET_TIMEOUT;
-            }
-
-            return OK;
-        } else {
-            retry++;
+        if (out_varbinds && out_varbinds->getSize(out_varbinds) == 0) {
+            return ERR_NET_TIMEOUT;
         }
+
+        return OK;
     }
 
     return ERR_NET_TIMEOUT;
@@ -175,7 +182,9 @@ static bool is_prefix_match(const char* root_oid, const char* current_oid) {
 }
 
 static ErrorCode snmpWalk_impl(CoreSnmp* self, const char* ip, const char* root_oid, ArrayList* out_all) {
-    if (!self || !ip || !root_oid || !out_all) return ERR_INVALID;
+    if (!self || !ip || !root_oid || !out_all) {
+        return ERR_INVALID;
+    }
 
     char last_oid[256];
     strncpy(last_oid, root_oid, sizeof(last_oid) - 1);
@@ -197,6 +206,7 @@ static ErrorCode snmpWalk_impl(CoreSnmp* self, const char* ip, const char* root_
 
             if(is_prefix_match(root_oid, vb->oid)) {
                 SnmpVarBind* copy = new_SnmpVarBind(vb->tag, vb->oid, vb->value_str);
+
                 out_all->add(out_all, (Object*)copy);
                 RELEASE_NULL(copy);
 
@@ -219,7 +229,9 @@ static ErrorCode snmpWalk_impl(CoreSnmp* self, const char* ip, const char* root_
 }
 
 static ErrorCode sendSet_impl(CoreSnmp* self, const char* ip, const char* oid, const char* value) {
-    if (!self || !self->snmp_sender || !ip || !oid) return ERR_INVALID;
+    if (!self || !self->snmp_sender || !ip || !oid) {
+        return ERR_INVALID;
+    }
 
     uint8_t pdu[1024];
     size_t pdu_len = snmp_asn_encode_pdu(pdu, sizeof(pdu), 0xA3, get_version_val(self->version), get_sec_name(self), oid, 0, 0, value);
@@ -231,13 +243,16 @@ static ErrorCode sendSet_impl(CoreSnmp* self, const char* ip, const char* oid, c
     char recv_ip[64];
     uint8_t dummy[512];
     int port;
+
     ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, dummy, sizeof(dummy), recv_ip, &port);
 
     return (recvd > 0) ? OK : ERR_NET_TIMEOUT;
 }
 
 static ErrorCode sendTrap_impl(CoreSnmp* self, const char* ip, const char* oid) {
-    if (!self || !self->snmp_sender || !ip || !oid) return ERR_INVALID;
+    if (!self || !self->snmp_sender || !ip || !oid) {
+        return ERR_INVALID;
+    }
 
     uint8_t pdu[1024];
     size_t pdu_len = snmp_asn_encode_pdu(pdu, sizeof(pdu), 0xA4, get_version_val(self->version), get_sec_name(self), oid, 0, 0, NULL);
@@ -246,7 +261,9 @@ static ErrorCode sendTrap_impl(CoreSnmp* self, const char* ip, const char* oid) 
 }
 
 static ErrorCode sendInform_impl(CoreSnmp* self, const char* ip, const char* oid) {
-    if (!self || !self->snmp_sender || !ip || !oid) return ERR_INVALID;
+    if (!self || !self->snmp_sender || !ip || !oid) {
+        return ERR_INVALID;
+    }
 
     uint8_t pdu[1024];
     size_t pdu_len = snmp_asn_encode_pdu(pdu, sizeof(pdu), 0xA6, get_version_val(self->version), get_sec_name(self), oid, 0, 0, NULL);
@@ -258,17 +275,22 @@ static ErrorCode sendInform_impl(CoreSnmp* self, const char* ip, const char* oid
     char recv_ip[64];
     uint8_t ack[512];
     int port;
+
     ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, ack, sizeof(ack), recv_ip, &port);
 
     return (recvd > 0) ? OK : ERR_NET_TIMEOUT;
 }
 
 static bool setOid_impl(CoreSnmp* self, const char* oid, const char* desc) {
-    if (!self || !oid || !desc) return false;
+    if (!self || !oid || !desc) {
+        return false;
+    }
 
     String* d = new_String(desc);
 
-    if (!d) return false;
+    if (!d) {
+        return false;
+    }
 
     self->oid_map->put(self->oid_map, oid, (Object*)d);
     RELEASE((Object*)d);
@@ -277,7 +299,10 @@ static bool setOid_impl(CoreSnmp* self, const char* oid, const char* desc) {
 }
 
 static size_t getTrapCount_impl(CoreSnmp* self) {
-    if (!self) return 0;
+    if (!self) {
+        return 0;
+    }
+
     return atomic_load(&self->trap_count);
 }
 
@@ -323,12 +348,16 @@ static bool CoreSnmp_init_common(CoreSnmp* self, SnmpTransport transport) {
 }
 
 CoreSnmp* new_Snmp(SnmpTransport transport, const char* version_str, const char* community) {
-    if (!version_str || !community) return NULL;
+    if (!version_str || !community) {
+        return NULL;
+    }
 
     CoreSnmp* self = (CoreSnmp*)calloc(1, sizeof(CoreSnmp));
 
     if (!self || !CoreSnmp_init_common(self, transport)) {
-        if (self) RELEASE((Object*)self);
+        if (self) {
+            RELEASE((Object*)self);
+        }
         return NULL;
     }
 
@@ -343,12 +372,16 @@ CoreSnmp* new_Snmp(SnmpTransport transport, const char* version_str, const char*
 CoreSnmp* new_SnmpV3(SnmpTransport transport, const char* uname, SnmpSecLevel sl,
                      SnmpAuthProto ap, const uint8_t* ak, size_t akl,
                      SnmpPrivProto pp, const uint8_t* pk, size_t pkl) {
-    if (!uname || (ak && akl > 32) || (pk && pkl > 32)) return NULL;
+    if (!uname || (ak && akl > 32) || (pk && pkl > 32)) {
+        return NULL;
+    }
 
     CoreSnmp* self = (CoreSnmp*)calloc(1, sizeof(CoreSnmp));
 
     if (!self || !CoreSnmp_init_common(self, transport)) {
-        if (self) RELEASE((Object*)self);
+        if (self) {
+            RELEASE((Object*)self);
+        }
         return NULL;
     }
 
