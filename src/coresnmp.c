@@ -22,7 +22,6 @@ SnmpTrap* new_SnmpTrap(void) {
 
 static void CoreSnmp_finalize(Object* obj) {
     CoreSnmp* self = (CoreSnmp*)obj;
-    // 🚨 RELEASE_NULL 캐스팅 없이 순수 변수 전달
     RELEASE_NULL(self->trap_receiver);
     RELEASE_NULL(self->snmp_sender);
     RELEASE_NULL(self->oid_map);
@@ -36,19 +35,14 @@ const Class CoreSnmp_Class_Instance = {
 
 static ErrorCode startListen_impl(CoreSnmp* self, int port) {
     if (!self) return ERR_INVALID;
-
-    // 🚨 이중 바인딩 방지: 기존 소켓이 있다면 해제
     if (self->trap_receiver) {
         RELEASE_NULL(self->trap_receiver);
     }
-
     char url[64];
     snprintf(url, sizeof(url), "%s0.0.0.0:%d",
              (self->transport == SNMP_TRANS_UDP ? "udp://" : "tcp://"), port);
-
     self->trap_receiver = createServer(url, NULL);
     if (!self->trap_receiver) return ERR_NET_CONNECT;
-
     self->trap_port = port;
     return OK;
 }
@@ -65,7 +59,6 @@ static void setTrapPort_impl(CoreSnmp* self, int port) {
     if (self) self->trap_port = port;
 }
 
-// 🚨 에이전트 포트 변경 구현
 static void setAgentPort_impl(CoreSnmp* self, int port) {
     if (self) self->agent_port = port;
 }
@@ -73,7 +66,7 @@ static void setAgentPort_impl(CoreSnmp* self, int port) {
 static inline int get_version_val(SnmpVersion v) {
     if (v == SNMP_V3) return 3;
     if (v == SNMP_V2C) return 1;
-    return 0; // SNMP_V1
+    return 0;
 }
 
 static inline const char* get_sec_name(CoreSnmp* self) {
@@ -87,8 +80,9 @@ static ErrorCode sendGet_impl(CoreSnmp* self, const char* ip, const char* oid, v
     ssize_t sent = self->snmp_sender->send(self->snmp_sender, pdu, pdu_len, ip, self->agent_port);
     if (sent < 0) return ERR_NET_CONNECT;
 
+    char recv_ip[64]; // 🚨 [수정 완료] 수신용 IP 안전 버퍼 추가
     int port;
-    ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, out, sz, (char*)ip, &port);
+    ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, out, sz, recv_ip, &port);
     if (recvd > 0) {
         if (out_len) *out_len = (size_t)recvd;
         return OK;
@@ -103,8 +97,9 @@ static ErrorCode sendGetNext_impl(CoreSnmp* self, const char* ip, const char* oi
     ssize_t sent = self->snmp_sender->send(self->snmp_sender, pdu, pdu_len, ip, self->agent_port);
     if (sent < 0) return ERR_NET_CONNECT;
 
+    char recv_ip[64]; // 🚨 [수정 완료] 수신용 IP 안전 버퍼 추가
     int port;
-    ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, out, sz, (char*)ip, &port);
+    ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, out, sz, recv_ip, &port);
     if (recvd > 0) {
         if (out_len) *out_len = (size_t)recvd;
         return OK;
@@ -119,9 +114,10 @@ static ErrorCode sendGetBulk_impl(CoreSnmp* self, const char* ip, const char* oi
     ssize_t sent = self->snmp_sender->send(self->snmp_sender, pdu, pdu_len, ip, self->agent_port);
     if (sent < 0) return ERR_NET_CONNECT;
 
+    char recv_ip[64]; // 🚨 [수정 완료] 수신용 IP 안전 버퍼 추가
     uint8_t raw_out[4096];
     int port;
-    ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, raw_out, sizeof(raw_out), (char*)ip, &port);
+    ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, raw_out, sizeof(raw_out), recv_ip, &port);
     if (recvd > 0) {
         if (out_varbinds) snmp_asn_decode_response(raw_out, (size_t)recvd, out_varbinds);
         return OK;
@@ -136,9 +132,10 @@ static ErrorCode sendSet_impl(CoreSnmp* self, const char* ip, const char* oid, c
     ssize_t sent = self->snmp_sender->send(self->snmp_sender, pdu, pdu_len, ip, self->agent_port);
     if (sent < 0) return ERR_NET_CONNECT;
 
+    char recv_ip[64]; // 🚨 [수정 완료] 수신용 IP 안전 버퍼 추가
     uint8_t dummy[512];
     int port;
-    ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, dummy, sizeof(dummy), (char*)ip, &port);
+    ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, dummy, sizeof(dummy), recv_ip, &port);
     return (recvd > 0) ? OK : ERR_NET_TIMEOUT;
 }
 
@@ -157,9 +154,10 @@ static ErrorCode sendInform_impl(CoreSnmp* self, const char* ip, const char* oid
     ssize_t sent = self->snmp_sender->send(self->snmp_sender, pdu, pdu_len, ip, self->trap_port);
     if (sent < 0) return ERR_NET_CONNECT;
 
+    char recv_ip[64]; // 🚨 [수정 완료] 수신용 IP 안전 버퍼 추가
     uint8_t ack[512];
     int port;
-    ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, ack, sizeof(ack), (char*)ip, &port);
+    ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, ack, sizeof(ack), recv_ip, &port);
     return (recvd > 0) ? OK : ERR_NET_TIMEOUT;
 }
 
@@ -214,11 +212,7 @@ static bool CoreSnmp_init_common(CoreSnmp* self, SnmpTransport transport) {
 
     self->transport = transport;
     self->trap_receiver = NULL;
-
-    // 🚨 생성 시 기본 포트 161 (이후 동적 변경 가능)
     self->agent_port = 161;
-
-    // 🚨 타임아웃 방지를 위해 createSyncClient(동기 모드) 사용!
     self->snmp_sender = createSyncClient((transport == SNMP_TRANS_UDP ? "udp://" : "tcp://"), NULL);
 
     self->oid_map  = new_HashMap(16);
