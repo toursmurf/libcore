@@ -14,7 +14,7 @@ static Class SnmpTrap_Class = {
     .finalize = SnmpTrap_finalize
 };
 
-정SnmpTrap* new_SnmpTrap(void) {
+SnmpTrap* new_SnmpTrap(void) {
     SnmpTrap* self = (SnmpTrap*)calloc(1, sizeof(SnmpTrap));
 
     if (!self) {
