@@ -25,52 +25,91 @@ SnmpVarBind* new_SnmpVarBind(uint8_t tag, const char* oid, const char* value) {
     return self;
 }
 
+// 🚨 [수정 완료] GetResponse 껍데기를 정확히 벗겨내는 고성능 파서!
 bool snmp_asn_decode_response(const uint8_t* buf, size_t len, ArrayList* out_varbinds) {
-    if (!buf || !out_varbinds) return false;
+    if (!buf || !out_varbinds || len < 10) return false;
+
+    // 1. GetResponse PDU (0xA2) 태그를 찾을 때까지 스캔합니다.
     const uint8_t* p = buf;
-    if (*p++ != ASN1_SEQUENCE) return false;
-    size_t seq_len;
-    p = asn1_decode_length(p, &seq_len);
+    const uint8_t* end = buf + len;
+    while (p < end && *p != 0xA2) p++;
+    if (p >= end) return false; // 응답 PDU가 없으면 종료
+
+    p++; // 0xA2 태그 스킵
+    size_t pdu_len;
+    p = asn1_decode_length(p, &pdu_len);
     if (!p) return false;
 
-    while (p < buf + len) {
-        uint32_t oids[32];
-        size_t cnt = 0;
-        char oid_str[256] = {0};
-        char val[512] = {0};
-        p = asn1_decode_oid(p, oids, &cnt);
+    // 2. RequestID, ErrorStatus, ErrorIndex (각각 0x02 태그) 껍데기 스킵
+    for (int i = 0; i < 3; i++) {
+        if (p >= end || *p != 0x02) return false;
+        p++;
+        size_t l;
+        p = asn1_decode_length(p, &l);
+        if (!p) return false;
+        p += l;
+    }
+
+    // 3. 드디어 알맹이인 VarBindList (0x30) 진입!
+    if (p >= end || *p != 0x30) return false;
+    p++;
+    size_t vbl_len;
+    p = asn1_decode_length(p, &vbl_len);
+    if (!p) return false;
+    const uint8_t* vbl_end = p + vbl_len;
+
+    // 4. 개별 VarBind (0x30) 추출 루프
+    while (p < vbl_end && p < end) {
+        if (*p != 0x30) break;
+        p++;
+        size_t vb_len;
+        p = asn1_decode_length(p, &vb_len);
         if (!p) break;
+        const uint8_t* vb_end = p + vb_len;
 
-        int off = 0;
-        for (size_t k = 0; k < cnt; k++) {
-            off += snprintf(oid_str + off, sizeof(oid_str) - off, "%s%u", (k == 0 ? "" : "."), oids[k]);
+        // OID 태그 (0x06) 확인
+        if (p < vb_end && *p == 0x06) {
+            uint32_t oids[128];
+            size_t cnt = 0;
+            p = asn1_decode_oid(p, oids, &cnt);
+
+            char oid_str[256] = {0};
+            int off = 0;
+            for (size_t k = 0; k < cnt; k++) {
+                off += snprintf(oid_str + off, sizeof(oid_str) - off, "%s%u", (k == 0 ? "" : "."), oids[k]);
+            }
+
+            char val[512] = {0};
+            uint8_t tag = *p;
+
+            // Value 타입에 맞게 파싱
+            if (tag == 0x04) { // OCTET STRING
+                p = asn1_decode_string(p, val, sizeof(val));
+            } else if (tag == 0x02) { // INTEGER
+                int32_t v = 0;
+                p = asn1_decode_integer(p, &v);
+                snprintf(val, sizeof(val), "%d", v);
+            } else if (tag == 0x40) { // IP ADDRESS
+                p = asn1_decode_ip(p, val, sizeof(val));
+            } else if (tag == 0x41 || tag == 0x42 || tag == 0x43) { // UNSIGNED (Counter/Gauge/TimeTicks)
+                uint32_t uv = 0;
+                p = asn1_decode_unsigned(p, &uv);
+                snprintf(val, sizeof(val), "%u", uv);
+            } else if (tag == 0x05) { // NULL
+                snprintf(val, sizeof(val), "NULL");
+            } else if (tag == 0x80 || tag == 0x81 || tag == 0x82) { // SNMPv2 예외 (EndOfMibView 등)
+                snprintf(val, sizeof(val), "Exception/End(%02X)", tag);
+            } else {
+                snprintf(val, sizeof(val), "UnknownTag(%02X)", tag);
+            }
+
+            SnmpVarBind* vb = new_SnmpVarBind(tag, oid_str, val);
+            if (vb) {
+                out_varbinds->add(out_varbinds, (Object*)vb);
+                RELEASE_NULL(vb);
+            }
         }
-
-        uint8_t current_tag = *p;
-        if (current_tag == ASN1_OCTET_STRING) {
-            p = asn1_decode_string(p, val, sizeof(val));
-        } else if (current_tag == ASN1_INTEGER) {
-            int32_t v;
-            p = asn1_decode_integer(p, &v);
-            snprintf(val, sizeof(val), "%d", v);
-        } else if (current_tag == ASN1_IPADDRESS) {
-            p = asn1_decode_ip(p, val, sizeof(val));
-        } else if (current_tag == ASN1_COUNTER32 || current_tag == ASN1_GAUGE32 || current_tag == ASN1_TIMETICKS) {
-            uint32_t uv;
-            p = asn1_decode_unsigned(p, &uv);
-            snprintf(val, sizeof(val), "%u", uv);
-        } else if (current_tag == ASN1_NULL) {
-            snprintf(val, sizeof(val), "NULL");
-            p += 2;
-        } else { break; }
-
-        SnmpVarBind* vb = new_SnmpVarBind(current_tag, oid_str, val);
-        if (vb) {
-            out_varbinds->add(out_varbinds, (Object*)vb);
-            // 🚨 lvalue 에러 및 strict-aliasing 경고 완벽 해결!
-            // 매크로 내부에서 타입 캐스팅을 알아서 처리하므로 순수 포인터 변수만 넘김.
-            RELEASE_NULL(vb);
-        }
+        p = vb_end; // 무조건 다음 Varbind 시작점으로 안전하게 점프!
     }
     return true;
 }
