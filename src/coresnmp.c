@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/time.h> // 🚨 [최종 합격] 부장님 지시 사항!
 
 static void SnmpTrap_finalize(Object* obj) {
     (void)obj;
@@ -250,9 +251,15 @@ static bool CoreSnmp_init_common(CoreSnmp* self, SnmpTransport transport) {
     self->getTrapCount = getTrapCount_impl;
     self->resetStats   = resetStats_impl;
 
-    self->transport = transport;
-    self->agent_port = 161;
-    self->snmp_sender = createSyncClient((transport == SNMP_TRANS_UDP ? "udp://" : "tcp://"), NULL);
+    self->transport    = transport;
+    self->agent_port   = 161;
+    self->snmp_sender  = createSyncClient((transport == SNMP_TRANS_UDP ? "udp://" : "tcp://"), NULL);
+
+    if (self->snmp_sender) {
+        int fd = self->snmp_sender->getFD(self->snmp_sender);
+        struct timeval tv = {3, 0};
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    }
 
     self->oid_map = new_HashMap(16);
     return (self->snmp_sender && self->oid_map);
