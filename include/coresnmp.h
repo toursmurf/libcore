@@ -47,40 +47,38 @@ typedef struct SnmpTrap {
 SnmpTrap* new_SnmpTrap(void);
 
 typedef struct CoreSnmp {
-    Object        base;
-    Socket*       trap_receiver;
-    Socket*       snmp_sender;
-    HashMap*      oid_map;
-    CoreRWLock*   oid_lock;
-    SnmpVersion   version;
-    int           trap_port;
-    int           agent_port;
-    atomic_size_t trap_count;
-    char          community[64];
-    char          username[64];
-    SnmpSecLevel  sec_level;
-    SnmpAuthProto auth_proto;
-    SnmpPrivProto priv_proto;
-    uint8_t       auth_key[32];
-    uint8_t       priv_key[32];
+    Object          base;
+    Socket* trap_receiver;
+    Socket* snmp_sender;
+    HashMap* oid_map;
+    SnmpVersion     version;
+    int             trap_port;
+    int             agent_port;
+    atomic_size_t   trap_count;
+    char            community[64];
+    char            username[64];
+    SnmpSecLevel    sec_level;
+    SnmpAuthProto   auth_proto;
+    SnmpPrivProto   priv_proto;
+    uint8_t         auth_key[32];
+    uint8_t         priv_key[32];
 
-    CoreResult (*startListen)(struct CoreSnmp* self, int port);
-    void       (*stopListen) (struct CoreSnmp* self);
-    void       (*setTrapPort)(struct CoreSnmp* self, int port);
+    ErrorCode (*startListen)(struct CoreSnmp* self, int port);
+    void      (*stopListen) (struct CoreSnmp* self);
+    void      (*setTrapPort)(struct CoreSnmp* self, int port);
 
-    // 🚀 out_len 파라미터 추가
-    CoreResult (*sendGet)    (struct CoreSnmp* self, const char* ip, const char* oid, void* out, size_t sz, size_t* out_len);
-    CoreResult (*sendGetNext)(struct CoreSnmp* self, const char* ip, const char* oid, void* out, size_t sz, size_t* out_len);
+    ErrorCode (*sendGet)      (struct CoreSnmp* self, const char* ip, const char* oid, void* out, size_t sz, size_t* out_len);
+    ErrorCode (*sendGetNext)  (struct CoreSnmp* self, const char* ip, const char* oid, void* out, size_t sz, size_t* out_len);
 
-    CoreResult (*sendGetBulk)(struct CoreSnmp* self, const char* ip, const char* oid, int non_repeaters, int max_repetitions, ArrayList* out_varbinds);
-    CoreResult (*sendSet)    (struct CoreSnmp* self, const char* ip, const char* oid, const char* value);
-    CoreResult (*sendTrap)   (struct CoreSnmp* self, const char* ip, const char* oid);
-    CoreResult (*sendInform) (struct CoreSnmp* self, const char* ip, const char* oid);
-    bool       (*setOid)     (struct CoreSnmp* self, const char* oid, const char* desc);
-    String*    (*getOidDesc) (struct CoreSnmp* self, const char* oid);
-    bool       (*walkOid)    (struct CoreSnmp* self, const char* ip, const char* root_oid);
-    size_t     (*getTrapCount)(struct CoreSnmp* self);
-    void       (*resetStats)  (struct CoreSnmp* self);
+    ErrorCode (*sendGetBulk)  (struct CoreSnmp* self, const char* ip, const char* oid, int non_repeaters, int max_repetitions, ArrayList* out_varbinds);
+    ErrorCode (*sendSet)      (struct CoreSnmp* self, const char* ip, const char* oid, const char* value);
+    ErrorCode (*sendTrap)     (struct CoreSnmp* self, const char* ip, const char* oid);
+    ErrorCode (*sendInform)   (struct CoreSnmp* self, const char* ip, const char* oid);
+    bool      (*setOid)       (struct CoreSnmp* self, const char* oid, const char* desc);
+    String* (*getOidDesc)   (struct CoreSnmp* self, const char* oid);
+    bool      (*walkOid)      (struct CoreSnmp* self, const char* ip, const char* root_oid);
+    size_t    (*getTrapCount) (struct CoreSnmp* self);
+    void      (*resetStats)   (struct CoreSnmp* self);
 } CoreSnmp;
 
 extern const Class CoreSnmp_Class_Instance;
