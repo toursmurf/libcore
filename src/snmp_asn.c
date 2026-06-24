@@ -2,7 +2,9 @@
 #include <stdio.h>
 #include <string.h>
 
-static void SnmpVarBind_finalize(Object* obj) { }
+static void SnmpVarBind_finalize(Object* obj) {
+    (void)obj; // 🚨 -Wunused-parameter 경고 해결!
+}
 
 static Class SnmpVarBind_Class = {
     .name     = "SnmpVarBind",
@@ -65,7 +67,9 @@ bool snmp_asn_decode_response(const uint8_t* buf, size_t len, ArrayList* out_var
         SnmpVarBind* vb = new_SnmpVarBind(current_tag, oid_str, val);
         if (vb) {
             out_varbinds->add(out_varbinds, (Object*)vb);
-            RELEASE_NULL((Object**)&vb);
+            // 🚨 lvalue 에러 및 strict-aliasing 경고 완벽 해결!
+            // 매크로 내부에서 타입 캐스팅을 알아서 처리하므로 순수 포인터 변수만 넘김.
+            RELEASE_NULL(vb);
         }
     }
     return true;
