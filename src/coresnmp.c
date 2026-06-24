@@ -3,7 +3,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static void SnmpTrap_finalize(Object* obj) { }
+static void SnmpTrap_finalize(Object* obj) {
+    (void)obj; // 🚨 -Wunused-parameter 경고 해결!
+}
 
 static Class SnmpTrap_Class = {
     .name     = "SnmpTrap",
@@ -20,7 +22,6 @@ SnmpTrap* new_SnmpTrap(void) {
 
 static void CoreSnmp_finalize(Object* obj) {
     CoreSnmp* self = (CoreSnmp*)obj;
-    // 🚨 RELEASE_NULL 캐스팅 없이 순수 포인터 처리 (구조체 멤버 보호)
     RELEASE_NULL(self->trap_receiver);
     RELEASE_NULL(self->snmp_sender);
     RELEASE_NULL(self->oid_map);
@@ -35,12 +36,10 @@ const Class CoreSnmp_Class_Instance = {
 static ErrorCode startListen_impl(CoreSnmp* self, int port) {
     if (!self) return ERR_INVALID;
 
-    // 🚨 이중 바인딩 방지: 기존 소켓이 있다면 해제
     if (self->trap_receiver) {
         RELEASE_NULL(self->trap_receiver);
     }
 
-    // 🚨 [수정 완료] agent_port 버그 제거, transport 필드로 URL 정확히 분기!!
     char url[64];
     snprintf(url, sizeof(url), "%s0.0.0.0:%d",
              (self->transport == SNMP_TRANS_UDP ? "udp://" : "tcp://"), port);
@@ -86,7 +85,7 @@ static ErrorCode sendGet_impl(CoreSnmp* self, const char* ip, const char* oid, v
         if (out_len) *out_len = (size_t)recvd;
         return OK;
     }
-    return ERR_TIMEOUT;
+    return ERR_NET_TIMEOUT; // 🚨 ERR_TIMEOUT -> ERR_NET_TIMEOUT 수정 완료!
 }
 
 static ErrorCode sendGetNext_impl(CoreSnmp* self, const char* ip, const char* oid, void* out, size_t sz, size_t* out_len) {
@@ -101,7 +100,7 @@ static ErrorCode sendGetNext_impl(CoreSnmp* self, const char* ip, const char* oi
         if (out_len) *out_len = (size_t)recvd;
         return OK;
     }
-    return ERR_TIMEOUT;
+    return ERR_NET_TIMEOUT; // 🚨 ERR_TIMEOUT -> ERR_NET_TIMEOUT 수정 완료!
 }
 
 static ErrorCode sendGetBulk_impl(CoreSnmp* self, const char* ip, const char* oid, int non_repeaters, int max_repetitions, ArrayList* out_varbinds) {
@@ -117,7 +116,7 @@ static ErrorCode sendGetBulk_impl(CoreSnmp* self, const char* ip, const char* oi
         if (out_varbinds) snmp_asn_decode_response(raw_out, (size_t)recvd, out_varbinds);
         return OK;
     }
-    return ERR_TIMEOUT;
+    return ERR_NET_TIMEOUT; // 🚨 ERR_TIMEOUT -> ERR_NET_TIMEOUT 수정 완료!
 }
 
 static ErrorCode sendSet_impl(CoreSnmp* self, const char* ip, const char* oid, const char* value) {
@@ -129,7 +128,7 @@ static ErrorCode sendSet_impl(CoreSnmp* self, const char* ip, const char* oid, c
     uint8_t dummy[512];
     int port;
     ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, dummy, sizeof(dummy), (char*)ip, &port);
-    return (recvd > 0) ? OK : ERR_TIMEOUT;
+    return (recvd > 0) ? OK : ERR_NET_TIMEOUT; // 🚨 ERR_TIMEOUT -> ERR_NET_TIMEOUT 수정 완료!
 }
 
 static ErrorCode sendTrap_impl(CoreSnmp* self, const char* ip, const char* oid) {
@@ -149,15 +148,18 @@ static ErrorCode sendInform_impl(CoreSnmp* self, const char* ip, const char* oid
     uint8_t ack[512];
     int port;
     ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, ack, sizeof(ack), (char*)ip, &port);
-    return (recvd > 0) ? OK : ERR_TIMEOUT;
+    return (recvd > 0) ? OK : ERR_NET_TIMEOUT; // 🚨 ERR_TIMEOUT -> ERR_NET_TIMEOUT 수정 완료!
 }
 
 static bool setOid_impl(CoreSnmp* self, const char* oid, const char* desc) {
     if (!self || !oid || !desc) return false;
     String* desc_str = new_String(desc);
-    bool res = self->oid_map->put(self->oid_map, oid, (Object*)desc_str);
+    if (!desc_str) return false;
+
+    // 🚨 void value 에러 해결: put 반환값이 void이므로 바로 호출!
+    self->oid_map->put(self->oid_map, oid, (Object*)desc_str);
     RELEASE((Object*)desc_str);
-    return res;
+    return true;
 }
 
 static String* getOidDesc_impl(CoreSnmp* self, const char* oid) {
@@ -217,7 +219,10 @@ CoreSnmp* new_Snmp(SnmpTransport transport, const char* version_str, const char*
     else return NULL;
 
     CoreSnmp* self = (CoreSnmp*)calloc(1, sizeof(CoreSnmp));
-    if (!self || !CoreSnmp_init_common(self, transport)) return NULL;
+    if (!self || !CoreSnmp_init_common(self, transport)) {
+        if (self) RELEASE((Object*)self);
+        return NULL;
+    }
     self->version = pv;
     strncpy(self->community, community, 63);
     self->community[63] = '\0';
@@ -233,7 +238,7 @@ CoreSnmp* new_SnmpV3(SnmpTransport transport, const char* uname, SnmpSecLevel sl
 
     CoreSnmp* self = (CoreSnmp*)calloc(1, sizeof(CoreSnmp));
     if (!self || !CoreSnmp_init_common(self, transport)) {
-        RELEASE((Object*)self);
+        if (self) RELEASE((Object*)self);
         return NULL;
     }
     self->version = SNMP_V3;

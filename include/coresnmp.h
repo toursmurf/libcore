@@ -52,6 +52,7 @@ typedef struct CoreSnmp {
     Socket* snmp_sender;
     HashMap* oid_map;
     SnmpVersion     version;
+    SnmpTransport   transport; // 🚨 빌드 에러 원인 해결: transport 필드 추가!!
     int             trap_port;
     int             agent_port;
     atomic_size_t   trap_count;
@@ -69,11 +70,11 @@ typedef struct CoreSnmp {
 
     ErrorCode (*sendGet)      (struct CoreSnmp* self, const char* ip, const char* oid, void* out, size_t sz, size_t* out_len);
     ErrorCode (*sendGetNext)  (struct CoreSnmp* self, const char* ip, const char* oid, void* out, size_t sz, size_t* out_len);
-
     ErrorCode (*sendGetBulk)  (struct CoreSnmp* self, const char* ip, const char* oid, int non_repeaters, int max_repetitions, ArrayList* out_varbinds);
     ErrorCode (*sendSet)      (struct CoreSnmp* self, const char* ip, const char* oid, const char* value);
     ErrorCode (*sendTrap)     (struct CoreSnmp* self, const char* ip, const char* oid);
     ErrorCode (*sendInform)   (struct CoreSnmp* self, const char* ip, const char* oid);
+
     bool      (*setOid)       (struct CoreSnmp* self, const char* oid, const char* desc);
     String* (*getOidDesc)   (struct CoreSnmp* self, const char* oid);
     bool      (*walkOid)      (struct CoreSnmp* self, const char* ip, const char* root_oid);
