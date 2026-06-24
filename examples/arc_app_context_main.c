@@ -39,7 +39,7 @@ void task_heartbeat(void* ud) {
     }
 }
 
-int main() {
+int main(void) {
     // ---------------------------------------------------------
     // STEP 1: 최전선 전원 공급 (Logger)
     // ---------------------------------------------------------
@@ -53,7 +53,8 @@ int main() {
     // STEP 2: 총사령부 건설 (AppContext)
     // ---------------------------------------------------------
     g_app = new_AppContext();
-    g_app->init(g_app);
+    // 🚨 [수정 1] init에 설정 파일 경로 파라미터 추가!
+    g_app->init(g_app, "dummy.conf");
 
     // ---------------------------------------------------------
     // STEP 3: 제국 설정 주입 (Config)
@@ -83,8 +84,8 @@ int main() {
     // ---------------------------------------------------------
     // STEP 5: 서비스 활용 (Scheduler 가동)
     // ---------------------------------------------------------
-    // 다시 꺼내서 쓰기 (REG_GET 매크로 활용!)
-    Scheduler* registered_sched = REG_GET(g_app, Scheduler);
+    // 🚨 [수정 2] REG_GET 매크로의 첫 번째 인자로 g_app->reg (ServiceRegistry 객체)를 전달!
+    Scheduler* registered_sched = REG_GET(g_app->reg, Scheduler);
     if (registered_sched) {
         registered_sched->addEx(registered_sched, "Heartbeat", 2000, true,
                                 JOB_PRIO_NORMAL, task_heartbeat, NULL);
