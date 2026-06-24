@@ -108,6 +108,7 @@ int main(void) {
 	"192.168.210.2",
         "127.0.0.1",
     };
+
     int ip_count = (int)(sizeof(ip_list) / sizeof(ip_list[0]));
 
     /* Task 배열 생성 */
