@@ -1,5 +1,5 @@
-#ifndef TOOS_CORE_SNMP_H
-#define TOOS_CORE_SNMP_H
+#ifndef CORE_SNMP_H
+#define CORE_SNMP_H
 
 #include "libcore.h"
 #include "socket_base.h"
@@ -52,7 +52,7 @@ typedef struct CoreSnmp {
     Socket* snmp_sender;
     HashMap* oid_map;
     SnmpVersion     version;
-    SnmpTransport   transport; // 🚨 빌드 에러 원인 해결: transport 필드 추가!!
+    SnmpTransport   transport;
     int             trap_port;
     int             agent_port;
     atomic_size_t   trap_count;
@@ -67,6 +67,7 @@ typedef struct CoreSnmp {
     ErrorCode (*startListen)(struct CoreSnmp* self, int port);
     void      (*stopListen) (struct CoreSnmp* self);
     void      (*setTrapPort)(struct CoreSnmp* self, int port);
+    void      (*setAgentPort)(struct CoreSnmp* self, int port); // 🚨 사용자 정의 포트 설정
 
     ErrorCode (*sendGet)      (struct CoreSnmp* self, const char* ip, const char* oid, void* out, size_t sz, size_t* out_len);
     ErrorCode (*sendGetNext)  (struct CoreSnmp* self, const char* ip, const char* oid, void* out, size_t sz, size_t* out_len);

@@ -4,7 +4,7 @@
 #include <stdlib.h>
 
 static void SnmpTrap_finalize(Object* obj) {
-    (void)obj; // 🚨 -Wunused-parameter 경고 해결!
+    (void)obj;
 }
 
 static Class SnmpTrap_Class = {
@@ -22,6 +22,7 @@ SnmpTrap* new_SnmpTrap(void) {
 
 static void CoreSnmp_finalize(Object* obj) {
     CoreSnmp* self = (CoreSnmp*)obj;
+    // 🚨 RELEASE_NULL 캐스팅 없이 순수 변수 전달
     RELEASE_NULL(self->trap_receiver);
     RELEASE_NULL(self->snmp_sender);
     RELEASE_NULL(self->oid_map);
@@ -36,6 +37,7 @@ const Class CoreSnmp_Class_Instance = {
 static ErrorCode startListen_impl(CoreSnmp* self, int port) {
     if (!self) return ERR_INVALID;
 
+    // 🚨 이중 바인딩 방지: 기존 소켓이 있다면 해제
     if (self->trap_receiver) {
         RELEASE_NULL(self->trap_receiver);
     }
@@ -63,6 +65,11 @@ static void setTrapPort_impl(CoreSnmp* self, int port) {
     if (self) self->trap_port = port;
 }
 
+// 🚨 에이전트 포트 변경 구현
+static void setAgentPort_impl(CoreSnmp* self, int port) {
+    if (self) self->agent_port = port;
+}
+
 static inline int get_version_val(SnmpVersion v) {
     if (v == SNMP_V3) return 3;
     if (v == SNMP_V2C) return 1;
@@ -79,13 +86,14 @@ static ErrorCode sendGet_impl(CoreSnmp* self, const char* ip, const char* oid, v
     size_t pdu_len = snmp_asn_encode_pdu(pdu, sizeof(pdu), 0xA0, get_version_val(self->version), get_sec_name(self), oid, 0, 0, NULL);
     ssize_t sent = self->snmp_sender->send(self->snmp_sender, pdu, pdu_len, ip, self->agent_port);
     if (sent < 0) return ERR_NET_CONNECT;
+
     int port;
     ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, out, sz, (char*)ip, &port);
     if (recvd > 0) {
         if (out_len) *out_len = (size_t)recvd;
         return OK;
     }
-    return ERR_NET_TIMEOUT; // 🚨 ERR_TIMEOUT -> ERR_NET_TIMEOUT 수정 완료!
+    return ERR_NET_TIMEOUT;
 }
 
 static ErrorCode sendGetNext_impl(CoreSnmp* self, const char* ip, const char* oid, void* out, size_t sz, size_t* out_len) {
@@ -94,13 +102,14 @@ static ErrorCode sendGetNext_impl(CoreSnmp* self, const char* ip, const char* oi
     size_t pdu_len = snmp_asn_encode_pdu(pdu, sizeof(pdu), 0xA1, get_version_val(self->version), get_sec_name(self), oid, 0, 0, NULL);
     ssize_t sent = self->snmp_sender->send(self->snmp_sender, pdu, pdu_len, ip, self->agent_port);
     if (sent < 0) return ERR_NET_CONNECT;
+
     int port;
     ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, out, sz, (char*)ip, &port);
     if (recvd > 0) {
         if (out_len) *out_len = (size_t)recvd;
         return OK;
     }
-    return ERR_NET_TIMEOUT; // 🚨 ERR_TIMEOUT -> ERR_NET_TIMEOUT 수정 완료!
+    return ERR_NET_TIMEOUT;
 }
 
 static ErrorCode sendGetBulk_impl(CoreSnmp* self, const char* ip, const char* oid, int non_repeaters, int max_repetitions, ArrayList* out_varbinds) {
@@ -109,6 +118,7 @@ static ErrorCode sendGetBulk_impl(CoreSnmp* self, const char* ip, const char* oi
     size_t pdu_len = snmp_asn_encode_pdu(pdu, sizeof(pdu), 0xA5, get_version_val(self->version), get_sec_name(self), oid, non_repeaters, max_repetitions, NULL);
     ssize_t sent = self->snmp_sender->send(self->snmp_sender, pdu, pdu_len, ip, self->agent_port);
     if (sent < 0) return ERR_NET_CONNECT;
+
     uint8_t raw_out[4096];
     int port;
     ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, raw_out, sizeof(raw_out), (char*)ip, &port);
@@ -116,7 +126,7 @@ static ErrorCode sendGetBulk_impl(CoreSnmp* self, const char* ip, const char* oi
         if (out_varbinds) snmp_asn_decode_response(raw_out, (size_t)recvd, out_varbinds);
         return OK;
     }
-    return ERR_NET_TIMEOUT; // 🚨 ERR_TIMEOUT -> ERR_NET_TIMEOUT 수정 완료!
+    return ERR_NET_TIMEOUT;
 }
 
 static ErrorCode sendSet_impl(CoreSnmp* self, const char* ip, const char* oid, const char* value) {
@@ -125,10 +135,11 @@ static ErrorCode sendSet_impl(CoreSnmp* self, const char* ip, const char* oid, c
     size_t pdu_len = snmp_asn_encode_pdu(pdu, sizeof(pdu), 0xA3, get_version_val(self->version), get_sec_name(self), oid, 0, 0, value);
     ssize_t sent = self->snmp_sender->send(self->snmp_sender, pdu, pdu_len, ip, self->agent_port);
     if (sent < 0) return ERR_NET_CONNECT;
+
     uint8_t dummy[512];
     int port;
     ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, dummy, sizeof(dummy), (char*)ip, &port);
-    return (recvd > 0) ? OK : ERR_NET_TIMEOUT; // 🚨 ERR_TIMEOUT -> ERR_NET_TIMEOUT 수정 완료!
+    return (recvd > 0) ? OK : ERR_NET_TIMEOUT;
 }
 
 static ErrorCode sendTrap_impl(CoreSnmp* self, const char* ip, const char* oid) {
@@ -145,18 +156,17 @@ static ErrorCode sendInform_impl(CoreSnmp* self, const char* ip, const char* oid
     size_t pdu_len = snmp_asn_encode_pdu(pdu, sizeof(pdu), 0xA6, get_version_val(self->version), get_sec_name(self), oid, 0, 0, NULL);
     ssize_t sent = self->snmp_sender->send(self->snmp_sender, pdu, pdu_len, ip, self->trap_port);
     if (sent < 0) return ERR_NET_CONNECT;
+
     uint8_t ack[512];
     int port;
     ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, ack, sizeof(ack), (char*)ip, &port);
-    return (recvd > 0) ? OK : ERR_NET_TIMEOUT; // 🚨 ERR_TIMEOUT -> ERR_NET_TIMEOUT 수정 완료!
+    return (recvd > 0) ? OK : ERR_NET_TIMEOUT;
 }
 
 static bool setOid_impl(CoreSnmp* self, const char* oid, const char* desc) {
     if (!self || !oid || !desc) return false;
     String* desc_str = new_String(desc);
     if (!desc_str) return false;
-
-    // 🚨 void value 에러 해결: put 반환값이 void이므로 바로 호출!
     self->oid_map->put(self->oid_map, oid, (Object*)desc_str);
     RELEASE((Object*)desc_str);
     return true;
@@ -189,6 +199,7 @@ static bool CoreSnmp_init_common(CoreSnmp* self, SnmpTransport transport) {
     self->startListen  = startListen_impl;
     self->stopListen   = stopListen_impl;
     self->setTrapPort  = setTrapPort_impl;
+    self->setAgentPort = setAgentPort_impl;
     self->sendGet      = sendGet_impl;
     self->sendGetNext  = sendGetNext_impl;
     self->sendGetBulk  = sendGetBulk_impl;
@@ -203,7 +214,12 @@ static bool CoreSnmp_init_common(CoreSnmp* self, SnmpTransport transport) {
 
     self->transport = transport;
     self->trap_receiver = NULL;
-    self->snmp_sender   = createClient((transport == SNMP_TRANS_UDP ? "udp://" : "tcp://"), NULL);
+
+    // 🚨 생성 시 기본 포트 161 (이후 동적 변경 가능)
+    self->agent_port = 161;
+
+    // 🚨 타임아웃 방지를 위해 createSyncClient(동기 모드) 사용!
+    self->snmp_sender = createSyncClient((transport == SNMP_TRANS_UDP ? "udp://" : "tcp://"), NULL);
 
     self->oid_map  = new_HashMap(16);
     return (self->snmp_sender && self->oid_map);
