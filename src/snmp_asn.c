@@ -11,6 +11,99 @@ static Class SnmpVarBind_Class = {
     .size     = sizeof(SnmpVarBind),
     .finalize = SnmpVarBind_finalize
 };
+// 🚨 [추가] OCTET STRING이 사람이 읽을 수 있는 문자인지 판별하는 함수
+static bool is_printable_string(const uint8_t* data, size_t len) {
+    if (!data || len == 0) {
+        return false;
+    }
+
+    for (size_t i = 0; i < len; i++) {
+        if (data[i] < 32 || data[i] > 126) {
+            if (data[i] != '\r' && data[i] != '\n' && data[i] != '\t') {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+// 🚨 [핵심] ASN.1 태그 기반 밸류 포맷팅 함수
+void snmp_asn_format_value(uint8_t tag, const uint8_t* val_data, size_t val_len, char* out_buf, size_t out_sz) {
+    if (!out_buf || out_sz == 0) {
+        return;
+    }
+
+    memset(out_buf, 0, out_sz);
+
+    switch (tag) {
+        /* [1] 정수형 및 카운터 처리 */
+        case 0x02: // ASN_INTEGER
+        case 0x41: // Counter32
+        case 0x42: // Gauge32
+        case 0x43: // TimeTicks
+        {
+            uint32_t val = 0;
+            for (size_t i = 0; i < val_len; i++) {
+                val = (val << 8) | val_data[i];
+            }
+
+            if (tag == 0x43) { // TimeTicks 특화 포맷팅 (1/100초 단위)
+                uint32_t sec = val / 100;
+                uint32_t days = sec / 86400;
+                uint32_t hours = (sec % 86400) / 3600;
+                uint32_t mins = (sec % 3600) / 60;
+                uint32_t secs = sec % 60;
+                snprintf(out_buf, out_sz, "%u days %02u:%02u:%02u", days, hours, mins, secs);
+            } else {
+                snprintf(out_buf, out_sz, "%u", val);
+            }
+            break;
+        }
+
+        /* [2] IP Address 처리 (0x40) */
+        case 0x40:
+        {
+            if (val_len == 4) {
+                snprintf(out_buf, out_sz, "%u.%u.%u.%u",
+                         val_data[0], val_data[1], val_data[2], val_data[3]);
+            }
+            break;
+        }
+
+        /* [3] OCTET STRING 처리 (0x04) */
+        case 0x04:
+        {
+            if (is_printable_string(val_data, val_len)) {
+                // 일반 문자열 (예: "eth0")
+                size_t copy_len = (val_len < out_sz - 1) ? val_len : out_sz - 1;
+                memcpy(out_buf, val_data, copy_len);
+            } else {
+                // MAC 주소 등 Hex 형태 (예: 00:1A:2B:3C:4D:5E)
+                size_t pos = 0;
+                for (size_t i = 0; i < val_len && pos < out_sz - 3; i++) {
+                    pos += snprintf(out_buf + pos, out_sz - pos, "%02X%s",
+                                    val_data[i], (i == val_len - 1) ? "" : ":");
+                }
+            }
+            break;
+        }
+
+        /* [4] OID 처리 (0x06) - 기존 OID 디코딩 로직 활용 */
+        case 0x06:
+        {
+            // snmp_asn_decode_oid(val_data, val_len, out_buf, out_sz);
+            // (기존에 작성하신 OID 파싱 함수 호출)
+            snprintf(out_buf, out_sz, "OID Data (Parsed)");
+            break;
+        }
+
+        /* 예외 처리 */
+        default:
+            snprintf(out_buf, out_sz, "[Type: %02X, Len: %zu]", tag, val_len);
+            break;
+    }
+}
 
 SnmpVarBind* new_SnmpVarBind(uint8_t tag, const char* oid, const char* value) {
     SnmpVarBind* self = calloc(1, sizeof(SnmpVarBind));
@@ -99,6 +192,19 @@ bool snmp_asn_decode_response(const uint8_t* buf, size_t len, ArrayList* out_var
                 snprintf(val, sizeof(val), "NULL");
             } else if (tag == 0x80 || tag == 0x81 || tag == 0x82) { // SNMPv2 예외 (EndOfMibView 등)
                 snprintf(val, sizeof(val), "Exception/End(%02X)", tag);
+						} else if (tag == 0x06) { // OID value
+              uint32_t v_oids[128];
+              size_t v_cnt = 0;
+              p = asn1_decode_oid(p, v_oids, &v_cnt);
+              int voff = 0;
+              for (size_t k = 0; k < v_cnt; k++) {
+                voff += snprintf(val + voff, sizeof(val) - voff,
+                                 "%s%u", (k == 0 ? "" : "."), v_oids[k]);
+              }
+            } else if (tag == 0x46) { // Counter64
+              uint64_t uv64 = 0;
+              p = asn1_decode_unsigned64(p, &uv64);
+              snprintf(val, sizeof(val), "%llu", (unsigned long long)uv64);
             } else {
                 snprintf(val, sizeof(val), "UnknownTag(%02X)", tag);
             }

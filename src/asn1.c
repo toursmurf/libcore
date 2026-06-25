@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+
 const uint8_t* asn1_decode_length(const uint8_t* buf, size_t* out_length) {
     if (!buf || !out_length) return NULL;
     if (*buf < 128) {
@@ -13,6 +14,20 @@ const uint8_t* asn1_decode_length(const uint8_t* buf, size_t* out_length) {
         for (int i = 0; i < bytes; i++) {
             *out_length = (*out_length << 8) | *buf++;
         }
+    }
+    return buf;
+}
+
+const uint8_t* asn1_decode_unsigned64(const uint8_t* buf, uint64_t* out_value) {
+    if (!buf || !out_value) return NULL;
+    uint8_t tag = *buf++;
+    if (tag != ASN1_COUNTER64) return NULL;
+    size_t len;
+    buf = asn1_decode_length(buf, &len);
+    if (!buf) return NULL;
+    *out_value = 0;
+    for (size_t i = 0; i < len && i < 8; i++) {
+        *out_value = (*out_value << 8) | *buf++;
     }
     return buf;
 }
