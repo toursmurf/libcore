@@ -45,7 +45,7 @@ void example_snmp_get_and_bulk(void) {
         RELEASE_NULL(v2_results);
         RELEASE_NULL(snmp_v2c);
     }
-
+/*
     printf("\n--- [3. SNMP V3 GetBulk Test] ---\n");
     // (V3는 장비 측에 해당 보안 계정 스펙이 타겟 매핑되어 있지 않다면 Timeout이 발생하는 것이 아키텍처상 정상입니다)
     CoreSnmp* snmp_v3 = new_SnmpV3(SNMP_TRANS_UDP, "admin", SNMP_SEC_AUTH_PRIV,
@@ -63,7 +63,7 @@ void example_snmp_get_and_bulk(void) {
         // 🚨 순수 변수 해제 원칙 고수
         RELEASE_NULL(v3_results);
         RELEASE_NULL(snmp_v3);
-    }
+    }*/
 }
 
 void example_trap_send_receive(void) {
