@@ -6,7 +6,7 @@
 // localhost 로 테스트
 #define TARGET_IP "127.0.0.1"
 
-void example_snmp_get_and_bulk(void) {
+void example_snmp_get_and_walk(void) {
     printf("\n--- [1. SNMP V1 GetNext Test] ---\n");
     CoreSnmp* snmp_v1 = new_Snmp(SNMP_TRANS_UDP, "1", "public");
     if (snmp_v1) {
@@ -29,7 +29,7 @@ void example_snmp_get_and_bulk(void) {
     if (snmp_v2c) {
         ArrayList* v2_results = new_ArrayList(16);
 
-        if (snmp_v2c->sendGetBulk(snmp_v2c, TARGET_IP, "1.3.6.1.2.1.2.2.1.2", 0, 100, v2_results) == OK) {
+        if (snmp_v2c->snmpWalk(snmp_v2c, TARGET_IP, "1.3.6.1.2.1.25.4.2.1", v2_results) == OK) {
             printf("V2c GetBulk Success! Parsed %d varbinds.\n", v2_results->getSize(v2_results));
 
             // 🚨 [데이터 폭포수 출력] 리스트에 동적으로 적재된 결과 실시간 파싱 출력!
@@ -44,25 +44,6 @@ void example_snmp_get_and_bulk(void) {
         // 🚨 캐스팅 완전 제거형 객체 소각
         RELEASE_NULL(v2_results);
         RELEASE_NULL(snmp_v2c);
-    }
-
-    printf("\n--- [3. SNMP V3 GetBulk Test] ---\n");
-    // (V3는 장비 측에 해당 보안 계정 스펙이 타겟 매핑되어 있지 않다면 Timeout이 발생하는 것이 아키텍처상 정상입니다)
-    CoreSnmp* snmp_v3 = new_SnmpV3(SNMP_TRANS_UDP, "admin", SNMP_SEC_AUTH_PRIV,
-                                   SNMP_AUTH_SHA, (const uint8_t*)"authpass123", 11,
-                                   SNMP_PRIV_AES, (const uint8_t*)"privpass123", 11);
-    if (snmp_v3) {
-        ArrayList* v3_results = new_ArrayList(16);
-
-        if (snmp_v3->sendGetBulk(snmp_v3, TARGET_IP, "1.3.6.1.2.1.31.1.1.1.1", 0, 20, v3_results) == OK) {
-            printf("V3 GetBulk Success! Parsed %d varbinds.\n", v3_results->getSize(v3_results));
-        } else {
-            printf("V3 GetBulk Timeout (Expected status if V3 context is missing on target).\n");
-        }
-
-        // 🚨 순수 변수 해제 원칙 고수
-        RELEASE_NULL(v3_results);
-        RELEASE_NULL(snmp_v3);
     }
 }
 
@@ -95,7 +76,7 @@ int main(int argc, char* argv[]) {
 
     printf("=== Toos IT Holdings: CoreSnmp Bulk & Trap Engine Test ===\n");
 
-    example_snmp_get_and_bulk();
+    example_snmp_get_and_walk();
     example_trap_send_receive();
 
     printf("\n--- [5. General NMS Get Test] ---\n");
