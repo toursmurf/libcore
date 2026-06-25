@@ -15,8 +15,6 @@ struct SnmpVarBind {
     long long   (*asLong)      (SnmpVarBind* self);
 };
 
-extern const Class SnmpVarBind_Class;
-
 // 🚀 tag 인자 추가된 생성자
 SnmpVarBind* new_SnmpVarBind(uint8_t tag, const char* oid, const char* value);
 bool snmp_asn_decode_response(const uint8_t* buf, size_t len, ArrayList* out_varbinds);
