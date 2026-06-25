@@ -30,7 +30,7 @@ void example_snmp_get_and_walk(void) {
         ArrayList* v2_results = new_ArrayList(16);
 
         if (snmp_v2c->snmpWalk(snmp_v2c, TARGET_IP, "1.3.6.1.2.1.25.4.2.1", v2_results) == OK) {
-            printf("V2c GetBulk Success! Parsed %d varbinds.\n", v2_results->getSize(v2_results));
+            printf("V2c GetWalk Success! Parsed %d varbinds.\n", v2_results->getSize(v2_results));
 
             // 🚨 [데이터 폭포수 출력] 리스트에 동적으로 적재된 결과 실시간 파싱 출력!
             for (int i = 0; i < v2_results->getSize(v2_results); i++) {
@@ -38,7 +38,7 @@ void example_snmp_get_and_walk(void) {
                 printf("  -> [%d] OID: %s, Value: %s\n", i + 1, vb->oid, vb->value_str);
             }
         } else {
-            printf("V2c GetBulk Timeout or Error! (Check Sync Socket & Community String)\n");
+            printf("V2c GetWalk Timeout or Error! (Check Sync Socket & Community String)\n");
         }
 
         // 🚨 캐스팅 완전 제거형 객체 소각
