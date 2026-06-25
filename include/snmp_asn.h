@@ -7,6 +7,7 @@
 typedef  struct SnmpVarBind  SnmpVarBind;
 struct SnmpVarBind {
     Object base;
+    size_t  value_len;
     uint8_t tag;        // 🚀 타입 태그 필드 추가
     char oid[256];
     char value_str[512];

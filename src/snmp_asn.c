@@ -159,17 +159,34 @@ void snmp_asn_format_value(uint8_t tag, const uint8_t* val_data, size_t val_len,
 
 SnmpVarBind* new_SnmpVarBind(uint8_t tag, const char* oid, const char* value) {
     SnmpVarBind* self = calloc(1, sizeof(SnmpVarBind));
-    if (!self) return NULL;
+    if (!self) {
+        return NULL;
+    }
     Object_Init((Object*)self, &SnmpVarBind_Class);
-
     self->tag = tag;
+    /*1. 단 한 번의 strlen() 호출로 길이를 구해 O(1)로 영구 저장! */
+    self->value_len = (value != NULL) ? strlen(value) : 0;
+
     strncpy(self->oid, oid, sizeof(self->oid) - 1);
     self->oid[sizeof(self->oid) - 1] = '\0';
-    strncpy(self->value_str, value, sizeof(self->value_str) - 1);
-    self->value_str[sizeof(self->value_str) - 1] = '\0';
+
+    /*2. 구해놓은 value_len을 활용하여 strncpy 대신 고속 memcpy 적용! */
+    if (value && self->value_len > 0) {
+        size_t copy_len = (self->value_len < sizeof(self->value_str) - 1) ? self->value_len : sizeof(self->value_str) - 1;
+
+        memcpy(self->value_str, value, copy_len);
+        self->value_str[copy_len] = '\0';
+
+        /* 🚨 버퍼 한계로 문자열이 잘렸을 경우를 대비해 실제 저장된 길이로 재조정 */
+        self->value_len = copy_len;
+    } else {
+        self->value_str[0] = '\0';
+    }
+
     self->getTypeName = varbind_get_type_name_impl;
     self->asInt       = varbind_as_int_impl;
     self->asLong      = varbind_as_long_impl;
+
     return self;
 }
 

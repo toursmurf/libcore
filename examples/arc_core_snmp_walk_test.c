@@ -15,23 +15,23 @@ void example_snmp_get_and_walk(void) {
         if (snmp_v2c->snmpWalk(snmp_v2c, TARGET_IP, "1.3.6.1.2.1.25.4.2", v2_results) == OK) {
             printf("V2c GetWalk Success! Parsed %d varbinds.\n", v2_results->getSize(v2_results));
 
-            // 🚨 [데이터 폭포수 출력] 리스트에 동적으로 적재된 결과 실시간 파싱 출력!
+            //[데이터 폭포수 출력] 리스트에 동적으로 적재된 결과 실시간 파싱 출력!
             for (int i = 0; i < v2_results->getSize(v2_results); i++) {
                 SnmpVarBind* vb = (SnmpVarBind*)v2_results->get(v2_results, i);
-                printf("  -> [%d] OID: %s, Value: %s, Type: %s\n", i + 1, vb->oid, vb->value_str, vb->getTypeName(vb));
+                printf("  -> [%d] OID: %s, Value: %s, Type: %s, len=%d\n", i + 1, vb->oid, vb->value_str, vb->getTypeName(vb), vb->value_len);
             }
         } else {
             printf("V2c GetWalk Timeout or Error! (Check Sync Socket & Community String)\n");
         }
 
-        // 🚨 캐스팅 완전 제거형 객체 소각
+        //캐스팅 완전 제거형 객체 소각
         RELEASE_NULL(v2_results);
         RELEASE_NULL(snmp_v2c);
     }
 }
 
 int main(int argc, char* argv[]) {
-    // 🚨 -Wextra 옵션의 unused parameter 경고 원천 진압!
+    //-Wextra 옵션의 unused parameter 경고 원천 진압!
     (void)argc;
     (void)argv;
 

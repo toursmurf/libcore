@@ -13,14 +13,14 @@ void example_snmp_get_and_bulk(void) {
         uint8_t out_buf[2048];
         size_t actual_len = 0;
 
-        // 🚨 최신 엔진 스펙에 맞게 6번째 인자 &actual_len 전달 및 OK 판단!
+        //최신 엔진 스펙에 맞게 6번째 인자 &actual_len 전달 및 OK 판단!
         if (snmp_v1->sendGetNext(snmp_v1, TARGET_IP, "1.3.6.1.2.1.1.1.0", out_buf, sizeof(out_buf), &actual_len) == OK) {
             printf("V1 GetNext Success! Received %zu bytes.\n", actual_len);
         } else {
             printf("V1 GetNext Timeout or Error! (Check connection or OID)\n");
         }
 
-        // 🚨 캐스팅 완전 제거! lvalue 및 strict-aliasing 경고 완전 차단!
+        //캐스팅 완전 제거! lvalue 및 strict-aliasing 경고 완전 차단!
         RELEASE_NULL(snmp_v1);
     }
 
@@ -32,16 +32,16 @@ void example_snmp_get_and_bulk(void) {
         if (snmp_v2c->sendGetBulk(snmp_v2c, TARGET_IP, "1.3.6.1.2.1.2.2.1.2", 0, 100, v2_results) == OK) {
             printf("V2c GetBulk Success! Parsed %d varbinds.\n", v2_results->getSize(v2_results));
 
-            // 🚨 [데이터 폭포수 출력] 리스트에 동적으로 적재된 결과 실시간 파싱 출력!
+            // [데이터 폭포수 출력] 리스트에 동적으로 적재된 결과 실시간 파싱 출력!
             for (int i = 0; i < v2_results->getSize(v2_results); i++) {
                 SnmpVarBind* vb = (SnmpVarBind*)v2_results->get(v2_results, i);
-                printf("  -> [%d] OID: %s, Value: %s, Type: %s\n", i + 1, vb->oid, vb->value_str, vb->getTypeName(vb));
+                printf("  -> [%d] OID: %s, Value: %s, Type: %s, len=%d\n", i + 1, vb->oid, vb->value_str, vb->getTypeName(vb), vb->value_len);
             }
         } else {
             printf("V2c GetBulk Timeout or Error! (Check Sync Socket & Community String)\n");
         }
 
-        // 🚨 캐스팅 완전 제거형 객체 소각
+        //캐스팅 완전 제거형 객체 소각
         RELEASE_NULL(v2_results);
         RELEASE_NULL(snmp_v2c);
     }
