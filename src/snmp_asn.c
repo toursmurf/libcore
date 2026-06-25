@@ -11,6 +11,58 @@ static Class SnmpVarBind_Class = {
     .size     = sizeof(SnmpVarBind),
     .finalize = SnmpVarBind_finalize
 };
+
+* 🚀 1. 태그 번호를 사람이 읽기 쉬운 문자열로 변환해주는 메서드 */
+static const char* varbind_get_type_name_impl(SnmpVarBind* self) {
+    if (!self) {
+        return "Unknown";
+    }
+
+    switch (self->tag) {
+        case 0x02: return "INTEGER";
+        case 0x04: return "OCTET STRING";
+        case 0x05: return "NULL";
+        case 0x06: return "OBJECT IDENTIFIER";
+        case 0x40: return "IpAddress";
+        case 0x41: return "Counter32";
+        case 0x42: return "Gauge32";
+        case 0x43: return "TimeTicks";
+        case 0x44: return "Opaque";
+        case 0x46: return "Counter64";
+        case 0x80: return "NoSuchObject";
+        case 0x81: return "NoSuchInstance";
+        case 0x82: return "EndOfMibView";
+        default:   return "Unknown";
+    }
+}
+
+/* 🚀 2. 문자열로 저장된 값을 안전하게 int 로 캐스팅하는 메서드 */
+static int varbind_as_int_impl(SnmpVarBind* self) {
+    if (!self) {
+        return 0;
+    }
+
+    // 정수형이나 카운터 타입일 때만 변환 (아니면 0 반환)
+    if (self->tag == 0x02 || self->tag == 0x41 || self->tag == 0x42 || self->tag == 0x43) {
+        return atoi(self->value_str);
+    }
+
+    return 0;
+}
+
+/* 🚀 3. Counter64 같은 큰 숫자를 안전하게 long long 으로 캐스팅하는 메서드 */
+static long long varbind_as_long_impl(SnmpVarBind* self) {
+    if (!self) {
+        return 0;
+    }
+
+    if (self->tag == 0x02 || self->tag == 0x41 || self->tag == 0x42 || self->tag == 0x43 || self->tag == 0x46) {
+        return atoll(self->value_str);
+    }
+
+    return 0;
+}
+
 // 🚨 [추가] OCTET STRING이 사람이 읽을 수 있는 문자인지 판별하는 함수
 static bool is_printable_string(const uint8_t* data, size_t len) {
     if (!data || len == 0) {
@@ -115,6 +167,9 @@ SnmpVarBind* new_SnmpVarBind(uint8_t tag, const char* oid, const char* value) {
     self->oid[sizeof(self->oid) - 1] = '\0';
     strncpy(self->value_str, value, sizeof(self->value_str) - 1);
     self->value_str[sizeof(self->value_str) - 1] = '\0';
+    self->getTypeName = varbind_get_type_name_impl;
+    self->asInt       = varbind_as_int_impl;
+    self->asLong      = varbind_as_long_impl;
     return self;
 }
 

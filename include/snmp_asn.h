@@ -9,7 +9,12 @@ typedef struct SnmpVarBind {
     uint8_t tag;        // 🚀 타입 태그 필드 추가
     char oid[256];
     char value_str[512];
+    const char* (*getTypeName) (SnmpVarBind* self);
+    int         (*asInt)       (SnmpVarBind* self);
+    long long   (*asLong)      (SnmpVarBind* self);
 } SnmpVarBind;
+
+extern const Class SnmpVarBind_Class;
 
 // 🚀 tag 인자 추가된 생성자
 SnmpVarBind* new_SnmpVarBind(uint8_t tag, const char* oid, const char* value);
