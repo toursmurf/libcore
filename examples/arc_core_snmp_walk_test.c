@@ -18,7 +18,7 @@ void example_snmp_get_and_walk(void) {
             //[데이터 폭포수 출력] 리스트에 동적으로 적재된 결과 실시간 파싱 출력!
             for (int i = 0; i < v2_results->getSize(v2_results); i++) {
                 SnmpVarBind* vb = (SnmpVarBind*)v2_results->get(v2_results, i);
-                printf("  -> [%d] OID: %s, Value: %s, Type: %s, len=%d\n", i + 1, vb->oid, vb->value_str, vb->getTypeName(vb), vb->value_len);
+                printf("  -> [%d] OID: %s, Value: %s, Type: %s, len=%ld\n", i + 1, vb->oid, vb->value_str, vb->getTypeName(vb), vb->value_len);
             }
         } else {
             printf("V2c GetWalk Timeout or Error! (Check Sync Socket & Community String)\n");
