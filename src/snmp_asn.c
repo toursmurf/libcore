@@ -12,7 +12,7 @@ static Class SnmpVarBind_Class = {
     .finalize = SnmpVarBind_finalize
 };
 
-* 🚀 1. 태그 번호를 사람이 읽기 쉬운 문자열로 변환해주는 메서드 */
+/*1. 태그 번호를 사람이 읽기 쉬운 문자열로 변환해주는 메서드 */
 static const char* varbind_get_type_name_impl(SnmpVarBind* self) {
     if (!self) {
         return "Unknown";
@@ -36,7 +36,7 @@ static const char* varbind_get_type_name_impl(SnmpVarBind* self) {
     }
 }
 
-/* 🚀 2. 문자열로 저장된 값을 안전하게 int 로 캐스팅하는 메서드 */
+/*2. 문자열로 저장된 값을 안전하게 int 로 캐스팅하는 메서드 */
 static int varbind_as_int_impl(SnmpVarBind* self) {
     if (!self) {
         return 0;
@@ -50,7 +50,7 @@ static int varbind_as_int_impl(SnmpVarBind* self) {
     return 0;
 }
 
-/* 🚀 3. Counter64 같은 큰 숫자를 안전하게 long long 으로 캐스팅하는 메서드 */
+/*3. Counter64 같은 큰 숫자를 안전하게 long long 으로 캐스팅하는 메서드 */
 static long long varbind_as_long_impl(SnmpVarBind* self) {
     if (!self) {
         return 0;
