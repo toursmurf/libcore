@@ -2,149 +2,267 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <limits.h>
+#include <errno.h>
 
+/* =====================================================================
+ * [DECODER API]
+ * ===================================================================== */
 
-const uint8_t* asn1_decode_length(const uint8_t* buf, size_t* out_length) {
-    if (!buf || !out_length) return NULL;
-    if (*buf < 128) {
-        *out_length = *buf++;
-    } else {
-        uint8_t bytes = *buf++ & 0x7F;
-        *out_length = 0;
-        for (int i = 0; i < bytes; i++) {
-            *out_length = (*out_length << 8) | *buf++;
+const uint8_t* asn1_decode_length(const uint8_t* ptr, const uint8_t* end, size_t* out_len) {
+    if (ptr >= end) return NULL;
+    uint8_t b = *ptr++;
+
+    if (b < 128) {
+        *out_len = b;
+        return ptr;
+    }
+
+    if (b == 0x80) return NULL;
+
+    uint8_t num = b & 0x7F;
+    if (num == 0 || num > sizeof(size_t) || ptr + num > end) return NULL;
+
+    /* 🚨 ③ 의도 명확화: 다중 바이트 길이에서 비최소 표현(Leading Zero) 방어 */
+    if (num > 1 && *ptr == 0x00) return NULL;
+
+    *out_len = 0;
+    while (num--) {
+        if (*out_len > (SIZE_MAX >> 8)) return NULL;
+        *out_len = (*out_len << 8) | *ptr++;
+    }
+
+    return (*out_len < 128) ? NULL : ptr;
+}
+
+const uint8_t* asn1_decode_integer(const uint8_t* ptr, const uint8_t* end, int32_t* out_val) {
+    if (ptr >= end || *ptr != ASN1_INTEGER) return NULL;
+    ptr++;
+
+    size_t len;
+    ptr = asn1_decode_length(ptr, end, &len);
+    if (!ptr || len == 0 || len > 4 || ptr + len > end) return NULL;
+
+    if (len > 1) {
+        if ((ptr[0] == 0x00 && (ptr[1] & 0x80) == 0) ||
+            (ptr[0] == 0xFF && (ptr[1] & 0x80) != 0)) {
+            return NULL;
         }
     }
-    return buf;
+
+    *out_val = (ptr[0] & 0x80) ? -1 : 0;
+    while (len--) *out_val = (*out_val << 8) | *ptr++;
+
+    return ptr;
 }
 
-const uint8_t* asn1_decode_unsigned64(const uint8_t* buf, uint64_t* out_value) {
-    if (!buf || !out_value) return NULL;
-    uint8_t tag = *buf++;
-    if (tag != ASN1_COUNTER64) return NULL;
+const uint8_t* asn1_decode_unsigned(const uint8_t* ptr, const uint8_t* end, uint32_t* out_val) {
+    if (ptr >= end || (*ptr != ASN1_COUNTER32 && *ptr != ASN1_GAUGE32 && *ptr != ASN1_TIMETICKS)) return NULL;
+    ptr++;
+
     size_t len;
-    buf = asn1_decode_length(buf, &len);
-    if (!buf) return NULL;
-    *out_value = 0;
-    for (size_t i = 0; i < len && i < 8; i++) {
-        *out_value = (*out_value << 8) | *buf++;
+    ptr = asn1_decode_length(ptr, end, &len);
+    if (!ptr || len == 0 || len > 5 || ptr + len > end) return NULL;
+
+    if (len > 1 && ptr[0] == 0x00) {
+        if ((ptr[1] & 0x80) == 0) return NULL;
+        ptr++;
+        len--;
+    } else if (len == 5) {
+        return NULL;
     }
-    return buf;
+
+    *out_val = 0;
+    while (len--) *out_val = (*out_val << 8) | *ptr++;
+
+    return ptr;
 }
 
-const uint8_t* asn1_decode_integer(const uint8_t* buf, int32_t* out_value) {
-    if (!buf || *buf != ASN1_INTEGER) return NULL;
-    buf++;
+const uint8_t* asn1_decode_unsigned64(const uint8_t* ptr, const uint8_t* end, uint64_t* out_val) {
+    if (ptr >= end || *ptr != ASN1_COUNTER64) return NULL;
+    ptr++;
+
     size_t len;
-    buf = asn1_decode_length(buf, &len);
-    if (!buf) return NULL;
-    *out_value = 0;
-    for (size_t i = 0; i < len; i++) {
-        *out_value = (*out_value << 8) | *buf++;
+    ptr = asn1_decode_length(ptr, end, &len);
+    if (!ptr || len == 0 || len > 9 || ptr + len > end) return NULL;
+
+    if (len > 1 && ptr[0] == 0x00) {
+        if ((ptr[1] & 0x80) == 0) return NULL;
+        ptr++;
+        len--;
+    } else if (len == 9) {
+        return NULL;
     }
-    return buf;
+
+    *out_val = 0;
+    while (len--) *out_val = (*out_val << 8) | *ptr++;
+
+    return ptr;
 }
 
-const uint8_t* asn1_decode_unsigned(const uint8_t* buf, uint32_t* out_value) {
-    if (!buf || !out_value) return NULL;
-    uint8_t tag = *buf++;
-    if (tag != ASN1_COUNTER32 && tag != ASN1_GAUGE32 && tag != ASN1_TIMETICKS) return NULL;
+const uint8_t* asn1_decode_ip(const uint8_t* ptr, const uint8_t* end, char* out_ip, size_t max_len) {
+    if (ptr >= end || !out_ip || max_len == 0) return NULL;
+    if (*ptr != ASN1_IPADDRESS) return NULL;
+    ptr++;
+
     size_t len;
-    buf = asn1_decode_length(buf, &len);
-    if (!buf) return NULL;
-    *out_value = 0;
-    for (size_t i = 0; i < len; i++) {
-        *out_value = (*out_value << 8) | *buf++;
-    }
-    return buf;
+    ptr = asn1_decode_length(ptr, end, &len);
+    if (!ptr || len != 4 || ptr + len > end) return NULL;
+
+    snprintf(out_ip, max_len, "%u.%u.%u.%u", ptr[0], ptr[1], ptr[2], ptr[3]);
+    return ptr + len;
 }
 
-const uint8_t* asn1_decode_ip(const uint8_t* buf, char* out_ip, size_t max_len) {
-    if (!buf || *buf != ASN1_IPADDRESS || !out_ip) return NULL;
-    buf++;
-    size_t len;
-    buf = asn1_decode_length(buf, &len);
-    if (!buf || len != 4) return NULL;
-    if (max_len < 16) return NULL;
-    snprintf(out_ip, max_len, "%u.%u.%u.%u", buf[0], buf[1], buf[2], buf[3]);
-    return buf + 4;
-}
+const uint8_t* asn1_decode_string(const uint8_t* ptr, const uint8_t* end, char* out_str, size_t max_len) {
+    if (ptr >= end || !out_str || max_len == 0) return NULL;
+    if (*ptr != ASN1_OCTET_STRING) return NULL;
+    ptr++;
 
-const uint8_t* asn1_decode_string(const uint8_t* buf, char* out_str, size_t max_len) {
-    if (!buf || *buf != ASN1_OCTET_STRING || !out_str) return NULL;
-    buf++;
     size_t len;
-    buf = asn1_decode_length(buf, &len);
-    if (!buf) return NULL;
+    ptr = asn1_decode_length(ptr, end, &len);
+    if (!ptr || ptr + len > end) return NULL;
+
     size_t copy_len = (len < max_len - 1) ? len : max_len - 1;
-    memcpy(out_str, buf, copy_len);
+    memcpy(out_str, ptr, copy_len);
     out_str[copy_len] = '\0';
-    return buf + len;
+
+    return ptr + len;
 }
 
-const uint8_t* asn1_decode_oid(const uint8_t* buf, uint32_t* out_oids, size_t* out_count) {
-    if (!buf || *buf != ASN1_OBJECT_ID) return NULL;
-    buf++;
+const uint8_t* asn1_decode_oid(const uint8_t* ptr, const uint8_t* end, uint32_t* oids, size_t* count) {
+    if (ptr >= end || *ptr != ASN1_OBJECT_ID) return NULL;
+    ptr++;
+
     size_t len;
-    buf = asn1_decode_length(buf, &len);
-    if (!buf) return NULL;
-    const uint8_t* end = buf + len;
-    out_oids[0] = *buf / 40;
-    out_oids[1] = *buf % 40;
-    *out_count = 2;
-    buf++;
-    while (buf < end) {
-        uint32_t subid = 0;
-        uint8_t b;
-        do {
-            b = *buf++;
-            subid = (subid << 7) | (b & 0x7F);
-        } while (b & 0x80);
-        out_oids[(*out_count)++] = subid;
+    ptr = asn1_decode_length(ptr, end, &len);
+    if (!ptr || len == 0 || ptr + len > end) return NULL;
+
+    const uint8_t* obj_end = ptr + len;
+    *count = 0;
+
+    /* 🚨 ① 2개 동시 저장 대비 안전장치 (126 이하일 때만 허용) */
+    if (ptr < obj_end && *count <= 126) {
+        uint8_t first = *ptr++;
+        uint32_t x = first / 40;
+        if (x > 2) x = 2;
+        uint32_t y = first - (x * 40);
+        oids[(*count)++] = x;
+        oids[(*count)++] = y;
     }
-    return end;
+
+    uint32_t val = 0;
+    int oid_bytes = 0;
+
+    while (ptr < obj_end && *count < 128) {
+        oid_bytes++;
+        if (oid_bytes > 5) return NULL;
+        if (val > (UINT32_MAX >> 7)) return NULL;
+
+        val = (val << 7) | (*ptr & 0x7F);
+
+        if ((*ptr & 0x80) == 0) {
+            oids[(*count)++] = val;
+            val = 0;
+            oid_bytes = 0;
+        }
+        ptr++;
+    }
+
+    if (oid_bytes != 0) return NULL;
+
+    return obj_end;
 }
+
+/* =====================================================================
+ * [ENCODER API]
+ * ===================================================================== */
 
 uint8_t* asn1_encode_length(uint8_t* buf, size_t length) {
+    if (!buf) return NULL;
+
     if (length < 128) {
         *buf++ = (uint8_t)length;
     } else {
-        uint8_t bytes = 0;
+        uint8_t len_bytes[sizeof(size_t)];
+        int num_bytes = 0;
         size_t temp = length;
-        while (temp > 0) { bytes++; temp >>= 8; }
-        *buf++ = 0x80 | bytes;
-        for (int i = bytes - 1; i >= 0; i--) {
-            *buf++ = (uint8_t)(length >> (i * 8));
+
+        while (temp > 0) {
+            len_bytes[num_bytes++] = temp & 0xFF;
+            temp >>= 8;
+        }
+
+        *buf++ = 0x80 | (uint8_t)num_bytes;
+        for (int i = num_bytes - 1; i >= 0; i--) {
+            *buf++ = len_bytes[i];
         }
     }
     return buf;
 }
 
 uint8_t* asn1_encode_integer(uint8_t* buf, int32_t value) {
+    if (!buf) return NULL;
     *buf++ = ASN1_INTEGER;
-    *buf++ = 1;
-    *buf++ = (uint8_t)(value & 0xFF);
+
+    uint8_t bytes[4];
+    bytes[0] = (value >> 24) & 0xFF;
+    bytes[1] = (value >> 16) & 0xFF;
+    bytes[2] = (value >> 8) & 0xFF;
+    bytes[3] = value & 0xFF;
+
+    int start = 0;
+    while (start < 3) {
+        if (bytes[start] == 0x00 && (bytes[start + 1] & 0x80) == 0) {
+            start++;
+        } else if (bytes[start] == 0xFF && (bytes[start + 1] & 0x80) != 0) {
+            start++;
+        } else {
+            break;
+        }
+    }
+
+    int size = 4 - start;
+    *buf++ = size;
+
+    for (int i = start; i < 4; i++) {
+        *buf++ = bytes[i];
+    }
+
     return buf;
 }
 
 uint8_t* asn1_encode_unsigned(uint8_t* buf, uint32_t value, uint8_t tag) {
+    if (!buf) return NULL;
     *buf++ = tag;
-    uint8_t temp[5];
-    int len = 0;
-    if (value == 0) {
-        temp[len++] = 0;
-    } else {
-        for (int i = 24; i >= 0; i -= 8) {
-            uint8_t b = (value >> i) & 0xFF;
-            if (len > 0 || b > 0 || i == 0) temp[len++] = b;
+
+    uint8_t bytes[5];
+    bytes[0] = 0x00;
+    bytes[1] = (value >> 24) & 0xFF;
+    bytes[2] = (value >> 16) & 0xFF;
+    bytes[3] = (value >> 8) & 0xFF;
+    bytes[4] = value & 0xFF;
+
+    int start = 0;
+    while (start < 4) {
+        if (bytes[start] == 0x00 && (bytes[start + 1] & 0x80) == 0) {
+            start++;
+        } else {
+            break;
         }
     }
-    buf = asn1_encode_length(buf, len);
-    memcpy(buf, temp, len);
-    return buf + len;
+
+    int size = 5 - start;
+    *buf++ = size;
+
+    for (int i = start; i < 5; i++) {
+        *buf++ = bytes[i];
+    }
+
+    return buf;
 }
 
 uint8_t* asn1_encode_ip(uint8_t* buf, const uint8_t ip[4]) {
+    if (!buf) return NULL;
     *buf++ = ASN1_IPADDRESS;
     *buf++ = 4;
     memcpy(buf, ip, 4);
@@ -152,9 +270,10 @@ uint8_t* asn1_encode_ip(uint8_t* buf, const uint8_t ip[4]) {
 }
 
 uint8_t* asn1_encode_string(uint8_t* buf, const char* str, size_t len) {
+    if (!buf) return NULL;
     *buf++ = ASN1_OCTET_STRING;
     buf = asn1_encode_length(buf, len);
-    if (len > 0 && str) {
+    if (str && len > 0) {
         memcpy(buf, str, len);
         buf += len;
     }
@@ -162,44 +281,60 @@ uint8_t* asn1_encode_string(uint8_t* buf, const char* str, size_t len) {
 }
 
 uint8_t* asn1_encode_oid(uint8_t* buf, const char* oid_str) {
-    *buf++ = ASN1_OBJECT_ID;
-    if (!oid_str) {
-        *buf++ = 0x00;
-        return buf;
-    }
+    if (!buf || !oid_str) return NULL;
+
     uint32_t oids[128];
-    int count = 0;
+    size_t count = 0;
     const char* p = oid_str;
+
     while (*p && count < 128) {
         char* endptr;
-        uint32_t val = (uint32_t)strtoul(p, &endptr, 10);
-        if (p == endptr) break;
-        oids[count++] = val;
+        errno = 0;
+        oids[count++] = strtoul(p, &endptr, 10);
+
+        if (p == endptr || errno == ERANGE) return NULL;
         p = endptr;
+
         if (*p == '.') p++;
+        else if (*p != '\0') return NULL;
     }
-    if (count < 2) {
-        *buf++ = 0x00;
-        return buf;
-    }
-    uint8_t temp[128];
-    int t_len = 0;
-    temp[t_len++] = (uint8_t)((oids[0] * 40) + oids[1]);
-    for (int i = 2; i < count; i++) {
+
+    if (count < 2) return NULL;
+    if (oids[0] > 2) return NULL;
+    if (oids[0] < 2 && oids[1] >= 40) return NULL;
+
+    *buf++ = ASN1_OBJECT_ID;
+
+    uint8_t temp[512];
+    uint8_t* t_ptr = temp;
+    /* 🚨 ② t_end 포인터 미리 계산하여 가독성 및 속도 확보 */
+    uint8_t* t_end = temp + sizeof(temp);
+
+    *t_ptr++ = (oids[0] * 40) + oids[1];
+
+    for (size_t i = 2; i < count; i++) {
+        if (t_end - t_ptr < 5) return NULL;
+
         uint32_t val = oids[i];
-        uint8_t bytes[5];
-        int b_idx = 0;
-        bytes[b_idx++] = val & 0x7F;
-        val >>= 7;
-        while (val > 0) {
-            bytes[b_idx++] = (val & 0x7F) | 0x80;
+        if (val < 128) {
+            *t_ptr++ = val;
+        } else {
+            uint8_t v_bytes[5];
+            int v_idx = 0;
+            v_bytes[v_idx++] = val & 0x7F;
             val >>= 7;
-        }
-        for (int k = b_idx - 1; k >= 0; k--) {
-            temp[t_len++] = bytes[k];
+            while (val > 0) {
+                v_bytes[v_idx++] = (val & 0x7F) | 0x80;
+                val >>= 7;
+            }
+            for (int j = v_idx - 1; j >= 0; j--) {
+                *t_ptr++ = v_bytes[j];
+            }
         }
     }
-    buf = asn1_encode_length(buf, (size_t)t_len);
-    memcpy(buf, temp, (size_t)t_len);
-    return buf + t_len;
+
+    size_t enc_len = t_ptr - temp;
+    buf = asn1_encode_length(buf, enc_len);
+    memcpy(buf, temp, enc_len);
+    return buf + enc_len;
 }
