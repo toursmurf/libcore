@@ -1,6 +1,7 @@
 #include "snmp_asn.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 static void SnmpVarBind_finalize(Object* obj) {
     (void)obj; // 🚨 -Wunused-parameter 경고 해결!
@@ -209,7 +210,8 @@ bool snmp_asn_decode_response(const uint8_t* buf, size_t len, ArrayList* out_var
     p++;
 
     size_t pdu_len;
-    p = asn1_decode_length(p, &pdu_len);
+    /* 🚨 100점 Iron Fortress 규격 적용: end 포인터 추가 */
+    p = asn1_decode_length(p, end, &pdu_len);
 
     if (!p) {
         return false;
@@ -223,7 +225,8 @@ bool snmp_asn_decode_response(const uint8_t* buf, size_t len, ArrayList* out_var
         p++;
 
         size_t l;
-        p = asn1_decode_length(p, &l);
+        /* 🚨 규격 적용: end 포인터 추가 */
+        p = asn1_decode_length(p, end, &l);
 
         if (!p) {
             return false;
@@ -239,7 +242,8 @@ bool snmp_asn_decode_response(const uint8_t* buf, size_t len, ArrayList* out_var
     p++;
 
     size_t vbl_len;
-    p = asn1_decode_length(p, &vbl_len);
+    /* 🚨 규격 적용: end 포인터 추가 */
+    p = asn1_decode_length(p, end, &vbl_len);
 
     if (!p) {
         return false;
@@ -255,7 +259,8 @@ bool snmp_asn_decode_response(const uint8_t* buf, size_t len, ArrayList* out_var
         p++;
 
         size_t vb_len;
-        p = asn1_decode_length(p, &vb_len);
+        /* 🚨 규격 적용: end 포인터 추가 */
+        p = asn1_decode_length(p, end, &vb_len);
 
         if (!p) {
             break;
@@ -266,7 +271,8 @@ bool snmp_asn_decode_response(const uint8_t* buf, size_t len, ArrayList* out_var
         if (p < vb_end && *p == 0x06) {
             uint32_t oids[128];
             size_t cnt = 0;
-            p = asn1_decode_oid(p, oids, &cnt);
+            /* 🚨 규격 적용: end 포인터 추가 */
+            p = asn1_decode_oid(p, end, oids, &cnt);
 
             char oid_str[256];
             memset(oid_str, 0, sizeof(oid_str));
@@ -284,12 +290,14 @@ bool snmp_asn_decode_response(const uint8_t* buf, size_t len, ArrayList* out_var
             const uint8_t* val_ptr = p + 1;
             size_t val_len = 0;
 
-            val_ptr = asn1_decode_length(val_ptr, &val_len);
+            /* 🚨 규격 적용: end 포인터 추가 */
+            val_ptr = asn1_decode_length(val_ptr, end, &val_len);
 
             if (tag == 0x06) {
                 uint32_t v_oids[128];
                 size_t v_cnt = 0;
-                p = asn1_decode_oid(p, v_oids, &v_cnt);
+                /* 🚨 규격 적용: end 포인터 추가 */
+                p = asn1_decode_oid(p, end, v_oids, &v_cnt);
 
                 int voff = 0;
 
@@ -298,7 +306,8 @@ bool snmp_asn_decode_response(const uint8_t* buf, size_t len, ArrayList* out_var
                 }
             } else if (tag == 0x46) {
                 uint64_t uv64 = 0;
-                p = asn1_decode_unsigned64(p, &uv64);
+                /* 🚨 규격 적용: end 포인터 추가 */
+                p = asn1_decode_unsigned64(p, end, &uv64);
                 snprintf(val, sizeof(val), "%llu", (unsigned long long)uv64);
             } else if (tag == 0x05) {
                 snprintf(val, sizeof(val), "NULL");
@@ -307,12 +316,12 @@ bool snmp_asn_decode_response(const uint8_t* buf, size_t len, ArrayList* out_var
                 snprintf(val, sizeof(val), "Exception/End(%02X)", tag);
                 p = val_ptr + val_len;
             } else {
-                // 🚨 여기서 임시 버퍼(val)에 스마트 포맷팅을 수행합니다!
+                // 여기서 임시 버퍼(val)에 스마트 포맷팅을 수행합니다!
                 snmp_asn_format_value(tag, val_ptr, val_len, val, sizeof(val));
                 p = val_ptr + val_len;
             }
 
-            // 🚨 가공이 끝난 예쁜 문자열(val)을 생성자에 던져 캡슐화를 완벽히 유지합니다!
+            // 가공이 끝난 예쁜 문자열(val)을 생성자에 던져 캡슐화를 완벽히 유지합니다!
             SnmpVarBind* vb = new_SnmpVarBind(tag, oid_str, val);
 
             if (vb) {
