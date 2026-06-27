@@ -179,7 +179,11 @@ static void on_client_readable(Socket* self, void* loop_ptr) {
     for (size_t i = 0; i < size; i++) {
         ClientSession* s = (ClientSession*)manager.sessions->get(manager.sessions, i);
         if (s->sock == client) {
-            strncpy(target_uin, s->uin, 15);
+            size_t len = strlen(s->uin);
+            if (len >= sizeof(target_uin))
+              len = sizeof(target_uin) - 1;
+            memcpy(target_uin, s->uin, len);
+            target_uin[len] = '\0';
             manager.sessions->remove(manager.sessions, i);
             break;
         }
