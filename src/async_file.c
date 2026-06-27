@@ -65,7 +65,13 @@ static void* async_file_worker(void* arg) {
                     fp = fopen(new_path, "a");
 
                     if (fp) {
-                        strncpy(cur_path, new_path, sizeof(cur_path) - 1);
+                      size_t len = strlen(cur_path);
+
+                      if (len >= sizeof(new_path))
+                        len = sizeof(new_path) - 1;
+
+                        memcpy(new_path, cur_path, len);
+                        new_path[len] = '\0';
                     }
                 }
             }
