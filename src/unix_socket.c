@@ -76,7 +76,13 @@ static UnixSocket* UnixSocket_accept_impl(UnixSocket* self, char* path) {
     if (path) {
         // 🚨 [수정 2]: 클라이언트가 bind를 안 해서 이름이 없는 경우(unnamed) 방어
         if (addr_len > sizeof(sa_family_t)) {
-            strncpy(path, addr.sun_path, sizeof(addr.sun_path) - 1);
+            size_t len = strlen(addr.sun_path);
+
+            if (len >= sizeof(path))
+              len = sizeof(path) - 1;
+
+            memcpy(path, addr.sun_path, len);
+            path[len] = '\0';
         } else {
             path[0] = '\0'; // 이름 없는 클라이언트
         }
