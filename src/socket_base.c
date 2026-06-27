@@ -192,8 +192,12 @@ HashMap* parse_url(const char* url) {
         if (host_len >= sizeof(host)) {
             host_len = sizeof(host) - 1;
         }
-        strncpy(host, hostport, host_len);
-        host[host_len] = '\0';
+        size_t len = host_len;
+        if (len >= sizeof(host))
+            len = sizeof(host) - 1;
+
+        memcpy(host, hostport, len);
+        host[len] = '\0';
         hashmap_put_str(result, "host", host);
         hashmap_put_str(result, "port", port_sep + 1);
     } else {
