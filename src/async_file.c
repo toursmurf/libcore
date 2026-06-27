@@ -70,8 +70,8 @@ static void* async_file_worker(void* arg) {
                       if (len >= sizeof(new_path))
                         len = sizeof(new_path) - 1;
 
-                        memcpy(new_path, cur_path, len);
-                        new_path[len] = '\0';
+                      memcpy(new_path, cur_path, len);
+                      new_path[len] = '\0';
                     }
                 }
             }
