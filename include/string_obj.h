@@ -61,7 +61,8 @@ struct String {
 
 /* [Constructor] 신규 문자열 객체 생성 */
 String* new_String(const char* init_str);
-
+// [OWNED] 길이(len)를 지정하여 문자열 객체를 생성 (중간 복사 방지 최적화용)
+String* new_StringN(const char* str, size_t len);
 /* [Static Helper] 문자열 결합 유틸리티 */
 char* string_join(const char* delimiter, const char** str_array, int count);
 

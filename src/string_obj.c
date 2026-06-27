@@ -335,6 +335,55 @@ String* new_String(const char* init_str) {
     return s;
 }
 
+String* new_StringN(const char* str, size_t len) {
+    if (!str) return NULL;
+
+    String* s = (String*)malloc(sizeof(String));
+    if (!s) return NULL;
+
+    Object_Init((Object*)s, &stringClass);
+
+    /* 길이만큼만 동적 할당하고 복사하여 널 종료 문자 삽입 */
+    s->value = (char*)malloc(len + 1);
+    if (!s->value) {
+        RELEASE(s);
+        return NULL;
+    }
+
+    memcpy(s->value, str, len);
+    s->value[len] = '\0';
+
+    s->length = len;
+
+    // 기존 인터페이스 바인딩
+    s->length_f = impl_length;
+    s->charAt = impl_charAt;
+    s->equals = impl_equals;
+    s->indexOf = impl_indexOf;
+    s->substring = impl_substring;
+    s->trim = impl_trim;
+    s->append = impl_append;
+    s->replace = impl_replace;
+    s->isEmpty = impl_isEmpty;
+    s->split = impl_split;
+    s->explode = impl_split;
+    s->implode = impl_implode;
+    s->reverse = impl_reverse;
+    s->toLowerCase = impl_toLowerCase;
+    s->toUpperCase = impl_toUpperCase;
+    s->toInt = impl_toInt;
+    s->toLong = impl_toLong;
+    s->toDouble = impl_toDouble;
+    s->delete = impl_delete;
+    s->c_str = String_c_str;
+
+    // 🔥 정규표현식 매칭 바인딩
+    s->matches = impl_matches;
+    s->eregi = impl_eregi;
+
+    return s;
+}
+
 // 🚀 [보안 패치] string_join: 정수 오버플로우 방어 및 안전한 memcpy 적용
 char* string_join(const char* delimiter, const char** str_array, int count) {
     if (!delimiter || !str_array || count <= 0) return NULL;
