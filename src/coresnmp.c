@@ -210,7 +210,13 @@ static ErrorCode snmpWalk_impl(CoreSnmp* self, const char* ip, const char* root_
                 out_all->add(out_all, (Object*)copy);
                 RELEASE_NULL(copy);
 
-                strncpy(last_oid, vb->oid, 255);
+                size_t len = strlen(vb->oid);
+
+                if (len >= sizeof(last_oid))
+                  len = sizeof(last_oid) - 1;
+
+                memcpy(last_oid, vb->oid, len);
+                last_oid[len] = '\0';
                 keep = true;
             } else {
                 keep = false;
