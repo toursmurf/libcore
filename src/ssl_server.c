@@ -45,7 +45,11 @@ SslSocket* new_SslServer(const char* host, int port,
 
     /* [C] SslSocket 객체 할당 */
     SslSocket* self = (SslSocket*)calloc(1, sizeof(SslSocket));
-    if (!self) { SSL_CTX_free(ctx); close(fd); return NULL; }
+    if (!self) {
+      SSL_CTX_free(ctx);
+      close(fd);
+      return NULL;
+    }
 
     SslSocket_init_base(self, fd);
     self->ctx = ctx;
@@ -76,30 +80,39 @@ SslSocket* SslSocket_accept(SslSocket* server) {
 
     /* [B] 클라이언트 SslSocket 객체 할당 */
     SslSocket* client = (SslSocket*)calloc(1, sizeof(SslSocket));
-    if (!client) { close(cli_fd); return NULL; }
+    if (!client) {
+      close(cli_fd);
+      return NULL;
+    }
 
     SslSocket_init_base(client, cli_fd);
 
     /* ✅ SSL_CTX_up_ref 반환값 체크!! */
     if (SSL_CTX_up_ref(server->ctx) != 1) {
-        RELEASE(client); return NULL;
+        RELEASE(client);
+        return NULL;
     }
     client->ctx = server->ctx;
 
     /* [D] SSL 세션 생성 */
     client->ssl = SSL_new(client->ctx);
-    if (!client->ssl) { RELEASE(client); return NULL; }
+    if (!client->ssl) {
+      RELEASE(client);
+      return NULL;
+    }
 
     /* ✅ SSL_set_fd 반환값 체크!! */
     if (SSL_set_fd(client->ssl, cli_fd) != 1) {
-        RELEASE(client); return NULL;
+        RELEASE(client);
+        return NULL;
     }
 
     /* [F] SSL Handshake (서버 측)
      * 추후: 비동기 연동 시
      *   SSL_ERROR_WANT_READ/WRITE 별도 처리 필요!! */
     if (SSL_accept(client->ssl) <= 0) {
-        RELEASE(client); return NULL;
+        RELEASE(client);
+        return NULL;
     }
 
     return client;

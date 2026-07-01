@@ -63,48 +63,73 @@ SslSocket* new_SslClient(const char* host, int port) {
 
     /* [B] SSL_CTX 생성 */
     SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
-    if (!ctx) { close(fd); return NULL; }
+    if (!ctx) {
+      close(fd);
+      return NULL;
+    }
 
     SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
 
     if (SSL_CTX_set_default_verify_paths(ctx) != 1) {
-        SSL_CTX_free(ctx); close(fd); return NULL;
+        SSL_CTX_free(ctx);
+        close(fd);
+        return NULL;
     }
 
     /* [C] SSL 세션 생성 */
     SSL* ssl = SSL_new(ctx);
-    if (!ssl) { SSL_CTX_free(ctx); close(fd); return NULL; }
+    if (!ssl) {
+      SSL_CTX_free(ctx);
+      close(fd);
+      return NULL;
+    }
 
     /* [D] SSL ↔ fd 연결 */
     if (SSL_set_fd(ssl, fd) != 1) {
-        SSL_free(ssl); SSL_CTX_free(ctx); close(fd); return NULL;
+        SSL_free(ssl);
+        SSL_CTX_free(ctx);
+        close(fd);
+        return NULL;
     }
 
     /* [E] SNI 설정 */
     if (SSL_set_tlsext_host_name(ssl, host) != 1) {
-        SSL_free(ssl); SSL_CTX_free(ctx); close(fd); return NULL;
+        SSL_free(ssl);
+        SSL_CTX_free(ctx);
+        close(fd);
+        return NULL;
     }
 
     /* [F] Hostname Verification */
     if (SSL_set1_host(ssl, host) != 1) {
-        SSL_free(ssl); SSL_CTX_free(ctx); close(fd); return NULL;
+        SSL_free(ssl);
+        SSL_CTX_free(ctx);
+        close(fd);
+        return NULL;
     }
 
     /* [G] SSL Handshake — fd가 동기 상태에서 수행!! */
     if (SSL_connect(ssl) <= 0) {
-        SSL_free(ssl); SSL_CTX_free(ctx); close(fd); return NULL;
+        SSL_free(ssl);
+        SSL_CTX_free(ctx);
+        close(fd);
+        return NULL;
     }
 
     /* [H] ✅ Handshake 완료 후 NONBLOCK 전환!!
      *     EventLoop 연동 준비 */
     int flags = fcntl(fd, F_GETFL, 0);
-    if (flags != -1) fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    if (flags != -1)
+      fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
     /* [I] SslSocket 객체 할당 */
     SslSocket* self = (SslSocket*)calloc(1, sizeof(SslSocket));
     if (!self) {
-        SSL_free(ssl); SSL_CTX_free(ctx); close(fd); return NULL;
+        SSL_free(ssl);
+        SSL_CTX_free(ctx);
+        close(fd);
+        return NULL;
     }
 
     /* [J] Socket_init_base — NONBLOCK 중복 설정되지만 무해함 */
