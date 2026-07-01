@@ -1,12 +1,7 @@
 /**
  * arc_ssl_test.c
  * libcore v1.4.1 — SSL Client 실전 테스트
- *
- * 테스트 목표:
- *   1. 네이버 + 구글 HTTPS 동시 연결
- *   2. HTTP GET 요청 전송
- *   3. 응답 첫 줄 확인
- *   4. ASan/Valgrind 메모리 누수 검증
+ * getaddrinfo() 기반 — 도메인 직접 입력!!
  */
 
 #include "ssl_client.h"
@@ -20,17 +15,14 @@
 #define YELLOW "\033[1;33m"
 #define RESET  "\033[0m"
 
-/* ============================================================
- * HTTP GET 요청 + 응답 첫 줄 출력
- * ============================================================ */
 static void ssl_http_get(const char* label,
-                         const char* ip,
-                         int         port,
-                         const char* host) {
-    printf("\n%s[TEST] %s (%s:%d)%s\n", YELLOW, label, ip, port, RESET);
+                         const char* host,
+                         int         port) {
+    printf("\n%s[TEST] %s (https://%s:%d)%s\n",
+           YELLOW, label, host, port, RESET);
 
-    /* [1] SSL 연결 */
-    SslSocket* sock = new_SslClient(ip, port);
+    /* [1] SSL 연결 — 도메인으로!! */
+    SslSocket* sock = new_SslClient(host, port);
     if (!sock) {
         printf("%s  ✗ 연결 실패%s\n", RED, RESET);
         return;
@@ -56,7 +48,7 @@ static void ssl_http_get(const char* label,
     }
     printf("  ✓ GET 요청 전송: %zd bytes\n", sent);
 
-    /* [3] 응답 수신 — 첫 청크만 */
+    /* [3] 응답 수신 */
     char buf[4096] = {0};
     ssize_t n = sock->base.recv(
         (Socket*)sock, buf, sizeof(buf) - 1, NULL, NULL);
@@ -72,48 +64,24 @@ static void ssl_http_get(const char* label,
         printf("%s  ✗ 응답 수신 실패%s\n", RED, RESET);
     }
 
-    /* [4] ARC 해제 — SSL_shutdown + fd close */
+    /* [4] ARC 해제 */
     RELEASE(sock);
     printf("  ✓ RELEASE 완료\n");
 }
 
-/* ============================================================
- * main
- * ============================================================ */
 int main(void) {
     printf("\n");
     printf("============================================\n");
     printf("  libcore v1.4.1 SSL Client 실전 테스트\n");
-    printf("  네이버 + 구글 HTTPS 동시 연결\n");
+    printf("  getaddrinfo() 기반 도메인 연결!!\n");
     printf("============================================\n");
 
-    /* 네이버 */
-    ssl_http_get(
-        "NAVER",
-        "23.60.184.249",   /* www.naver.com IP */
-        443,
-        "www.naver.com"
-    );
-
-    /* 구글 */
-    ssl_http_get(
-        "GOOGLE",
-        "142.251.157.119",   /* www.google.com IP */
-        443,
-        "www.google.com"
-    );
-
-    /* GitHub */
-    ssl_http_get(
-        "GITHUB",
-        "140.82.121.4",      /* github.com IP */
-        443,
-        "github.com"
-    );
+    ssl_http_get("NAVER",  "www.naver.com",  443);
+    ssl_http_get("GOOGLE", "www.google.com", 443);
+    ssl_http_get("GITHUB", "github.com",     443);
 
     printf("\n============================================\n");
     printf("  테스트 완료!!\n");
-    printf("  Valgrind로 메모리 누수 확인 권장\n");
     printf("============================================\n\n");
 
     return 0;
