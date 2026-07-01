@@ -15,7 +15,7 @@
 #define YELLOW "\033[1;33m"
 #define RESET  "\033[0m"
 
-sstatic void ssl_http_get(const char* label,
+static void ssl_http_get(const char* label,
                           const char* host,
                           int         port) {
      printf("\n%s[TEST] %s (https://%s:%d)%s\n",
