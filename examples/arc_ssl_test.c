@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #define GREEN  "\033[0;32m"
 #define RED    "\033[0;31m"
