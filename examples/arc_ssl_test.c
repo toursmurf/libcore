@@ -90,7 +90,7 @@ int main(void) {
     /* 네이버 */
     ssl_http_get(
         "NAVER",
-        "223.130.200.104",   /* www.naver.com IP */
+        "23.60.184.249",   /* www.naver.com IP */
         443,
         "www.naver.com"
     );
@@ -98,7 +98,7 @@ int main(void) {
     /* 구글 */
     ssl_http_get(
         "GOOGLE",
-        "142.250.206.196",   /* www.google.com IP */
+        "142.251.157.119",   /* www.google.com IP */
         443,
         "www.google.com"
     );
