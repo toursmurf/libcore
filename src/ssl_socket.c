@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "ssl_socket.h"
 #include <unistd.h>
+#include <limits.h>
 
 /* ============================================================
  * [1] 클래스 정의
@@ -54,8 +55,13 @@ static ssize_t SslSocket_send_impl(Socket* s, const void* buf, size_t len,
 
     size_t total = 0;
     const char* p = (const char*)buf;
+
+
     while (total < len) {
-        int n = SSL_write(self->ssl, p + total, (int)(len - total));
+        size_t remain = len - total;
+        if(remain > INT_MAX)
+          remain = INT_MAX;
+        int n = SSL_write(self->ssl, p + total, (int)remain);
         if (n <= 0) {
             int err = SSL_get_error(self->ssl, n);
             if (err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_READ)
