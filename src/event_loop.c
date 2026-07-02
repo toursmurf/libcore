@@ -20,7 +20,8 @@ static void impl_deferRelease(EventLoop* self, Object* obj) {
     if (!self || !obj) return;
 
     /* 🚨 [결함 1 패치] 소유권 수지 완벽 일치!
-      */
+     * ArrayList가 RETAIN(+1)을 수행하므로, 호출자의 참조를 즉시 반납(-1)하여
+     * 리스트가 유일한 소유권을 갖게 함. 중복 예약이 와도 수지가 정확히 맞음! */
     self->deferred_cleanup_list->add(self->deferred_cleanup_list, obj);
     RELEASE(obj);
 }
