@@ -2,6 +2,7 @@
 #include "ssl_socket.h"
 #include <unistd.h>
 #include <limits.h>
+#include <errno.h>
 
 /* ============================================================
  * [1] 클래스 정의
@@ -56,16 +57,22 @@ static ssize_t SslSocket_send_impl(Socket* s, const void* buf, size_t len,
     size_t total = 0;
     const char* p = (const char*)buf;
 
-
     while (total < len) {
         size_t remain = len - total;
-        if(remain > INT_MAX)
-          remain = INT_MAX;
+        if(remain > INT_MAX) remain = INT_MAX;
+
         int n = SSL_write(self->ssl, p + total, (int)remain);
         if (n <= 0) {
             int err = SSL_get_error(self->ssl, n);
-            if (err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_READ)
+            if (err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_READ) {
                 return (total > 0) ? (ssize_t)total : SOCKET_WOULD_BLOCK;
+            }
+            /* 🚨 SYSCALL 에러 시 errno 확인 (인터럽트는 재시도 유도) */
+            if (err == SSL_ERROR_SYSCALL) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+                    return (total > 0) ? (ssize_t)total : SOCKET_WOULD_BLOCK;
+                }
+            }
             return -1;
         }
         total += (size_t)n;
@@ -84,10 +91,18 @@ static ssize_t SslSocket_recv_impl(Socket* s, void* buf, size_t len,
     int n = SSL_read(self->ssl, buf, (int)len);
     if (n <= 0) {
         int err = SSL_get_error(self->ssl, n);
-        if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE)
+        if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
             return SOCKET_WOULD_BLOCK;
-        if (err == SSL_ERROR_ZERO_RETURN)
+        }
+        if (err == SSL_ERROR_ZERO_RETURN) {
             s->is_open = false;
+        } else if (err == SSL_ERROR_SYSCALL) {
+            /* 🚨 SYSCALL 에러 시 errno 확인 */
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+                return SOCKET_WOULD_BLOCK;
+            }
+            s->is_open = false;
+        }
         return -1;
     }
     return (ssize_t)n;
@@ -103,7 +118,6 @@ void SslSocket_finalize(Object* obj) {
 
 /* ============================================================
  * [4] 베이스 초기화 — VTable 1회 설정
- *     ✅ 파라미터: SslSocket* self
  * ============================================================ */
 void SslSocket_init_base(SslSocket* self, int fd) {
     if (!self) return;

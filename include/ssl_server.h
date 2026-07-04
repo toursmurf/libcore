@@ -21,9 +21,9 @@ SslSocket* new_SslServer(const char* host, int port,
  * 서버 accept 이후 클라이언트 SslSocket 생성
  *
  * SSL_CTX Ownership:
- *   SSL_CTX_up_ref(server->ctx) 호출
- *   → 클라이언트 finalize 시 SSL_CTX_free() 안전!!
- *   → 서버 ctx 먼저 해제되는 문제 방지!!
+ * SSL_CTX_up_ref(server->ctx) 호출
+ * → 클라이언트 finalize 시 SSL_CTX_free() 안전!!
+ * → 서버 ctx 먼저 해제되는 문제 방지!!
  */
 SslSocket* SslSocket_accept(SslSocket* server);
 

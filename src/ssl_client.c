@@ -7,6 +7,23 @@
 #include <netdb.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+
+/* ============================================================
+ * 🚨 [OpenSSL 1.0.x 레거시 글로벌 초기화 방어막]
+ * ============================================================ */
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+static int g_ssl_initialized = 0;
+static void init_legacy_ssl(void) {
+    if (!g_ssl_initialized) {
+        SSL_library_init();
+        SSL_load_error_strings();
+        OpenSSL_add_all_algorithms();
+        g_ssl_initialized = 1;
+    }
+}
+#endif
 
 /* ============================================================
  * [내부] getaddrinfo() 기반 TCP connect (동기!!)
@@ -47,28 +64,37 @@ static int ssl_tcp_connect(const char* host, int port) {
 
 /* ============================================================
  * new_SslClient
- * 용도: https:// ssl:// wss://
- *
- * 순서:
- *   [A] TCP connect (동기)
- *   [B~I] SSL Handshake (동기)
- *   [J] Handshake 완료 후 NONBLOCK 전환!!
  * ============================================================ */
 SslSocket* new_SslClient(const char* host, int port) {
     if (!host || port <= 0 || port > 65535) return NULL;
+
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+    init_legacy_ssl();
+#endif
 
     /* [A] TCP 연결 — 동기!! */
     int fd = ssl_tcp_connect(host, port);
     if (fd < 0) return NULL;
 
-    /* [B] SSL_CTX 생성 */
+    /* [B] SSL_CTX 생성 (OpenSSL 버전에 따른 호환성 처리) */
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+    SSL_CTX* ctx = SSL_CTX_new(SSLv23_client_method());
+#else
     SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
+#endif
+
     if (!ctx) {
-      close(fd);
-      return NULL;
+        close(fd);
+        return NULL;
     }
 
+    /* 프로토콜 최소 버전 강제 (TLS 1.2 이상) */
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+    SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1);
+#else
     SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
+#endif
+
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
 
     if (SSL_CTX_set_default_verify_paths(ctx) != 1) {
@@ -80,9 +106,9 @@ SslSocket* new_SslClient(const char* host, int port) {
     /* [C] SSL 세션 생성 */
     SSL* ssl = SSL_new(ctx);
     if (!ssl) {
-      SSL_CTX_free(ctx);
-      close(fd);
-      return NULL;
+        SSL_CTX_free(ctx);
+        close(fd);
+        return NULL;
     }
 
     /* [D] SSL ↔ fd 연결 */
@@ -117,11 +143,10 @@ SslSocket* new_SslClient(const char* host, int port) {
         return NULL;
     }
 
-    /* [H] ✅ Handshake 완료 후 NONBLOCK 전환!!
-     *     EventLoop 연동 준비 */
+    /* [H] ✅ Handshake 완료 후 NONBLOCK 전환!! */
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags != -1)
-      fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
     /* [I] SslSocket 객체 할당 */
     SslSocket* self = (SslSocket*)calloc(1, sizeof(SslSocket));
@@ -132,17 +157,15 @@ SslSocket* new_SslClient(const char* host, int port) {
         return NULL;
     }
 
-    /* [J] Socket_init_base — NONBLOCK 중복 설정되지만 무해함 */
+    /* [J] Socket_init_base */
     SslSocket_init_base(self, fd);
 
     self->ctx = ctx;
     self->ssl = ssl;
 
+    /* ✅ snprintf를 사용하여 호스트명 안전하게 복사 */
     if (host) {
-        size_t hlen = strlen(host);
-        if (hlen >= sizeof(self->host)) hlen = sizeof(self->host) - 1;
-        memcpy(self->host, host, hlen);
-        self->host[hlen] = '\0';
+        snprintf(self->host, sizeof(self->host), "%s", host);
     }
 
     return self;
