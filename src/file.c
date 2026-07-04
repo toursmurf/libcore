@@ -12,8 +12,7 @@
 #include <sys/file.h>
 #include <errno.h>
 #include <stdio.h>
-#include <openssl/sha.h>
-#include <openssl/md5.h>
+#include <openssl/evp.h> /* 🚨 [패치] MD5/SHA256 대신 범용 EVP API 사용! */
 
 // ----------------------------------------------------
 // 전방 선언 (Forward Declarations)
@@ -473,6 +472,7 @@ static void File_unlock(File* self) {
     }
 }
 
+/* 🚨 [패치] MD5() 대신 최신 EVP API 사용 */
 static String* File_md5(File* self) {
     ByteBuffer* buf = File_readAllBytes(self);
 
@@ -480,12 +480,20 @@ static String* File_md5(File* self) {
         return NULL;
     }
 
-    unsigned char hash[MD5_DIGEST_LENGTH];
-    MD5(buf->data, buf->write_pos, hash);
+    unsigned char hash[EVP_MAX_MD_SIZE];
+    unsigned int md_len = 0;
+
+    EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
+    if (mdctx) {
+        EVP_DigestInit_ex(mdctx, EVP_md5(), NULL);
+        EVP_DigestUpdate(mdctx, buf->data, buf->write_pos);
+        EVP_DigestFinal_ex(mdctx, hash, &md_len);
+        EVP_MD_CTX_free(mdctx);
+    }
 
     char out[33] = {0};
 
-    for (int i = 0; i < 16; i++) {
+    for (unsigned int i = 0; i < md_len; i++) {
         snprintf(out + (i * 2), 3, "%02x", hash[i]);
     }
 
@@ -493,6 +501,7 @@ static String* File_md5(File* self) {
     return new_String(out);
 }
 
+/* 🚨 [패치] SHA256() 대신 최신 EVP API 사용 */
 static String* File_sha256(File* self) {
     ByteBuffer* buf = File_readAllBytes(self);
 
@@ -500,12 +509,20 @@ static String* File_sha256(File* self) {
         return NULL;
     }
 
-    unsigned char hash[32];
-    SHA256(buf->data, buf->write_pos, hash);
+    unsigned char hash[EVP_MAX_MD_SIZE];
+    unsigned int md_len = 0;
+
+    EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
+    if (mdctx) {
+        EVP_DigestInit_ex(mdctx, EVP_sha256(), NULL);
+        EVP_DigestUpdate(mdctx, buf->data, buf->write_pos);
+        EVP_DigestFinal_ex(mdctx, hash, &md_len);
+        EVP_MD_CTX_free(mdctx);
+    }
 
     char out[65] = {0};
 
-    for (int i = 0; i < 32; i++) {
+    for (unsigned int i = 0; i < md_len; i++) {
         snprintf(out + (i * 2), 3, "%02x", hash[i]);
     }
 
