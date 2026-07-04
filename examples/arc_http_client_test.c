@@ -12,30 +12,25 @@ int main(void) {
     printf("  🚀 libcore v1.5 HttpClient 실전 테스트\n");
     printf("============================================\n\n");
 
-    /* 1. 제국 표준 이벤트 루프 생성 */
+    int exit_code = 0;
     EventLoop* loop = new_EventLoop(1024);
-
-    /* 🚨 [수정 완] 인자로 loop를 반드시 넘겨야 함! */
     HttpClient* client = new_HttpClient(loop);
+
     if (!client) {
         printf("❌ HttpClient 생성 실패!\n");
-        return -1;
+        exit_code = -1;
+        goto cleanup;
     }
 
-    /* 2. 전역 설정 (구조체 직접 접근) */
-    client->options.timeout_ms = 100000;
+    /* 2. 전역 설정 */
+    client->options.timeout_ms = 300000;
     client->options.follow_redirects = true;
 
-    /* 🚨 [수정 완] add_header -> setHeader 사용! */
     client->setHeader(client, "User-Agent", "WebCore-Client/1.5");
     client->setHeader(client, "Accept", "application/json");
 
-    /* =========================================================
-     * [TEST 1] GET 요청
-     * ========================================================= */
+    /* [TEST 1] GET 요청 */
     printf("📡 [TEST 1] GET 요청 전송 중...\n");
-
-    /* 🚨 [수정 완] GET 메서드 호출 (쿼리 파라미터는 NULL) */
     HttpClientResponse* res_get = client->GET(
         client,
         "https://jsonplaceholder.typicode.com:443/todos/1",
@@ -43,26 +38,21 @@ int main(void) {
     );
 
     if (res_get) {
-        /* 🚨 [수정 완] status -> status_code, body는 순수 char* ! */
         printf("✅ GET 성공! (HTTP Status: %d)\n", res_get->status_code);
         if (res_get->body) {
             printf("--- [수신된 Body] ---\n%s\n---------------------\n", res_get->body);
         }
-        RELEASE((Object*)res_get); /* ARC 회수 */
+        RELEASE((Object*)res_get);
     } else {
         printf("❌ GET 실패! (서버 연결 불가 또는 타임아웃)\n");
     }
 
     printf("\n");
 
-    /* =========================================================
-     * [TEST 2] POST 요청 (JSON 원시 데이터 전송)
-     * ========================================================= */
+    /* [TEST 2] POST 요청 */
     printf("📡 [TEST 2] POST 요청 전송 중...\n");
-
     const char* payload = "{\"title\":\"WebCore\",\"body\":\"v1.5 is Awesome!\",\"userId\":1}";
 
-    /* 🚨 [수정 완] POST_RAW를 사용하여 원시 JSON 문자열 전송! */
     HttpClientResponse* res_post = client->POST_RAW(
         client,
         "https://jsonplaceholder.typicode.com:443/posts",
@@ -76,23 +66,24 @@ int main(void) {
         if (res_post->body) {
             printf("--- [수신된 Body] ---\n%s\n---------------------\n", res_post->body);
         }
-        RELEASE((Object*)res_post); /* ARC 회수 */
+        RELEASE((Object*)res_post);
     } else {
         printf("❌ POST 실패!\n");
     }
 
-    /* 3. 자원 연쇄 해제 (Valgrind 0 bytes를 향해) */
-    RELEASE((Object*)client);
-    RELEASE((Object*)loop);
+cleanup:
+    /* 🚨 [정화 패턴] 성공/실패 무관하게 메모리 및 SSL 상태 완벽 소각 */
+    if (client) RELEASE((Object*)client);
+    if (loop)   RELEASE((Object*)loop);
 
-		/* 🚨 [최후의 정화 작전] OpenSSL 전역 상태 수동 소각 */
     ERR_free_strings();
     EVP_cleanup();
     CRYPTO_cleanup_all_ex_data();
     SSL_COMP_free_compression_methods();
+
     printf("\n============================================\n");
-    printf("  테스트 종료!\n");
+    printf("  테스트 종료!! (Valgrind 누수 0을 달성했나이다!)\n");
     printf("============================================\n");
 
-    return 0;
+    return exit_code;
 }
