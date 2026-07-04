@@ -112,7 +112,7 @@ static int uring_poll_impl(EventLoop* self, int timeout_ms) {
                             #ifdef IORING_POLL_ADD_MULTI
                             sqe->len |= IORING_POLL_ADD_MULTI;
                             #endif
-                            io_uring_sqe_set_data64(sqe, user_data);
+                            io_uring_sqe_set_data(sqe, (void*)(uintptr_t)user_data);
                             rearm_count++;
                         }
                     }
@@ -150,7 +150,7 @@ static int uring_addSocket_impl(EventLoop* self, Socket* sock, EventMask mask) {
     #endif
 
     uint64_t user_data = ((uint64_t)ctx->generation << 32) | (uint64_t)sock->fd;
-    io_uring_sqe_set_data64(sqe, user_data);
+    io_uring_sqe_set_data(sqe, (void*)(uintptr_t)user_data);
 
     io_uring_submit(&self->ring);
     return 0;
