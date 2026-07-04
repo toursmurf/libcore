@@ -1,6 +1,7 @@
 #ifndef HTTP_SERVER_H
 #define HTTP_SERVER_H
 
+#define _GNU_SOURCE
 #include "object.h"
 #include "socket_base.h"
 #include "event_loop.h"
