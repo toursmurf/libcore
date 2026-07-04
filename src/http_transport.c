@@ -6,6 +6,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <unistd.h> /* 🚨 [패치] usleep() 사용을 위한 헤더 추가 */
 
 HttpTransport* HttpTransport_connect(const char* url) {
     if (!url) return NULL;
@@ -64,7 +65,11 @@ ssize_t HttpTransport_send(HttpTransport* self, const void* buf, size_t len) {
     while (total_sent < len) {
         ssize_t n = self->sock->send(self->sock, ptr + total_sent, len - total_sent, NULL, 0);
         if (n <= 0) {
-            if (errno == EINTR) continue;
+            /* 🚨 [핵심 패치] 비동기 소켓의 찰나의 엇박자(EAGAIN / -2)를 견디는 1ms 인내심! */
+            if (n == SOCKET_WOULD_BLOCK || errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
+                usleep(1000);
+                continue;
+            }
             return -1;
         }
         total_sent += n;
@@ -74,15 +79,36 @@ ssize_t HttpTransport_send(HttpTransport* self, const void* buf, size_t len) {
 
 ssize_t HttpTransport_recv(HttpTransport* self, void* buf, size_t len) {
     if (!self || !self->sock || !buf || len == 0) return -1;
-    return self->sock->recv(self->sock, buf, len, NULL, NULL);
+    while (1) {
+        ssize_t n = self->sock->recv(self->sock, buf, len, NULL, NULL);
+        if (n <= 0) {
+            /* 🚨 [핵심 패치] 수신 중 발생하는 비동기 딜레이 완벽 방어 */
+            if (n == SOCKET_WOULD_BLOCK || errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
+                usleep(1000);
+                continue;
+            }
+            return -1;
+        }
+        return n;
+    }
 }
 
 int HttpTransport_getc(HttpTransport* self) {
     if (!self) return -1;
     if (self->read_pos >= self->read_end) {
         self->read_pos = 0;
-        self->read_end = self->sock->recv(self->sock, self->read_buf, sizeof(self->read_buf), NULL, NULL);
-        if (self->read_end <= 0) return -1;
+        while (1) {
+            self->read_end = self->sock->recv(self->sock, self->read_buf, sizeof(self->read_buf), NULL, NULL);
+            if (self->read_end <= 0) {
+                /* 🚨 [핵심 패치] Chunk 파싱 중 끊김 현상을 막는 무적의 대기 로직 */
+                if (self->read_end == SOCKET_WOULD_BLOCK || errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
+                    usleep(1000);
+                    continue;
+                }
+                return -1;
+            }
+            break;
+        }
     }
     return (unsigned char)self->read_buf[self->read_pos++];
 }
