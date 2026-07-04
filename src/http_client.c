@@ -227,7 +227,7 @@ static HttpClientResponse* impl_execute(HttpClient* self, HttpClientRequest* req
             return NULL;
         }
 
-        char tmp[1024];
+        char tmp[8192];
         snprintf(tmp, sizeof(tmp), "%s %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: WebCore-Client/1.5\r\nAccept: */*\r\n",
                  req->method, path_copy, transport->host);
         head_sb->append(head_sb, tmp);
