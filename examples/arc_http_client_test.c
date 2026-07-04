@@ -21,7 +21,7 @@ int main(void) {
     }
 
     /* 2. 전역 설정 (구조체 직접 접근) */
-    client->options.timeout_ms = 300000;
+    client->options.timeout_ms = 100000;
     client->options.follow_redirects = true;
 
     /* 🚨 [수정 완] add_header -> setHeader 사용! */
