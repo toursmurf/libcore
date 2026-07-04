@@ -11,7 +11,10 @@ void normalize_path(char* path) {
     if (!input) return; /* 🚨 NULL 방어막 */
 
     ArrayList* stack = new_ArrayList(16);
-    if (!stack) { free(input); return; }
+    if (!stack) {
+      free(input);
+      return;
+    }
 
     char *saveptr;
     char *token = strtok_r(input, "/", &saveptr);
@@ -40,6 +43,7 @@ void normalize_path(char* path) {
         if (i < stack->getSize(stack) - 1) *p++ = '/';
     }
     *p = '\0';
+    RELEASE((Object)token);
     RELEASE((Object*)stack);
     free(input);
 }
