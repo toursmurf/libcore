@@ -84,7 +84,7 @@ int main(void) {
     RELEASE((Object*)loop);
 
     printf("\n============================================\n");
-    printf("  테스트 종료!! (Valgrind 누수 0을 기대합니다)\n");
+    printf("  테스트 종료!\n");
     printf("============================================\n");
 
     return 0;
