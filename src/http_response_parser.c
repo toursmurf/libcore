@@ -63,27 +63,42 @@ HttpClientResponse* HttpResponseParser_parse_with_status(HttpTransport* transpor
     ByteBuffer* body_buf = new_ByteBuffer(content_length > 0 ? content_length + 1 : 16384);
     if (!body_buf) { RELEASE((Object*)res); return NULL; }
 
-    if (is_chunked) {
-        while (1) {
-            if (HttpTransport_recv_line(transport, line, sizeof(line)) <= 0) break;
-            if (strlen(line) == 0) continue;
+ if (is_chunked) {
+    while (1) {
+      /* 1. 청크 크기 라인 읽기 */
+      if (HttpTransport_recv_line(transport, line, sizeof(line)) <= 0) break;
 
-            char* ext = strchr(line, ';');
-            if (ext) *ext = '\0';
+      /* 빈 줄은 무시 (이전 청크의 잔재일 수 있음) */
+      if (strlen(line) == 0) continue;
 
-            long chunk_size = strtol(line, NULL, 16);
-            if (chunk_size == 0) { HttpTransport_recv_line(transport, line, sizeof(line)); break; }
+      /* 청크 익스텐션(;) 무시 */
+      char* ext = strchr(line, ';');
+      if (ext) *ext = '\0';
 
-            long read_total = 0;
-            while (read_total < chunk_size) {
-                int c = HttpTransport_getc(transport);
-                if (c < 0) break;
-                body_buf->writeByte(body_buf, (uint8_t)c);
-                read_total++;
-            }
-            HttpTransport_recv_line(transport, line, sizeof(line));
+      /* 2. 청크 크기 파싱 (16진수) */
+      long chunk_size = strtol(line, NULL, 16);
+
+      /* 🚨 3. [핵심 패치] 청크 크기가 0이면 즉시 종료! */
+      if (chunk_size == 0) {
+        /* 마지막 0 뒤에 따라오는 \r\n (Trailer 헤더들) 소비 */
+        while (HttpTransport_recv_line(transport, line, sizeof(line)) > 0) {
+          if (strlen(line) == 0) break; /* 빈 줄(\r\n)을 만나면 진짜 끝! */
         }
-    } else if (content_length > 0) {
+        break; /* 완전히 빠져나감 -> 무한 블로킹 방지! */
+      }
+      /* 4. 청크 데이터 본문 읽기 */
+      long read_total = 0;
+      while (read_total < chunk_size) {
+        int c = HttpTransport_getc(transport);
+        if (c < 0) break;
+          body_buf->writeByte(body_buf, (uint8_t)c);
+          read_total++;
+        }
+
+        /* 5. 청크 본문 뒤의 \r\n 소비 */
+        HttpTransport_recv_line(transport, line, sizeof(line));
+       }
+     } else if (content_length > 0) {
         long read_total = 0;
         while (read_total < content_length) {
             int c = HttpTransport_getc(transport);
