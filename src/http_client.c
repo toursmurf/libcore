@@ -219,7 +219,6 @@ static HttpClientResponse* impl_execute(HttpClient* self, HttpClientRequest* req
         strncpy(path_copy, transport->path, sizeof(path_copy)-1);
         path_copy[sizeof(path_copy)-1] = '\0';
         normalize_path(path_copy);
-정
         String* head_sb = new_String("");
         if (!head_sb) {
             HttpTransport_close(transport);
