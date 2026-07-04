@@ -96,7 +96,7 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
 
         if (conn->header_len + (size_t)n >= sizeof(conn->header_buf)) {
             const char* err_431 = "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n";
-            s->send(s, err_431, strlen(err_431), NULL, NULL);
+            s->send(s, err_431, strlen(err_431), NULL, 0);
 
             conn->is_closing = true;
             remove_conn_from_server(conn);
@@ -173,7 +173,7 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
                         size_t to_read = content_length - total_read;
                         if (to_read > sizeof(temp)) to_read = sizeof(temp);
 
-                        ssize_t rn = s->recv(s, temp, to_read, NULL, NULL);
+                        ssize_t rn = s->recv(s, temp, to_read, NULL, 0);
                         if (rn > 0) {
                             memcpy((char*)conn->req->body + total_read, temp, rn);
                             total_read += rn;
