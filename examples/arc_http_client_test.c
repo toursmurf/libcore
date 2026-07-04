@@ -21,7 +21,7 @@ int main(void) {
     }
 
     /* 2. 전역 설정 (구조체 직접 접근) */
-    client->options.timeout_ms = 5000;
+    client->options.timeout_ms = 300000;
     client->options.follow_redirects = true;
 
     /* 🚨 [수정 완] add_header -> setHeader 사용! */
@@ -36,7 +36,7 @@ int main(void) {
     /* 🚨 [수정 완] GET 메서드 호출 (쿼리 파라미터는 NULL) */
     HttpClientResponse* res_get = client->GET(
         client,
-        "https://jsonplaceholder.typicode.com/todos/1",
+        "https://jsonplaceholder.typicode.com:443/todos/1",
         NULL
     );
 
@@ -63,7 +63,7 @@ int main(void) {
     /* 🚨 [수정 완] POST_RAW를 사용하여 원시 JSON 문자열 전송! */
     HttpClientResponse* res_post = client->POST_RAW(
         client,
-        "https://jsonplaceholder.typicode.com/posts",
+        "https://jsonplaceholder.typicode.com:443/posts",
         payload,
         strlen(payload),
         "application/json; charset=utf-8"
