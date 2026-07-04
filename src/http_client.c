@@ -19,7 +19,11 @@ static void HttpMultipartFile_finalize(Object* obj) {
     if (self->content_type) RELEASE((Object*)self->content_type);
     if (self->data) free(self->data);
 }
-static const Class _HttpMultipartFile_Class = { .name = "HttpMultipartFile", .size = sizeof(HttpMultipartFile), .finalize = HttpMultipartFile_finalize };
+static const Class _HttpMultipartFile_Class = {
+	.name = "HttpMultipartFile",
+	.size = sizeof(HttpMultipartFile),
+	.finalize = HttpMultipartFile_finalize
+};
 
 HttpMultipartFile* new_HttpMultipartFile(const char* filename, const char* content_type, const void* data, size_t size) {
     HttpMultipartFile* self = (HttpMultipartFile*)calloc(1, sizeof(HttpMultipartFile));
@@ -323,9 +327,12 @@ static HttpClientResponse* impl_execute(HttpClient* self, HttpClientRequest* req
             body_buf = NULL;
         }
 
-        char last_scheme[16]; char last_host[256]; int last_port = transport->port;
-        strncpy(last_scheme, transport->scheme, sizeof(last_scheme) - 1);
-        strncpy(last_host, transport->host, sizeof(last_host) - 1);
+        /* ✅ [V1.5 Final 패치] snprintf로 안전하게 교체! (GCC 11+ 경고 방어) */
+        char last_scheme[16];
+        char last_host[256];
+        int last_port = transport->port;
+        snprintf(last_scheme, sizeof(last_scheme), "%s", transport->scheme);
+        snprintf(last_host, sizeof(last_host), "%s", transport->host);
 
         HttpTransport_close(transport);
         if (!res) break;
@@ -377,31 +384,65 @@ static HttpClientResponse* impl_GET(HttpClient* self, const char* url, HashMap* 
         s->append(s, strchr(url, '?') ? "&" : "?");
         size_t ignore_len;
         char* qs = build_form_body(query_params, &ignore_len);
-        if (qs) { s->append(s, qs); free(qs); }
+        if (qs) {
+          s->append(s, qs);
+          free(qs);
+        }
     }
-    HttpClientRequest req = { .method = "GET", .url = s->c_str(s), .payload_type = PAYLOAD_NONE };
+    HttpClientRequest req = {
+      .method = "GET",
+      .url = s->c_str(s),
+      .payload_type = PAYLOAD_NONE
+    };
     HttpClientResponse* res = self->execute(self, &req);
     RELEASE((Object*)s);
     return res;
 }
 static HttpClientResponse* impl_POST(HttpClient* self, const char* url, HashMap* data, PayloadType type) {
-    HttpClientRequest req = { .method = "POST", .url = url, .data = data, .payload_type = type };
+    HttpClientRequest req = {
+      .method = "POST",
+      .url = url,
+      .data = data,
+      .payload_type = type
+    };
     return self->execute(self, &req);
 }
 static HttpClientResponse* impl_PUT(HttpClient* self, const char* url, HashMap* data, PayloadType type) {
-    HttpClientRequest req = { .method = "PUT", .url = url, .data = data, .payload_type = type };
+    HttpClientRequest req = {
+      .method = "PUT",
+      .url = url,
+      .data = data,
+      .payload_type = type
+    };
     return self->execute(self, &req);
 }
 static HttpClientResponse* impl_DELETE(HttpClient* self, const char* url) {
-    HttpClientRequest req = { .method = "DELETE", .url = url, .payload_type = PAYLOAD_NONE };
+    HttpClientRequest req = {
+      .method = "DELETE",
+      .url = url,
+      .payload_type = PAYLOAD_NONE
+    };
     return self->execute(self, &req);
 }
 static HttpClientResponse* impl_POST_RAW(HttpClient* self, const char* url, const void* body, size_t body_len, const char* content_type) {
-    HttpClientRequest req = { .method = "POST", .url = url, .raw_body = body, .raw_body_len = body_len, .raw_content_type = content_type, .payload_type = PAYLOAD_RAW };
+    HttpClientRequest req = {
+      .method = "POST",
+      .url = url,
+      .raw_body = body,
+      .raw_body_len = body_len,
+      .raw_content_type = content_type,
+      .payload_type = PAYLOAD_RAW
+    };
     return self->execute(self, &req);
 }
 static HttpClientResponse* impl_POST_MULTIPART(HttpClient* self, const char* url, HashMap* data, HashMap* files) {
-    HttpClientRequest req = { .method = "POST", .url = url, .data = data, .files = files, .payload_type = PAYLOAD_MULTIPART };
+    HttpClientRequest req = {
+      .method = "POST",
+      .url = url,
+      .data = data,
+      .files = files,
+      .payload_type = PAYLOAD_MULTIPART
+    };
     return self->execute(self, &req);
 }
 
@@ -413,7 +454,10 @@ HttpClient* new_HttpClient(EventLoop* loop) {
     self->loop = loop;
     self->default_headers = new_HashMap(16);
     self->cookie_jar = new_ArrayList(16);
-    if (!self->default_headers || !self->cookie_jar) { RELEASE((Object*)self); return NULL; }
+    if (!self->default_headers || !self->cookie_jar) {
+      RELEASE((Object*)self);
+      return NULL;
+    }
 
     self->options.timeout_ms = 5000;
     self->options.max_redirects = 5;
