@@ -4,6 +4,8 @@
 #include "hashmap.h"
 #include <stdio.h>
 #include <string.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 
 int main(void) {
     printf("============================================\n");
