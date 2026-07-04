@@ -67,7 +67,7 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
 
     while (1) {
         char buf[4096];
-        ssize_t n = s->recv(s, buf, sizeof(buf) - 1, NULL, NULL);
+        ssize_t n = s->recv(s, buf, sizeof(buf) - 1, NULL, 0);
 
         /* 🚨 [잔여이슈 2 해결] recv errno 정밀 분기 처리 */
         if (n < 0) {
