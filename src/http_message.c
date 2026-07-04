@@ -1,3 +1,4 @@
+#include "http_message.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -75,7 +76,39 @@ static void impl_setHeader(HttpResponse* self, const char* key, const char* valu
     RELEASE(v);
 }
 
-/* 🚨 [클순 마님(🔫) 패치] snprintf 오버플로우 방어막 */
+/* =========================================================
+ * 🚨 [클순 마님(🔫) 패치] Rule 6-2 준수: 헤더 순회용 컨텍스트
+ * ========================================================= */
+typedef struct {
+    char* buf;
+    size_t cap;
+    int len;
+    bool overflow;
+} HdrCtx;
+
+/* 안전한 Mutex 보호망 안에서 실행되는 콜백 함수 */
+static bool write_hdr_cb(const char* k, Object* v, void* ctx_ptr) {
+    HdrCtx* ctx = (HdrCtx*)ctx_ptr;
+
+    /* 이미 버퍼가 꽉 찼다면 순회 중단 */
+    if (ctx->overflow) return false;
+
+    String* val_str = (String*)v;
+    if (val_str && val_str->c_str) {
+        int n = snprintf(ctx->buf + ctx->len, ctx->cap - ctx->len, "%s: %s\r\n",
+                         k, val_str->c_str(val_str));
+
+        /* 버퍼 오버플로우 감지 시 플래그 켜고 순회 강제 종료 */
+        if (n < 0 || (size_t)n >= ctx->cap - ctx->len) {
+            ctx->overflow = true;
+            return false;
+        }
+        ctx->len += n;
+    }
+    return true; /* 다음 노드로 계속 진행 */
+}
+
+/* 🚨 [클순 마님(🔫) 패치] snprintf 오버플로우 방어막 및 iterate 적용 */
 static void send_internal(HttpResponse* self, const char* ctype, const char* body, size_t body_len) {
     if (!self || !self->socket || !self->socket->is_open) return;
 
@@ -92,22 +125,26 @@ static void send_internal(HttpResponse* self, const char* ctype, const char* bod
     int n_len = snprintf(head_buf + len, sizeof(head_buf) - len, "Content-Length: %zu\r\n", body_len);
     if (n_len > 0 && (size_t)n_len < sizeof(head_buf) - len) len += n_len;
 
-    /* 커스텀 헤더 순회 */
-    for (int i = 0; i < self->headers->capacity; i++) {
-        HashNode* node = self->headers->buckets[i];
-        while (node) {
-            String* val_str = (String*)node->value;
-            if (val_str && val_str->c_str) {
-                int n = snprintf(head_buf + len, sizeof(head_buf) - len, "%s: %s\r\n",
-                                 node->key, val_str->c_str(val_str));
+    /* =========================================================
+     * 🚨 [Rule 6-2 준수] buckets[] 직접 접근 폐기! iterate() 사용!
+     * ========================================================= */
+    HdrCtx ctx = {
+        .buf = head_buf,
+        .cap = sizeof(head_buf),
+        .len = len,
+        .overflow = false
+    };
 
-                /* 버퍼 오버플로우 시 헤더 기록 강제 탈출 */
-                if (n < 0 || (size_t)n >= sizeof(head_buf) - len) goto header_full;
-                len += n;
-            }
-            node = node->next;
-        }
+    if (self->headers) {
+        self->headers->iterate(self->headers, write_hdr_cb, &ctx);
     }
+
+    len = ctx.len; /* 업데이트된 길이 동기화 */
+
+    if (ctx.overflow) {
+        goto header_full; /* 버퍼 초과 시 헤더 기록 중단 로직 유지 */
+    }
+    /* ========================================================= */
 
 header_full:
     ;
