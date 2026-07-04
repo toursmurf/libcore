@@ -13,7 +13,6 @@ typedef enum {
     HTTP_STATE_CLOSED
 } HttpConnState;
 
-/* 🚨 [결함 B 패치] 상호 참조를 위한 전방 선언 */
 typedef struct HttpServer HttpServer;
 
 typedef struct HttpConnection HttpConnection;
@@ -23,7 +22,7 @@ struct HttpConnection {
     Router* router;      /* [BORROWED] */
     HttpServer* server;  /* [BORROWED] 활성 커넥션 추적용 서버 포인터 */
 
-    /* 🚨 [결함 B 패치] O(1) 삭제를 위한 Intrusive 양방향 연결 리스트 노드 */
+    /* O(1) 삭제를 위한 Intrusive 양방향 연결 리스트 노드 */
     HttpConnection* next;
     HttpConnection* prev;
 
@@ -44,7 +43,7 @@ struct HttpServer {
     Router* router;      /* [OWNED] */
     EventLoop* loop;     /* [BORROWED] */
 
-    /* 🚨 [결함 B 패치] 종료 시 누수 방지를 위한 활성 커넥션 DLL 헤드 */
+    /* 종료 시 누수 방지를 위한 활성 커넥션 DLL 헤드 */
     HttpConnection* conns_head;
 
     int (*listen)(HttpServer* self, int port);

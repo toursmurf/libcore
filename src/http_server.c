@@ -3,12 +3,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <unistd.h>
 
 /* =========================================================
  * [1] HttpConnection DLL 관리 및 구현부
  * ========================================================= */
-
-/* 🚨 [결함 B 패치] 활성 커넥션 리스트에서 O(1) 안전 제거 */
 static void remove_conn_from_server(HttpConnection* conn) {
     if (!conn || !conn->server) return;
 
@@ -25,10 +25,12 @@ static void remove_conn_from_server(HttpConnection* conn) {
 static void HttpConnection_finalize(Object* obj) {
     HttpConnection* self = (HttpConnection*)obj;
 
-    /* 혹시 리스트에 남아있다면 댕글링 포인터 방지를 위해 제거 */
     if (self->server) remove_conn_from_server(self);
 
-    if (self->req) RELEASE(self->req);
+    if (self->req) {
+        if (self->req->body) free(self->req->body);
+        RELEASE(self->req);
+    }
     if (self->res) RELEASE(self->res);
     if (self->sock) RELEASE(self->sock);
 }
@@ -63,18 +65,26 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
 
     if (!conn || conn->is_closing) return;
 
-    /* 🚨 [결함 A 패치] EPOLLET 특성 대응: EAGAIN이 뜰 때까지 영혼까지 Drain! */
     while (1) {
         char buf[4096];
         ssize_t n = s->recv(s, buf, sizeof(buf) - 1, NULL, NULL);
 
+        /* 🚨 [잔여이슈 2 해결] recv errno 정밀 분기 처리 */
         if (n < 0) {
-            /* 커널 버퍼가 비었음 (EAGAIN / EWOULDBLOCK). 다음 이벤트를 기다림 */
-            break;
+            if (errno == EINTR) continue; /* 시스템 시그널 인터럽트 -> 즉시 재시도 */
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                /* 커널 버퍼가 비었음 -> 이벤트 루프로 돌아가 대기 */
+                break;
+            }
+            /* ECONNRESET, ETIMEDOUT 등 치명적 에러 발생 시 연결 즉시 종료 */
+            conn->is_closing = true;
+            remove_conn_from_server(conn);
+            loop->delSocket(loop, s);
+            loop->deferRelease(loop, (Object*)conn);
+            return;
         }
 
         if (n == 0) {
-            /* 클라이언트 측 연결 정상 종료 */
             conn->is_closing = true;
             remove_conn_from_server(conn);
             loop->delSocket(loop, s);
@@ -84,7 +94,6 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
 
         buf[n] = '\0';
 
-        /* 🚨 431 Request Header Fields Too Large 차단 */
         if (conn->header_len + (size_t)n >= sizeof(conn->header_buf)) {
             const char* err_431 = "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n";
             s->send(s, err_431, strlen(err_431), NULL, NULL);
@@ -103,18 +112,15 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
         /* 파이프라이닝을 대비한 내부 파싱 루프 */
         while (conn->header_len > 0) {
             char* header_end = strstr(conn->header_buf, "\r\n\r\n");
-            if (!header_end) break; /* 헤더가 아직 덜 왔음. 다시 recv 루프로! */
+            if (!header_end) break; /* 헤더가 아직 덜 왔음 */
 
             conn->req = new_HttpRequest();
             conn->res = new_HttpResponse(conn->sock);
 
-            /* OOM(Out of Memory) 즉사 방어 */
             if (!conn->req || !conn->res) {
                 if (conn->req) RELEASE(conn->req);
                 if (conn->res) RELEASE(conn->res);
-                conn->req = NULL;
-                conn->res = NULL;
-
+                conn->req = NULL; conn->res = NULL;
                 conn->is_closing = true;
                 remove_conn_from_server(conn);
                 loop->delSocket(loop, s);
@@ -137,26 +143,78 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
                 conn->req->path = new_String("/");
             }
 
+            /* 🚨 [잔여이슈 1 해결] Content-Length 기반 Request Body 안전 소비 로직 */
+            int content_length = 0;
+            char* cl_ptr = strcasestr(conn->header_buf, "Content-Length:");
+            if (cl_ptr && cl_ptr < header_end) {
+                content_length = atoi(cl_ptr + 15);
+            }
+
+            size_t header_block_size = (header_end + 4) - conn->header_buf;
+            size_t body_in_buf = conn->header_len - header_block_size;
+            size_t buffer_consumed = header_block_size;
+
+            if (content_length > 0) {
+                conn->req->body = calloc(1, content_length + 1);
+                if (conn->req->body) {
+                    size_t total_read = 0;
+
+                    /* 버퍼에 이미 들어와 있는 바디 조각 복사 */
+                    if (body_in_buf > 0) {
+                        size_t to_copy = (body_in_buf > (size_t)content_length) ? (size_t)content_length : body_in_buf;
+                        memcpy(conn->req->body, header_end + 4, to_copy);
+                        total_read += to_copy;
+                        buffer_consumed += to_copy;
+                    }
+
+                    /* 소켓에 남아있는 바디 영혼까지 Drain! (EPIPE 완벽 차단) */
+                    while (total_read < (size_t)content_length) {
+                        char temp[4096];
+                        size_t to_read = content_length - total_read;
+                        if (to_read > sizeof(temp)) to_read = sizeof(temp);
+
+                        ssize_t rn = s->recv(s, temp, to_read, NULL, NULL);
+                        if (rn > 0) {
+                            memcpy((char*)conn->req->body + total_read, temp, rn);
+                            total_read += rn;
+                        } else if (rn < 0) {
+                            if (errno == EINTR) continue;
+                            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                                usleep(2000); /* 비동기 환경 대응 간이 대기 */
+                                continue;
+                            }
+                            break; /* 통신 절단 */
+                        } else {
+                            break; /* EOF */
+                        }
+                    }
+                }
+            }
+
+            /* 라우터 디스패치 실행 */
             if (conn->router && conn->router->dispatch) {
                 conn->router->dispatch(conn->router, conn->req, conn->res);
             }
 
             int keep_alive = 1;
-            /* 현재 헤더 블록 안에서만 Connection: close 판정 */
             *header_end = '\0';
-            if (strstr(conn->header_buf, "Connection: close")) keep_alive = 0;
+            if (strcasestr(conn->header_buf, "Connection: close")) keep_alive = 0;
             *header_end = '\r';
 
+            /* 바디 메모리 해제 및 객체 반환 */
+            if (conn->req->body) {
+                free(conn->req->body);
+                conn->req->body = NULL;
+            }
             RELEASE(conn->req);
             RELEASE(conn->res);
             conn->req = NULL;
             conn->res = NULL;
 
-            /* 파이프라이닝 대응: 처리한 헤더 블록만큼 버퍼 앞으로 당기기 */
-            size_t processed_len = (header_end + 4) - conn->header_buf;
-            size_t remaining = conn->header_len - processed_len;
+            /* 파이프라이닝 대응: 소비한 블록만큼 버퍼 앞으로 당기기 */
+            size_t remaining = conn->header_len - buffer_consumed;
             if (remaining > 0) {
-                memmove(conn->header_buf, header_end + 4, remaining);
+                memmove(conn->header_buf, conn->header_buf + buffer_consumed, remaining);
             }
             conn->header_len = remaining;
             conn->header_buf[conn->header_len] = '\0';
@@ -168,8 +226,8 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
                 loop->deferRelease(loop, (Object*)conn);
                 return;
             }
-        } /* 파싱 루프 종료 */
-    } /* 🚨 EAGAIN 탈출 recv 루프 종료 */
+        }
+    }
 }
 
 /* =========================================================
@@ -178,16 +236,13 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
 static void HttpServer_finalize(Object* obj) {
     HttpServer* self = (HttpServer*)obj;
 
-    /* 🚨 [결함 B 패치] 서버 강제 종료 시, 남아있는 활성 커넥션 모두 순회 소각! */
     HttpConnection* curr = self->conns_head;
     while (curr) {
         HttpConnection* next = curr->next;
-
         if (self->loop && curr->sock) {
             self->loop->delSocket(self->loop, curr->sock);
         }
-
-        curr->server = NULL; /* finalize 내부에서의 재귀 호출 방어 */
+        curr->server = NULL;
         RELEASE((Object*)curr);
         curr = next;
     }
@@ -220,7 +275,6 @@ static void on_accept_cb(Socket* server_sock, void* loop_ptr) {
         return;
     }
 
-    /* 🚨 활성 커넥션 DLL에 현재 객체 삽입 (O(1) 시간복잡도) */
     conn->next = server->conns_head;
     if (server->conns_head) {
         server->conns_head->prev = conn;
@@ -251,7 +305,6 @@ static int impl_listen(HttpServer* self, int port) {
 
 static void impl_stop(HttpServer* self) {
     if (self && self->loop) {
-        /* 이벤트 루프 정지 시그널 전송 (선택적) */
         self->loop->stop(self->loop);
     }
 }
