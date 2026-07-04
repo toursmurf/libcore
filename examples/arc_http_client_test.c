@@ -83,6 +83,11 @@ int main(void) {
     RELEASE((Object*)client);
     RELEASE((Object*)loop);
 
+		/* 🚨 [최후의 정화 작전] OpenSSL 전역 상태 수동 소각 */
+    ERR_free_strings();
+    EVP_cleanup();
+    CRYPTO_cleanup_all_ex_data();
+    SSL_COMP_free_compression_methods();
     printf("\n============================================\n");
     printf("  테스트 종료!\n");
     printf("============================================\n");
