@@ -41,9 +41,9 @@ void normalize_path(char* path) {
         memcpy(p, s->c_str(s), slen);
         p += slen;
         if (i < stack->getSize(stack) - 1) *p++ = '/';
+        RELEASE(s);
     }
     *p = '\0';
-    RELEASE((Object)token);
     RELEASE((Object*)stack);
     free(input);
 }
