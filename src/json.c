@@ -660,7 +660,15 @@ static char* parse_string_raw(ParseContext *ctx) {
                         return NULL;
                     }
                 }
-            }
+
+                /* 🚨 [클순 마님(🔫) 패치] 다바이트 문자열(한글/이모지) 한 번에 복사 후 포인터 점프! */
+                for (int i = 0; i < expected_len; i++) {
+                    *dst++ = *src++;
+                }
+                continue;
+            } // if (byte1 >= 0x80) 끝
+
+            /* ASCII 문자(< 0x80)는 기존대로 1바이트씩 복사 */
             *dst++ = *src++;
         }
     }
@@ -683,7 +691,7 @@ static Object* parse_number(ParseContext *ctx) {
         return NULL;
     }
 
-		//소수점 뒤에 숫자가 없는 1. 같은 케이스 차단
+    // 소수점 뒤에 숫자가 없는 1. 같은 케이스 차단
     const char *p = (start == ctx->ptr) ? start : start - 1;
     const char *dot = strchr(p, '.');
     if (dot && !isdigit((unsigned char)*(dot + 1))) {
@@ -1021,11 +1029,6 @@ static void stringify_recursive(Object *obj, StringBuilder *sb, int depth) {
     }
 }
 
-/**
- * @brief 객체를 JSON 문자열로 변환합니다.
- * @warning 내부 메모리 할당 실패(OOM) 시 NULL을 반환할 수 있습니다!
- * @warning 호출자는 반드시 반환값이 NULL인지 검사한 후 사용해야 합니다. (예: printf("%s", json) 직접 호출 금지)
- */
 static char* impl_stringify(Object *obj) {
     StringBuilder sb;
     sb_init(&sb);
@@ -1184,6 +1187,11 @@ JSONNode* new_JSON_Array(void) {
     return alloc_JSONNode(0);
 }
 
+/* 🚀 [추가] ToosTalk(TT-1) 호환용 문자열 노드 래퍼 */
+JSONNode* new_JSON_String(const char* s) {
+    return (JSONNode*)new_json_string(s);
+}
+
 ParseResult parse_JSON(const char *json_str) {
     ParseResult res;
 
@@ -1284,7 +1292,7 @@ JSONNode* new_JSON(const char *json_str_or_null) {
         return res.root;
     } else {
         fprintf(stderr, "[Legacy Wrapper] 파싱 실패: %s\n", res.error);
-        return NULL;
+        return정 NULL;
     }
 }
 
