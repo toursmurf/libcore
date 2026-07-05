@@ -9,9 +9,10 @@
 #include <string.h>
 
 extern Logger* logger;
-#define LOG_D(fmt, ...) LOG_DEBUG(logger, fmt, ##__VA_ARGS__)
-#define LOG_I(fmt, ...) LOG_INFO(logger,  fmt, ##__VA_ARGS__)
-#define LOG_W(fmt, ...) LOG_WARN(logger,  fmt, ##__VA_ARGS__)
+/* 🚨 [패치] 로거가 NULL일 경우 조용히 무시하여 Segfault 원천 차단 */
+#define LOG_D(fmt, ...) do { if (logger) LOG_DEBUG(logger, fmt, ##__VA_ARGS__); } while(0)
+#define LOG_I(fmt, ...) do { if (logger) LOG_INFO(logger,  fmt, ##__VA_ARGS__); } while(0)
+#define LOG_W(fmt, ...) do { if (logger) LOG_WARN(logger,  fmt, ##__VA_ARGS__); } while(0)
 
 /* ────────────────────────────────────────
  * [0] 지연 소각 (Deferred Release) 구현
