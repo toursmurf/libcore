@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <math.h>
 #include <errno.h>
+#include <openssl/crypto.h>
 #include "json.h"
 #include "hashmap.h"
 #include "arraylist.h"
@@ -11,7 +12,6 @@
 #define MAX_JSON_DEPTH 64
 #define GET_CLASS(obj) ( *( (const Class**) (obj) ) )
 
-/* 🚨 [의장님 V20 패치] 문자열 비용(strncmp)을 제거하고 압도적인 O(1) 클래스 포인터 직접 비교 도입! */
 extern const Class jsonNodeClass; // VTable 전방 선언
 
 static inline int is_json_value(Object *obj) {
@@ -160,29 +160,29 @@ static void sb_append_escaped(StringBuilder *sb, const char *str) {
     while (*str) {
         switch (*str) {
             case '\"':
-                sb_append(sb, "\\\"");
-                break;
+              sb_append(sb, "\\\"");
+              break;
             case '\\':
-                sb_append(sb, "\\\\");
-                break;
+              sb_append(sb, "\\\\");
+              break;
             case '\b':
-                sb_append(sb, "\\b");
-                break;
+              sb_append(sb, "\\b");
+              break;
             case '\f':
-                sb_append(sb, "\\f");
-                break;
+              sb_append(sb, "\\f");
+              break;
             case '\n':
-                sb_append(sb, "\\n");
-                break;
+              sb_append(sb, "\\n");
+              break;
             case '\r':
-                sb_append(sb, "\\r");
-                break;
+              sb_append(sb, "\\r");
+              break;
             case '\t':
-                sb_append(sb, "\\t");
-                break;
+              sb_append(sb, "\\t");
+              break;
             default:
-                sb_append_char(sb, *str);
-                break;
+              sb_append_char(sb, *str);
+              break;
         }
         str++;
     }
@@ -208,6 +208,9 @@ static void JsonValue_Finalize(Object *self) {
     JsonValue *v = (JsonValue*)self;
 
     if (v->type == J_STRING && v->string) {
+        if (v->string_exact_size > 0) {
+            OPENSSL_cleanse(v->string, v->string_exact_size);
+        }
         free(v->string);
     }
 }
@@ -217,17 +220,17 @@ static void JsonValue_ToString(Object *self, char *buf, size_t len) {
 
     switch(v->type) {
         case J_STRING:
-            snprintf(buf, len, "\"%s\"", v->string);
-            break;
+          snprintf(buf, len, "\"%s\"", v->string);
+          break;
         case J_NUMBER:
-            snprintf(buf, len, "%g", v->number);
-            break;
+          snprintf(buf, len, "%g", v->number);
+          break;
         case J_BOOL:
-            snprintf(buf, len, "%s", v->boolean ? "true" : "false");
-            break;
+          snprintf(buf, len, "%s", v->boolean ? "true" : "false");
+          break;
         case J_NULL:
-            snprintf(buf, len, "null");
-            break;
+          snprintf(buf, len, "null");
+          break;
     }
 }
 
@@ -253,6 +256,20 @@ JsonValue* new_json_string(const char *s) {
         free(v);
         return NULL;
     }
+
+    v->string_exact_size = strlen(v->string);
+
+    return v;
+}
+
+JsonValue* new_json_string_exact(char *s, size_t exact_size) {
+    JsonValue *v = (JsonValue*)calloc(1, sizeof(JsonValue));
+    if (!v) return NULL;
+
+    Object_Init((Object*)v, &jsonValueClass);
+    v->type = J_STRING;
+    v->string = s; // 소유권 인계
+    v->string_exact_size = exact_size;
 
     return v;
 }
@@ -302,91 +319,66 @@ JsonValue* new_json_null(void) {
  * [2] Tree Equality
  * ================================================================= */
 static int impl_json_equals(Object *o1, Object *o2) {
-    if (o1 == o2) {
-        return 1;
-    }
-
-    if (!o1 || !o2) {
-        return 0;
-    }
-
-    if (GET_CLASS(o1) != GET_CLASS(o2)) {
-        return 0;
-    }
+    if (o1 == o2) return 1;
+    if (!o1 || !o2) return 0;
+    if (GET_CLASS(o1) != GET_CLASS(o2)) return 0;
 
     if (is_json_value(o1)) {
         JsonValue *v1 = (JsonValue*)o1;
         JsonValue *v2 = (JsonValue*)o2;
 
-        if (v1->type != v2->type) {
-            return 0;
-        }
-
-        if (v1->type == J_NULL) {
-            return 1;
-        }
-
-        if (v1->type == J_BOOL) {
-            return v1->boolean == v2->boolean;
-        }
-
-        if (v1->type == J_NUMBER) {
-            return (v1->number == v2->number);
-        }
-
+        if (v1->type != v2->type)
+          return 0;
+        if (v1->type == J_NULL)
+          return 1;
+        if (v1->type == J_BOOL)
+          return v1->boolean == v2->boolean;
+        if (v1->type == J_NUMBER)
+          return (v1->number == v2->number);
         if (v1->type == J_STRING) {
-            if (!v1->string || !v2->string) {
-                return v1->string == v2->string;
-            }
+            if (!v1->string || !v2->string)
+              return v1->string == v2->string;
             return strcmp(v1->string, v2->string) == 0;
         }
     } else if (is_arraylist(o1)) {
         ArrayList *l1 = (ArrayList*)o1;
         ArrayList *l2 = (ArrayList*)o2;
 
-        if (l1->getSize(l1) != l2->getSize(l2)) {
-            return 0;
-        }
+        if (l1->getSize(l1) != l2->getSize(l2)) return 0;
 
         for (int i = 0; i < l1->getSize(l1); i++) {
-            if (!impl_json_equals(l1->get(l1, i), l2->get(l2, i))) {
-                return 0;
-            }
+            if (!impl_json_equals(l1->get(l1, i), l2->get(l2, i))) return 0;
         }
         return 1;
     } else if (is_hashmap(o1)) {
         HashMap *m1 = (HashMap*)o1;
         HashMap *m2 = (HashMap*)o2;
-        int count1 = 0;
-        int count2 = 0;
+        int count1 = 0, count2 = 0;
 
         for (int i = 0; i < m1->capacity; i++) {
             HashNode *n = m1->buckets[i];
             while (n) {
-                count1++;
-                n = n->next;
+              count1++;
+              n = n->next;
             }
         }
 
         for (int i = 0; i < m2->capacity; i++) {
             HashNode *n = m2->buckets[i];
             while (n) {
-                count2++;
-                n = n->next;
+              count2++;
+              n = n->next;
             }
         }
 
-        if (count1 != count2) {
-            return 0;
-        }
+        if (count1 != count2)
+          return 0;
 
         for (int i = 0; i < m1->capacity; i++) {
             HashNode *n = m1->buckets[i];
             while (n) {
                 Object *val2 = m2->get(m2, n->key);
-                if (!val2 || !impl_json_equals(n->value, val2)) {
-                    return 0;
-                }
+                if (!val2 || !impl_json_equals(n->value, val2)) return 0;
                 n = n->next;
             }
         }
@@ -410,21 +402,15 @@ static int is_valid_boundary(char c) {
 }
 
 static int hex_to_int(char c) {
-    if (c >= '0' && c <= '9') {
-        return c - '0';
-    }
-    if (c >= 'a' && c <= 'f') {
-        return c - 'a' + 10;
-    }
-    if (c >= 'A' && c <= 'F') {
-        return c - 'A' + 10;
-    }
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
     return -1;
 }
 
 static Object* parse_value(ParseContext *ctx);
 
-static char* parse_string_raw(ParseContext *ctx) {
+static char* parse_string_raw(ParseContext *ctx, size_t *out_written) {
     const char *start = ctx->ptr + 1;
     const char *end = start;
 
@@ -448,7 +434,8 @@ static char* parse_string_raw(ParseContext *ctx) {
     }
 
     int len = (int)(end - start);
-    char *str = (char*)malloc((size_t)len * 3 + 1);
+    size_t alloc_size = (size_t)len * 3 + 1;
+    char *str = (char*)malloc(alloc_size);
 
     if (!str) {
         ctx->ptr = end + 1;
@@ -469,15 +456,9 @@ static char* parse_string_raw(ParseContext *ctx) {
                 int valid = 1;
 
                 for (int i = 0; i < 4; i++) {
-                    if (src >= end) {
-                        valid = 0;
-                        break;
-                    }
+                    if (src >= end) { valid = 0; break; }
                     int h = hex_to_int(*src);
-                    if (h < 0) {
-                        valid = 0;
-                        break;
-                    }
+                    if (h < 0) { valid = 0; break; }
                     cp = (cp << 4) | h;
                     src++;
                 }
@@ -485,6 +466,7 @@ static char* parse_string_raw(ParseContext *ctx) {
                 if (!valid) {
                     ctx->ptr = src;
                     report_error(ctx, "Invalid unicode escape!");
+                    OPENSSL_cleanse(str, alloc_size);
                     free(str);
                     return NULL;
                 }
@@ -497,10 +479,7 @@ static char* parse_string_raw(ParseContext *ctx) {
 
                         for (int i = 0; i < 4; i++) {
                             int h = hex_to_int(*src);
-                            if (h < 0) {
-                                valid2 = 0;
-                                break;
-                            }
+                            if (h < 0) { valid2 = 0; break; }
                             cp2 = (cp2 << 4) | h;
                             src++;
                         }
@@ -510,18 +489,21 @@ static char* parse_string_raw(ParseContext *ctx) {
                         } else {
                             ctx->ptr = src;
                             report_error(ctx, "Invalid low surrogate pair!");
+                            OPENSSL_cleanse(str, alloc_size);
                             free(str);
                             return NULL;
                         }
                     } else {
                         ctx->ptr = src;
                         report_error(ctx, "Missing low surrogate pair!");
+                        OPENSSL_cleanse(str, alloc_size);
                         free(str);
                         return NULL;
                     }
                 } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
                     ctx->ptr = src;
                     report_error(ctx, "Isolated low surrogate!");
+                    OPENSSL_cleanse(str, alloc_size);
                     free(str);
                     return NULL;
                 }
@@ -546,32 +528,32 @@ static char* parse_string_raw(ParseContext *ctx) {
 
             switch (*src) {
                 case '\"':
-                    *dst++ = '\"';
-                    break;
+                  *dst++ = '\"';
+                  break;
                 case '\\':
-                    *dst++ = '\\';
-                    break;
+                  *dst++ = '\\';
+                  break;
                 case '/':
-                    *dst++ = '/';
-                    break;
+                  *dst++ = '/';
+                  break;
                 case 'b':
-                    *dst++ = '\b';
-                    break;
+                  *dst++ = '\b';
+                  break;
                 case 'f':
-                    *dst++ = '\f';
-                    break;
+                  *dst++ = '\f';
+                  break;
                 case 'n':
-                    *dst++ = '\n';
-                    break;
+                  *dst++ = '\n';
+                  break;
                 case 'r':
-                    *dst++ = '\r';
-                    break;
+                  *dst++ = '\r';
+                  break;
                 case 't':
-                    *dst++ = '\t';
-                    break;
+                  *dst++ = '\t';
+                  break;
                 default:
-                    *dst++ = *src;
-                    break;
+                  *dst++ = *src;
+                  break;
             }
             src++;
         } else {
@@ -587,6 +569,7 @@ static char* parse_string_raw(ParseContext *ctx) {
                         if (byte1 == 0xC0 || byte1 == 0xC1) {
                             ctx->ptr = src;
                             report_error(ctx, "Overlong UTF-8 sequence detected!");
+                            OPENSSL_cleanse(str, alloc_size);
                             free(str);
                             return NULL;
                         }
@@ -600,6 +583,7 @@ static char* parse_string_raw(ParseContext *ctx) {
                         if (byte1 == 0xE0 && byte2 < 0xA0) {
                             ctx->ptr = src;
                             report_error(ctx, "Overlong UTF-8 sequence detected!");
+                            OPENSSL_cleanse(str, alloc_size);
                             free(str);
                             return NULL;
                         }
@@ -607,6 +591,7 @@ static char* parse_string_raw(ParseContext *ctx) {
                         if (byte1 == 0xED && byte2 >= 0xA0) {
                             ctx->ptr = src;
                             report_error(ctx, "UTF-16 surrogate directly encoded in UTF-8!");
+                            OPENSSL_cleanse(str, alloc_size);
                             free(str);
                             return NULL;
                         }
@@ -617,6 +602,7 @@ static char* parse_string_raw(ParseContext *ctx) {
                     if (byte1 > 0xF4) {
                         ctx->ptr = src;
                         report_error(ctx, "UTF-8 sequence exceeds U+10FFFF!");
+                        OPENSSL_cleanse(str, alloc_size);
                         free(str);
                         return NULL;
                     }
@@ -627,6 +613,7 @@ static char* parse_string_raw(ParseContext *ctx) {
                         if (byte1 == 0xF0 && byte2 < 0x90) {
                             ctx->ptr = src;
                             report_error(ctx, "Overlong UTF-8 sequence detected!");
+                            OPENSSL_cleanse(str, alloc_size);
                             free(str);
                             return NULL;
                         }
@@ -634,6 +621,7 @@ static char* parse_string_raw(ParseContext *ctx) {
                         if (byte1 == 0xF4 && byte2 >= 0x90) {
                             ctx->ptr = src;
                             report_error(ctx, "UTF-8 sequence exceeds U+10FFFF!");
+                            OPENSSL_cleanse(str, alloc_size);
                             free(str);
                             return NULL;
                         }
@@ -641,6 +629,7 @@ static char* parse_string_raw(ParseContext *ctx) {
                 } else {
                     ctx->ptr = src;
                     report_error(ctx, "Invalid UTF-8 starting byte!");
+                    OPENSSL_cleanse(str, alloc_size);
                     free(str);
                     return NULL;
                 }
@@ -648,6 +637,7 @@ static char* parse_string_raw(ParseContext *ctx) {
                 if (src + expected_len > end) {
                     ctx->ptr = src;
                     report_error(ctx, "Incomplete UTF-8 sequence!");
+                    OPENSSL_cleanse(str, alloc_size);
                     free(str);
                     return NULL;
                 }
@@ -656,19 +646,18 @@ static char* parse_string_raw(ParseContext *ctx) {
                     if (((unsigned char)src[i] & 0xC0) != 0x80) {
                         ctx->ptr = src;
                         report_error(ctx, "Invalid UTF-8 continuation byte!");
+                        OPENSSL_cleanse(str, alloc_size);
                         free(str);
                         return NULL;
                     }
                 }
 
-                /* 🚨 [클순 마님(🔫) 패치] 다바이트 문자열(한글/이모지) 한 번에 복사 후 포인터 점프! */
                 for (int i = 0; i < expected_len; i++) {
                     *dst++ = *src++;
                 }
                 continue;
             } // if (byte1 >= 0x80) 끝
 
-            /* ASCII 문자(< 0x80)는 기존대로 1바이트씩 복사 */
             *dst++ = *src++;
         }
     }
@@ -676,27 +665,21 @@ static char* parse_string_raw(ParseContext *ctx) {
     *dst = '\0';
     ctx->ptr = end + 1;
 
+    if (out_written) {
+        *out_written = (size_t)(dst - str);
+    }
+
     return str;
 }
 
 static Object* parse_number(ParseContext *ctx) {
     const char *start = ctx->ptr;
 
-    if (*start == '-') {
-        start++;
-    }
+    if (*start == '-') start++;
 
     if (*start == '0' && isdigit((unsigned char)*(start + 1))) {
         report_error(ctx, "Leading zero not allowed in JSON number!");
         return NULL;
-    }
-
-    // 소수점 뒤에 숫자가 없는 1. 같은 케이스 차단
-    const char *p = (start == ctx->ptr) ? start : start - 1;
-    const char *dot = strchr(p, '.');
-    if (dot && !isdigit((unsigned char)*(dot + 1))) {
-         report_error(ctx, "Decimal point without digit!");
-         return NULL;
     }
 
     errno = 0;
@@ -708,10 +691,22 @@ static Object* parse_number(ParseContext *ctx) {
         return NULL;
     }
 
+    /* 🚨 [치명 결함 교정] strtod가 식별한 숫자 토큰 범위 [ctx->ptr, end) 내에서만 후행 검사 수행 */
+    const char* p = ctx->ptr;
+    while (p < end) {
+        if (*p == '.') {
+            if (p + 1 >= end || !isdigit((unsigned char)*(p + 1))) {
+                report_error(ctx, "Decimal point without digit!");
+                return NULL;
+            }
+            break;
+        }
+        p++;
+    }
+
     if (errno == ERANGE) {
-        if (d == 0.0) {
-            errno = 0;
-        } else {
+        if (d == 0.0) errno = 0;
+        else {
             report_error(ctx, "Number out of range (Overflow)!");
             return NULL;
         }
@@ -722,10 +717,8 @@ static Object* parse_number(ParseContext *ctx) {
         return NULL;
     }
 
-    if (
-        (*(end - 1) == 'e' || *(end - 1) == 'E') ||
-        ( (*(end - 1) == '+' || *(end - 1) == '-') && (*(end - 2) == 'e' || *(end - 2) == 'E') )
-    ) {
+    if ((*(end - 1) == 'e' || *(end - 1) == 'E') ||
+        ( (*(end - 1) == '+' || *(end - 1) == '-') && (*(end - 2) == 'e' || *(end - 2) == 'E') )) {
         report_error(ctx, "Invalid exponent format!");
         return NULL;
     }
@@ -737,7 +730,6 @@ static Object* parse_number(ParseContext *ctx) {
     }
 
     ctx->ptr = end;
-
     Object *obj = (Object*)new_json_number(d);
 
     if (!obj) {
@@ -773,7 +765,8 @@ static Object* parse_object(ParseContext *ctx) {
             goto fail;
         }
 
-        char *key = parse_string_raw(ctx);
+        size_t key_len = 0;
+        char *key = parse_string_raw(ctx, &key_len);
 
         if (!key) {
             goto fail;
@@ -783,6 +776,7 @@ static Object* parse_object(ParseContext *ctx) {
 
         if (*(ctx->ptr) != ':') {
             report_error(ctx, "Expected ':'!");
+            OPENSSL_cleanse(key, key_len + 1); /* 🚨 strlen 제거. 정확한 key_len + 1 소각 */
             free(key);
             goto fail;
         }
@@ -792,6 +786,7 @@ static Object* parse_object(ParseContext *ctx) {
         Object *val = parse_value(ctx);
 
         if (!val) {
+            OPENSSL_cleanse(key, key_len + 1); /* 🚨 strlen 제거. 정확한 key_len + 1 소각 */
             free(key);
             goto fail;
         }
@@ -853,7 +848,6 @@ static Object* parse_array(ParseContext *ctx) {
         }
 
         list->add(list, val);
-
         RELEASE(val);
 
         skip_ws(ctx);
@@ -891,74 +885,51 @@ static Object* parse_value(ParseContext *ctx) {
 
     char c = *(ctx->ptr);
 
-    if (c == '\0') {
-        return NULL;
-    }
+    if (c == '\0') return NULL;
 
     if (c == '\"') {
-        char *s = parse_string_raw(ctx);
+        size_t exact_len = 0;
+        char *s = parse_string_raw(ctx, &exact_len);
 
-        if (!s) {
-            return NULL;
-        }
+        if (!s) return NULL;
 
-        Object *o = (Object*)new_json_string(s);
+        Object *o = (Object*)new_json_string_exact(s, exact_len);
 
         if (!o) {
             report_error(ctx, "OOM creating JsonValue (string)!");
+            OPENSSL_cleanse(s, exact_len + 1);
+            free(s);
         }
 
-        free(s);
         return o;
     }
 
-    if (c == '-' || (c >= '0' && c <= '9')) {
-        return parse_number(ctx);
-    }
-
-    if (c == '{') {
-        return parse_object(ctx);
-    }
-
-    if (c == '[') {
-        return parse_array(ctx);
-    }
+    if (c == '-' || (c >= '0' && c <= '9')) return parse_number(ctx);
+    if (c == '{') return parse_object(ctx);
+    if (c == '[') return parse_array(ctx);
 
     if (strncmp(ctx->ptr, "true", 4) == 0 && is_valid_boundary((ctx->ptr)[4])) {
         ctx->ptr += 4;
         Object *o = (Object*)new_json_bool(1);
-
-        if (!o) {
-            report_error(ctx, "OOM creating JsonValue (bool)!");
-        }
-
+        if (!o) report_error(ctx, "OOM creating JsonValue (bool)!");
         return o;
     }
 
     if (strncmp(ctx->ptr, "false", 5) == 0 && is_valid_boundary((ctx->ptr)[5])) {
         ctx->ptr += 5;
         Object *o = (Object*)new_json_bool(0);
-
-        if (!o) {
-            report_error(ctx, "OOM creating JsonValue (bool)!");
-        }
-
+        if (!o) report_error(ctx, "OOM creating JsonValue (bool)!");
         return o;
     }
 
     if (strncmp(ctx->ptr, "null", 4) == 0 && is_valid_boundary((ctx->ptr)[4])) {
         ctx->ptr += 4;
         Object *o = (Object*)new_json_null();
-
-        if (!o) {
-            report_error(ctx, "OOM creating JsonValue (null)!");
-        }
-
+        if (!o) report_error(ctx, "OOM creating JsonValue (null)!");
         return o;
     }
 
     report_error(ctx, "Unexpected token!");
-
     return NULL;
 }
 
@@ -966,9 +937,7 @@ static Object* parse_value(ParseContext *ctx) {
  * [4] Stringify Engine
  * ================================================================= */
 static void stringify_recursive(Object *obj, StringBuilder *sb, int depth) {
-    if (sb->failed) {
-        return;
-    }
+    if (sb->failed) return;
 
     if (depth > MAX_JSON_DEPTH) {
         sb_append(sb, "\"#DEPTH_LIMIT_EXCEEDED#\"");
@@ -983,9 +952,8 @@ static void stringify_recursive(Object *obj, StringBuilder *sb, int depth) {
     if (is_json_value(obj)) {
         JsonValue *jv = (JsonValue*)obj;
 
-        if (jv->type == J_STRING) {
-            sb_append_escaped(sb, jv->string);
-        } else {
+        if (jv->type == J_STRING) sb_append_escaped(sb, jv->string);
+        else {
             char buf[64];
             GET_CLASS(obj)->toString(obj, buf, sizeof(buf));
             sb_append(sb, buf);
@@ -997,12 +965,9 @@ static void stringify_recursive(Object *obj, StringBuilder *sb, int depth) {
         sb_append_char(sb, '[');
 
         for (int i = 0; i < list->getSize(list); i++) {
-            if (i > 0) {
-                sb_append_char(sb, ',');
-            }
+            if (i > 0) sb_append_char(sb, ',');
             stringify_recursive(list->get(list, i), sb, depth + 1);
         }
-
         sb_append_char(sb, ']');
     } else if (is_hashmap(obj)) {
         HashMap *map = (HashMap*)obj;
@@ -1011,12 +976,8 @@ static void stringify_recursive(Object *obj, StringBuilder *sb, int depth) {
 
         for (int i = 0; i < map->capacity; i++) {
             HashNode *node = map->buckets[i];
-
             while (node) {
-                if (!first) {
-                    sb_append_char(sb, ',');
-                }
-
+                if (!first) sb_append_char(sb, ',');
                 sb_append_escaped(sb, node->key);
                 sb_append_char(sb, ':');
                 stringify_recursive(node->value, sb, depth + 1);
@@ -1024,7 +985,6 @@ static void stringify_recursive(Object *obj, StringBuilder *sb, int depth) {
                 node = node->next;
             }
         }
-
         sb_append_char(sb, '}');
     }
 }
@@ -1032,9 +992,7 @@ static void stringify_recursive(Object *obj, StringBuilder *sb, int depth) {
 static char* impl_stringify(Object *obj) {
     StringBuilder sb;
     sb_init(&sb);
-
     stringify_recursive(obj, &sb, 0);
-
     return sb_finish(&sb);
 }
 
@@ -1043,10 +1001,7 @@ static char* impl_stringify(Object *obj) {
  * ================================================================= */
 static void JSONNode_Finalize(Object *self) {
     JSONNode *node = (JSONNode*)self;
-
-    if (node->core_data) {
-        RELEASE(node->core_data);
-    }
+    if (node->core_data) RELEASE(node->core_data);
 }
 
 const Class jsonNodeClass = {
@@ -1056,13 +1011,8 @@ const Class jsonNodeClass = {
     .finalize = JSONNode_Finalize
 };
 
-static int node_isObject(JSONNode *self) {
-    return self->is_object_flag;
-}
-
-static int node_isArray(JSONNode *self) {
-    return self->is_array_flag;
-}
+static int node_isObject(JSONNode *self) { return self->is_object_flag; }
+static int node_isArray(JSONNode *self) { return self->is_array_flag; }
 
 static void node_put(JSONNode *self, const char *key, Object *val) {
     if (self->is_object_flag && self->core_data) {
@@ -1074,27 +1024,34 @@ static Object* node_get(JSONNode *self, const char *key) {
     if (self->is_object_flag && self->core_data) {
         return ((HashMap*)self->core_data)->get((HashMap*)self->core_data, key);
     }
-
     return NULL;
 }
 
 static const char* node_getString(JSONNode *self, const char *key) {
     Object *val = node_get(self, key);
-
     if (is_json_value(val) && ((JsonValue*)val)->type == J_STRING) {
         return ((JsonValue*)val)->string;
     }
+    return NULL;
+}
 
+static const char* node_getStringLen(JSONNode *self, const char *key, size_t *out_len) {
+    Object *val = node_get(self, key);
+
+    if (is_json_value(val) && ((JsonValue*)val)->type == J_STRING) {
+        if (out_len) *out_len = ((JsonValue*)val)->string_exact_size;
+        return ((JsonValue*)val)->string;
+    }
+
+    if (out_len) *out_len = 0;
     return NULL;
 }
 
 static int node_getInt(JSONNode *self, const char *key) {
     Object *val = node_get(self, key);
-
     if (is_json_value(val) && ((JsonValue*)val)->type == J_NUMBER) {
         return (int)((JsonValue*)val)->number;
     }
-
     return 0;
 }
 
@@ -1108,7 +1065,6 @@ static Object* node_getIndex(JSONNode *self, int index) {
     if (self->is_array_flag && self->core_data) {
         return ((ArrayList*)self->core_data)->get((ArrayList*)self->core_data, index);
     }
-
     return NULL;
 }
 
@@ -1116,38 +1072,24 @@ static int node_length(JSONNode *self) {
     if (self->is_array_flag && self->core_data) {
         return ((ArrayList*)self->core_data)->getSize((ArrayList*)self->core_data);
     }
-
     return 0;
 }
 
 static char* node_toString(JSONNode *self) {
-    if (self->core_data) {
-        return impl_stringify(self->core_data);
-    }
-
+    if (self->core_data) return impl_stringify(self->core_data);
     char *null_str = strdup("null");
-
-    if (!null_str) {
-        return NULL;
-    }
-
+    if (!null_str) return NULL;
     return null_str;
 }
 
 static int node_equals(JSONNode *self, JSONNode *other) {
-    if (!self || !other) {
-        return 0;
-    }
-
+    if (!self || !other) return 0;
     return impl_json_equals(self->core_data, other->core_data);
 }
 
 static JSONNode* alloc_JSONNode(int is_obj) {
     JSONNode *node = (JSONNode*)calloc(1, sizeof(JSONNode));
-
-    if (!node) {
-        return NULL;
-    }
+    if (!node) return NULL;
 
     Object_Init((Object*)node, &jsonNodeClass);
     node->isObject = node_isObject;
@@ -1155,6 +1097,7 @@ static JSONNode* alloc_JSONNode(int is_obj) {
     node->put = node_put;
     node->get = node_get;
     node->getString = node_getString;
+    node->getStringLen = node_getStringLen;
     node->getInt = node_getInt;
     node->add = node_add;
     node->getIndex = node_getIndex;
@@ -1187,14 +1130,12 @@ JSONNode* new_JSON_Array(void) {
     return alloc_JSONNode(0);
 }
 
-/* 🚀 [추가] ToosTalk(TT-1) 호환용 문자열 노드 래퍼 */
 JSONNode* new_JSON_String(const char* s) {
     return (JSONNode*)new_json_string(s);
 }
 
 ParseResult parse_JSON(const char *json_str) {
     ParseResult res;
-
     res.root = NULL;
     res.success = 0;
     memset(res.error, 0, sizeof(res.error));
@@ -1228,7 +1169,6 @@ ParseResult parse_JSON(const char *json_str) {
     }
 
     JSONNode *node = (JSONNode*)calloc(1, sizeof(JSONNode));
-
     if (!node) {
         snprintf(res.error, sizeof(res.error), "OOM while allocating root JSONNode.");
         RELEASE(parsed);
@@ -1241,6 +1181,7 @@ ParseResult parse_JSON(const char *json_str) {
     node->put = node_put;
     node->get = node_get;
     node->getString = node_getString;
+    node->getStringLen = node_getStringLen;
     node->getInt = node_getInt;
     node->add = node_add;
     node->getIndex = node_getIndex;
@@ -1265,12 +1206,8 @@ ParseResult parse_JSON(const char *json_str) {
 }
 
 static Object* impl_parse(const char *json_str) {
-    if (!json_str) {
-        return NULL;
-    }
-
+    if (!json_str) return NULL;
     ParseContext ctx = { json_str, json_str, 0, NULL, 0, 0 };
-
     return parse_value(&ctx);
 }
 
@@ -1278,33 +1215,20 @@ static Object* impl_parse(const char *json_str) {
  * [6] Legacy & 하위 호환성 래퍼 구현
  * ================================================================= */
 JSONNode* new_JSON(const char *json_str_or_null) {
-    if (!json_str_or_null || strlen(json_str_or_null) == 0) {
-        return new_JSON_Object();
-    }
-
-    if (strcmp(json_str_or_null, "[]") == 0) {
-        return new_JSON_Array();
-    }
+    if (!json_str_or_null || strlen(json_str_or_null) == 0) return new_JSON_Object();
+    if (strcmp(json_str_or_null, "[]") == 0) return new_JSON_Array();
 
     ParseResult res = parse_JSON(json_str_or_null);
-
-    if (res.success) {
-        return res.root;
-    } else {
+    if (res.success) return res.root;
+    else {
         fprintf(stderr, "[Legacy Wrapper] 파싱 실패: %s\n", res.error);
-        return정 NULL;
+        return NULL;
     }
 }
 
 static char* om_writeValueAsString(Object *obj) {
-    if (!obj) {
-        return strdup("null");
-    }
-
-    if (is_json_node(obj)) {
-        return impl_stringify(((JSONNode*)obj)->core_data);
-    }
-
+    if (!obj) return strdup("null");
+    if (is_json_node(obj)) return impl_stringify(((JSONNode*)obj)->core_data);
     return impl_stringify(obj);
 }
 
