@@ -16,6 +16,11 @@ typedef enum {
     HTTP_STATE_CLOSED
 } HttpConnState;
 
+typedef enum {
+    CONN_MODE_HTTP = 0,
+    CONN_MODE_WS   = 1
+} ConnMode;
+
 typedef struct HttpServer HttpServer;
 
 typedef struct HttpConnection HttpConnection;
@@ -23,22 +28,38 @@ struct HttpConnection {
     Object base;
     Socket* sock;        /* [OWNED] */
     Router* router;      /* [BORROWED] */
-    HttpServer* server;  /* [BORROWED] 활성 커넥션 추적용 서버 포인터 */
+    HttpServer* server;  /* [BORROWED] */
 
-    /* O(1) 삭제를 위한 Intrusive 양방향 연결 리스트 노드 */
     HttpConnection* next;
     HttpConnection* prev;
 
     HttpConnState state;
+    ConnMode mode;
     bool is_closing;
+    bool keep_alive;
     char header_buf[8192];
     size_t header_len;
+
+    /* 🚨 [핵심] 비동기 송신 큐 및 EPOLLOUT 상태 관리 플래그 */
+    char* out_buf;
+    size_t out_len;
+    size_t out_cap;
+    bool is_write_registered;
+
     HttpRequest* req;    /* [OWNED] */
     HttpResponse* res;   /* [OWNED] */
+    void* ws_user_data;  /* [BORROWED] */
 };
 
 HttpConnection* new_HttpConnection(Socket* client_sock, HttpServer* server);
 void HttpConnection_on_readable(Socket* s, void* loop_ptr);
+
+void HttpConnection_on_writable(Socket* s, void* loop_ptr);
+void HttpConnection_flush(HttpConnection* conn);
+
+int HttpConnection_ws_send(HttpConnection* conn, const char* msg);
+void HttpConnection_ws_close(HttpConnection* conn);
+void WsUpgrade_handler(HttpRequest* req, HttpResponse* res, void* user_ctx);
 
 struct HttpServer {
     Object base;
@@ -46,8 +67,11 @@ struct HttpServer {
     Router* router;      /* [OWNED] */
     EventLoop* loop;     /* [BORROWED] */
 
-    /* 종료 시 누수 방지를 위한 활성 커넥션 DLL 헤드 */
     HttpConnection* conns_head;
+
+    void (*on_ws_open)   (HttpConnection* conn);
+    void (*on_ws_message)(HttpConnection* conn, const char* msg, size_t len);
+    void (*on_ws_close)  (HttpConnection* conn);
 
     int (*listen)(HttpServer* self, int port);
     void (*stop)(HttpServer* self);
