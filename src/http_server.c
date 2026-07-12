@@ -7,6 +7,8 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/tcp.h> /* 🚨 [핵심] TCP_NODELAY 장착용 헤더 */
 
 static void append_out_buf(HttpConnection* conn, const uint8_t* data, size_t len) {
     if (conn->out_len + len > conn->out_cap) {
@@ -24,11 +26,9 @@ static void append_out_buf(HttpConnection* conn, const uint8_t* data, size_t len
 static void remove_conn_from_server(HttpConnection* conn);
 static void conn_shutdown(HttpConnection* conn, EventLoop* loop, Socket* s);
 
-/* 🚨 [핵심] EPOLLET Drain을 완벽 수행하는 쓰기 루프 및 스마트 스위칭 */
 void HttpConnection_flush(HttpConnection* conn) {
     if (!conn || !conn->sock || !conn->sock->is_open || conn->is_closing) return;
 
-    /* OS 버퍼가 찰 때까지 끝까지 밀어냅니다 (1턴 지연 박멸) */
     while (conn->out_len > 0) {
         ssize_t sent = conn->sock->send(conn->sock, conn->out_buf, conn->out_len, NULL, 0);
         if (sent > 0) {
@@ -40,8 +40,9 @@ void HttpConnection_flush(HttpConnection* conn) {
                 break;
             }
         } else if (sent < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-                break; /* OS 버퍼 가득 참! 여기서 후퇴하고 EPOLLOUT 대기 */
+            if (errno == EINTR) continue; /* 🚨 [보강] 시그널 인터럽트는 무시하고 재시도 */
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break; /* OS 버퍼 진짜 가득 참! 후퇴! */
             }
             if (conn->server && conn->server->loop) {
                 conn_shutdown(conn, conn->server->loop, conn->sock);
@@ -52,7 +53,6 @@ void HttpConnection_flush(HttpConnection* conn) {
         }
     }
 
-    /* 플래그 기반 스마트 EPOLLOUT 스위칭 (CPU 연소 박멸) */
     if (conn->server && conn->server->loop) {
         EventLoop* loop = conn->server->loop;
         if (conn->out_len > 0 && !conn->is_write_registered) {
@@ -117,12 +117,12 @@ HttpConnection* new_HttpConnection(Socket* client_sock, HttpServer* server) {
     self->is_closing = false;
     self->keep_alive = true;
     self->header_len = 0;
-
+    
     self->out_buf = NULL;
     self->out_len = 0;
     self->out_cap = 0;
     self->is_write_registered = false;
-
+    
     self->ws_user_data = NULL;
 
     return self;
@@ -230,7 +230,7 @@ static int HttpConnection_process_ws_frames(HttpConnection* conn, EventLoop* loo
             if (plen <= 125) { pong[1] = (uint8_t)plen; }
             else { pong[1] = 126; pong[2] = (plen >> 8) & 0xFF; pong[3] = plen & 0xFF; hlen = 4; }
             memcpy(pong + hlen, payload, plen);
-
+            
             append_out_buf(conn, pong, hlen + plen);
             HttpConnection_flush(conn);
         } else if (conn->server && conn->server->on_ws_message) {
@@ -472,36 +472,46 @@ static void on_accept_cb(Socket* server_sock, void* loop_ptr) {
     EventLoop* loop = (EventLoop*)loop_ptr;
     HttpServer* server = (HttpServer*)server_sock->user_data;
 
-    char client_ip[64];
-    int client_port;
-    Socket* client_sock = (Socket*)((TcpSocket*)server->server_sock)->accept(
-        (TcpSocket*)server->server_sock, client_ip, &client_port);
+    /* 🚨 [핵심 패치 2] EPOLLET 모드 완벽 대응! EAGAIN이 뜰 때까지 싹쓸이 Accept! */
+    while (1) {
+        char client_ip[64];
+        int client_port;
+        Socket* client_sock = (Socket*)((TcpSocket*)server->server_sock)->accept(
+            (TcpSocket*)server->server_sock, client_ip, &client_port);
 
-    if (!client_sock) return;
+        if (!client_sock) break; /* EAGAIN: 대기열이 비었음! 안전하게 루프 탈출 */
 
-    HttpConnection* conn = new_HttpConnection(client_sock, server);
-    if (!conn) {
-        RELEASE((Object*)client_sock);
-        return;
+        /* 🚨 [핵심 패치 1] TCP Nagle 알고리즘 해제 (1턴 지연의 진짜 주범 박멸!) 
+         * 작은 WebSocket JSON 프레임이 OS 단에서 묶이지 않고 빛의 속도로 발사됩니다! */
+        int flag = 1;
+        setsockopt(client_sock->fd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int));
+
+        HttpConnection* conn = new_HttpConnection(client_sock, server);
+        if (!conn) {
+            RELEASE((Object*)client_sock);
+            continue;
+        }
+
+        conn->next = server->conns_head;
+        if (server->conns_head) {
+            server->conns_head->prev = conn;
+        }
+        server->conns_head = conn;
+
+        client_sock->user_data = conn;
+        client_sock->on_readable = HttpConnection_on_readable;
+        client_sock->on_writable = HttpConnection_on_writable;
+
+        loop->addSocket(loop, client_sock, EV_READ);
     }
-
-    conn->next = server->conns_head;
-    if (server->conns_head) {
-        server->conns_head->prev = conn;
-    }
-    server->conns_head = conn;
-
-    client_sock->user_data = conn;
-    client_sock->on_readable = HttpConnection_on_readable;
-    client_sock->on_writable = HttpConnection_on_writable;
-
-    loop->addSocket(loop, client_sock, EV_READ);
 }
 
 static int impl_listen(HttpServer* self, int port) {
     if (!self || !self->loop) return -1;
+
     char url[64];
     snprintf(url, sizeof(url), "tcp://0.0.0.0:%d", port);
+
     self->server_sock = createServer(url, NULL);
     if (!self->server_sock) return -1;
 
