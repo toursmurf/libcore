@@ -71,7 +71,6 @@ static void impl_dispatch(Router* self, HttpRequest* req, HttpResponse* res) {
 
     int matched = 0;
     int route_count = self->routes->getSize(self->routes);
-printf("route_count=>%d\n", route_count);
     for (int i = 0; i < route_count; i++) {
         /* 🚨 get()은 BORROWED 객체를 반환하므로 절대 해제 금지! */
         Route* r = (Route*)self->routes->get(self->routes, i);
