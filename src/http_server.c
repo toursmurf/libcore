@@ -1,6 +1,9 @@
+#define _GNU_SOURCE 
 #include "http_server.h"
 #include "tcp_socket.h"
 #include "ws_protocol.h"
+#include "string_obj.h"
+#include "logger.h" /* 🚨 로그 추적을 위해 명시적 추가 */
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,15 +11,19 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/socket.h>
-#include <netinet/tcp.h> /* 🚨 [핵심] TCP_NODELAY 장착용 헤더 */
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+
+extern Logger* logger;
+#define LOG_D(fmt, ...) do { if (logger) LOG_DEBUG(logger, fmt, ##__VA_ARGS__); } while(0)
 
 static void append_out_buf(HttpConnection* conn, const uint8_t* data, size_t len) {
     if (conn->out_len + len > conn->out_cap) {
         size_t new_cap = conn->out_cap == 0 ? 4096 : conn->out_cap * 2;
         while (new_cap < conn->out_len + len) new_cap *= 2;
-        char* new_buf = realloc(conn->out_buf, new_cap);
+        char* new_buf = (char*)realloc(conn->out_buf, new_cap);
         if (!new_buf) return;
-        conn->out_buf = new_buf;
+        conn->out_buf = (char *)new_buf; 
         conn->out_cap = new_cap;
     }
     memcpy(conn->out_buf + conn->out_len, data, len);
@@ -27,10 +34,11 @@ static void remove_conn_from_server(HttpConnection* conn);
 static void conn_shutdown(HttpConnection* conn, EventLoop* loop, Socket* s);
 
 void HttpConnection_flush(HttpConnection* conn) {
-    if (!conn || !conn->sock || !conn->sock->is_open || conn->is_closing) return;
+    if (!conn || !conn->sock || !conn->sock->is_open) return;
 
     while (conn->out_len > 0) {
         ssize_t sent = conn->sock->send(conn->sock, conn->out_buf, conn->out_len, NULL, 0);
+        
         if (sent > 0) {
             if ((size_t)sent < conn->out_len) {
                 memmove(conn->out_buf, conn->out_buf + sent, conn->out_len - sent);
@@ -39,17 +47,16 @@ void HttpConnection_flush(HttpConnection* conn) {
                 conn->out_len = 0;
                 break;
             }
-        } else if (sent < 0) {
-            if (errno == EINTR) continue; /* 🚨 [보강] 시그널 인터럽트는 무시하고 재시도 */
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                break; /* OS 버퍼 진짜 가득 참! 후퇴! */
-            }
+        } 
+        else if (sent == SOCKET_WOULD_BLOCK) {
+            break; 
+        } 
+        else if (sent <= 0) { 
+            if (sent < 0 && errno == EINTR) continue;
             if (conn->server && conn->server->loop) {
                 conn_shutdown(conn, conn->server->loop, conn->sock);
             }
             return;
-        } else {
-            break;
         }
     }
 
@@ -63,12 +70,18 @@ void HttpConnection_flush(HttpConnection* conn) {
             conn->is_write_registered = false;
         }
     }
+
+    if (conn->is_closing && conn->out_len == 0) {
+        if (conn->server && conn->server->loop) {
+            conn_shutdown(conn, conn->server->loop, conn->sock);
+        }
+    }
 }
 
 void HttpConnection_on_writable(Socket* s, void* loop_ptr) {
     (void)loop_ptr;
     HttpConnection* conn = (HttpConnection*)s->user_data;
-    if (conn && !conn->is_closing) {
+    if (conn) {
         HttpConnection_flush(conn);
     }
 }
@@ -115,8 +128,10 @@ HttpConnection* new_HttpConnection(Socket* client_sock, HttpServer* server) {
     self->state = HTTP_STATE_READ_HEADER;
     self->mode = CONN_MODE_HTTP;
     self->is_closing = false;
+    self->shutdown_done = false; 
     self->keep_alive = true;
     self->header_len = 0;
+    self->body_read = 0; 
     
     self->out_buf = NULL;
     self->out_len = 0;
@@ -129,6 +144,9 @@ HttpConnection* new_HttpConnection(Socket* client_sock, HttpServer* server) {
 }
 
 static void conn_shutdown(HttpConnection* conn, EventLoop* loop, Socket* s) {
+    if (conn->shutdown_done) return;
+    conn->shutdown_done = true;
+
     if (conn->mode == CONN_MODE_WS && conn->server && conn->server->on_ws_close) {
         conn->server->on_ws_close(conn);
     }
@@ -190,12 +208,13 @@ int HttpConnection_ws_send(HttpConnection* conn, const char* msg) {
 
 void HttpConnection_ws_close(HttpConnection* conn) {
     if (!conn || conn->mode != CONN_MODE_WS || conn->is_closing) return;
+    
+    conn->is_closing = true;
     if (conn->sock && conn->sock->is_open) {
         static const uint8_t close_frame[2] = { 0x88, 0x00 };
         append_out_buf(conn, close_frame, 2);
         HttpConnection_flush(conn);
     }
-    conn->is_closing = true;
 }
 
 static int HttpConnection_process_ws_frames(HttpConnection* conn, EventLoop* loop, Socket* s) {
@@ -278,26 +297,17 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
     if (!conn || conn->is_closing) return;
 
     while (1) {
-        char buf[4096];
-        ssize_t n = s->recv(s, buf, sizeof(buf) - 1, NULL, 0);
-
-        if (n < 0) {
-            if (errno == EINTR) continue;
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                break;
-            }
-            conn_shutdown(conn, loop, s);
-            return;
-        }
-
-        if (n == 0) {
-            conn_shutdown(conn, loop, s);
-            return;
-        }
-
-        buf[n] = '\0';
-
         if (conn->mode == CONN_MODE_WS) {
+            char buf[4096];
+            ssize_t n = s->recv(s, buf, sizeof(buf) - 1, NULL, 0);
+
+            if (n == SOCKET_WOULD_BLOCK) break;
+            if (n <= 0) {
+                if (n < 0 && errno == EINTR) continue;
+                conn_shutdown(conn, loop, s);
+                return;
+            }
+
             if (conn->header_len + (size_t)n >= sizeof(conn->header_buf)) {
                 conn_shutdown(conn, loop, s);
                 return;
@@ -308,28 +318,39 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
             continue;
         }
 
-        if (conn->header_len + (size_t)n >= sizeof(conn->header_buf)) {
-            const char* err_431 = "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n";
-            s->send(s, err_431, strlen(err_431), NULL, 0);
-            conn_shutdown(conn, loop, s);
-            return;
-        }
+        if (conn->state == HTTP_STATE_READ_HEADER) {
+            char buf[4096];
+            ssize_t n = s->recv(s, buf, sizeof(buf) - 1, NULL, 0);
 
-        memcpy(conn->header_buf + conn->header_len, buf, n);
-        conn->header_len += n;
-        conn->header_buf[conn->header_len] = '\0';
+            if (n == SOCKET_WOULD_BLOCK) break;
+            if (n <= 0) {
+                if (n < 0 && errno == EINTR) continue;
+                conn_shutdown(conn, loop, s);
+                return;
+            }
 
-        while (conn->header_len > 0) {
+            /* 🚨 [추적] 클라이언트 패킷 도달 확인 */
+            buf[n] = '\0';
+            LOG_D("[RECV] fd=%d, size=%zd, data=%s", conn->sock->fd, n, buf);
+
+            if (conn->header_len + (size_t)n >= sizeof(conn->header_buf)) {
+                const char* err_431 = "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n";
+                s->send(s, err_431, strlen(err_431), NULL, 0);
+                conn_shutdown(conn, loop, s);
+                return;
+            }
+
+            memcpy(conn->header_buf + conn->header_len, buf, n);
+            conn->header_len += n;
+            conn->header_buf[conn->header_len] = '\0';
+
             char* header_end = strstr(conn->header_buf, "\r\n\r\n");
-            if (!header_end) break;
+            if (!header_end) continue;
 
             conn->req = new_HttpRequest();
             conn->res = new_HttpResponse(conn->sock);
 
             if (!conn->req || !conn->res) {
-                if (conn->req) RELEASE(conn->req);
-                if (conn->res) RELEASE(conn->res);
-                conn->req = NULL; conn->res = NULL;
                 conn_shutdown(conn, loop, s);
                 return;
             }
@@ -343,6 +364,7 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
                 else if (strcmp(method_str, "PUT") == 0) conn->req->method = HTTP_PUT;
                 else if (strcmp(method_str, "DELETE") == 0) conn->req->method = HTTP_DELETE;
                 else conn->req->method = HTTP_UNKNOWN;
+                
                 conn->req->path = new_String(path_str);
             } else {
                 conn->req->method = HTTP_GET;
@@ -351,10 +373,8 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
 
             HttpConnection_parse_headers(conn, header_end);
 
-            {
-                const char* conn_hdr = hashmap_get_str(conn->req->headers, "connection");
-                conn->keep_alive = !(conn_hdr && strcasecmp(conn_hdr, "close") == 0);
-            }
+            const char* conn_hdr = hashmap_get_str(conn->req->headers, "connection");
+            conn->keep_alive = !(conn_hdr && strcasecmp(conn_hdr, "close") == 0);
 
             int content_length = 0;
             char* cl_ptr = strcasestr(conn->header_buf, "Content-Length:");
@@ -364,81 +384,109 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
 
             size_t header_block_size = (header_end + 4) - conn->header_buf;
             size_t body_in_buf = conn->header_len - header_block_size;
-            size_t buffer_consumed = header_block_size;
 
             if (content_length > 0) {
                 conn->req->body = calloc(1, content_length + 1);
-                if (conn->req->body) {
-                    size_t total_read = 0;
-
-                    if (body_in_buf > 0) {
-                        size_t to_copy = (body_in_buf > (size_t)content_length) ? (size_t)content_length : body_in_buf;
-                        memcpy(conn->req->body, header_end + 4, to_copy);
-                        total_read += to_copy;
-                        buffer_consumed += to_copy;
-                    }
-
-                    while (total_read < (size_t)content_length) {
-                        char temp[4096];
-                        size_t to_read = content_length - total_read;
-                        if (to_read > sizeof(temp)) to_read = sizeof(temp);
-
-                        ssize_t rn = s->recv(s, temp, to_read, NULL, 0);
-                        if (rn > 0) {
-                            memcpy((char*)conn->req->body + total_read, temp, rn);
-                            total_read += rn;
-                        } else if (rn < 0) {
-                            if (errno == EINTR) continue;
-                            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                                usleep(2000);
-                                continue;
-                            }
-                            break;
-                        } else {
-                            break;
-                        }
-                    }
+                if (!conn->req->body) {
+                    conn_shutdown(conn, loop, s);
+                    return;
                 }
-            }
 
-            if (conn->router && conn->router->dispatch) {
-                conn->router->dispatch(conn->router, conn->req, conn->res);
-            }
-
-            bool ws_upgraded = (conn->res->status_code == 101);
-
-            if (conn->req->body) {
-                free(conn->req->body);
-                conn->req->body = NULL;
-            }
-            RELEASE(conn->req);
-            RELEASE(conn->res);
-            conn->req = NULL;
-            conn->res = NULL;
-
-            size_t remaining = conn->header_len - buffer_consumed;
-            if (remaining > 0) {
-                memmove(conn->header_buf, conn->header_buf + buffer_consumed, remaining);
-            }
-            conn->header_len = remaining;
-            conn->header_buf[conn->header_len] = '\0';
-
-            if (ws_upgraded) {
-                conn->mode = CONN_MODE_WS;
-                conn->keep_alive = true;
-                if (conn->server && conn->server->on_ws_open) {
-                    conn->server->on_ws_open(conn);
+                size_t total_read = 0;
+                if (body_in_buf > 0) {
+                    size_t to_copy = (body_in_buf > (size_t)content_length) ? (size_t)content_length : body_in_buf;
+                    memcpy(conn->req->body, header_end + 4, to_copy);
+                    total_read += to_copy;
                 }
-                if (conn->header_len > 0) {
-                    if (HttpConnection_process_ws_frames(conn, loop, s) < 0) return;
+
+                size_t consumed = header_block_size + total_read;
+                if (conn->header_len > consumed) {
+                    memmove(conn->header_buf, conn->header_buf + consumed, conn->header_len - consumed);
+                    conn->header_len -= consumed;
+                } else {
+                    conn->header_len = 0;
                 }
-                break;
+                conn->header_buf[conn->header_len] = '\0';
+
+                if (total_read < (size_t)content_length) {
+                    conn->state = HTTP_STATE_READ_BODY;
+                    conn->body_read = total_read; 
+                    continue; 
+                }
+            } else {
+                size_t consumed = header_block_size;
+                if (conn->header_len > consumed) {
+                    memmove(conn->header_buf, conn->header_buf + consumed, conn->header_len - consumed);
+                    conn->header_len -= consumed;
+                } else {
+                    conn->header_len = 0;
+                }
+                conn->header_buf[conn->header_len] = '\0';
+            }
+        }
+
+        if (conn->state == HTTP_STATE_READ_BODY) {
+            const char* cl_str = hashmap_get_str(conn->req->headers, "content-length");
+            int content_length = cl_str ? atoi(cl_str) : 0;
+            size_t total_read = conn->body_read; 
+
+            while (total_read < (size_t)content_length) {
+                char temp[4096];
+                size_t to_read = content_length - total_read;
+                if (to_read > sizeof(temp)) to_read = sizeof(temp);
+
+                ssize_t rn = s->recv(s, temp, to_read, NULL, 0);
+                if (rn == SOCKET_WOULD_BLOCK) {
+                    conn->body_read = total_read; 
+                    return; 
+                } else if (rn <= 0) {
+                    if (rn < 0 && errno == EINTR) continue;
+                    conn_shutdown(conn, loop, s);
+                    return;
+                }
+
+                memcpy((char*)conn->req->body + total_read, temp, rn);
+                total_read += rn;
             }
 
-            if (!conn->keep_alive) {
-                conn_shutdown(conn, loop, s);
-                return;
+            conn->state = HTTP_STATE_READ_HEADER;
+            conn->body_read = 0; 
+        }
+
+        if (conn->router && conn->router->dispatch) {
+            conn->router->dispatch(conn->router, conn->req, conn->res);
+        }
+
+        bool ws_upgraded = (conn->res->status_code == 101);
+
+        if (conn->req->body) {
+            free(conn->req->body);
+            conn->req->body = NULL;
+        }
+        RELEASE(conn->req);
+        RELEASE(conn->res);
+        conn->req = NULL;
+        conn->res = NULL;
+
+        if (ws_upgraded) {
+            conn->mode = CONN_MODE_WS;
+            conn->keep_alive = true;
+            if (conn->server && conn->server->on_ws_open) {
+                conn->server->on_ws_open(conn);
             }
+            if (conn->header_len > 0) {
+                if (HttpConnection_process_ws_frames(conn, loop, s) < 0) return;
+            }
+            break;
+        }
+
+        if (!conn->keep_alive) {
+            conn_shutdown(conn, loop, s);
+            return;
+        }
+
+        if (conn->header_len == 0) {
+            break;
         }
     }
 }
@@ -472,17 +520,14 @@ static void on_accept_cb(Socket* server_sock, void* loop_ptr) {
     EventLoop* loop = (EventLoop*)loop_ptr;
     HttpServer* server = (HttpServer*)server_sock->user_data;
 
-    /* 🚨 [핵심 패치 2] EPOLLET 모드 완벽 대응! EAGAIN이 뜰 때까지 싹쓸이 Accept! */
     while (1) {
         char client_ip[64];
         int client_port;
         Socket* client_sock = (Socket*)((TcpSocket*)server->server_sock)->accept(
             (TcpSocket*)server->server_sock, client_ip, &client_port);
 
-        if (!client_sock) break; /* EAGAIN: 대기열이 비었음! 안전하게 루프 탈출 */
+        if (!client_sock) break; 
 
-        /* 🚨 [핵심 패치 1] TCP Nagle 알고리즘 해제 (1턴 지연의 진짜 주범 박멸!) 
-         * 작은 WebSocket JSON 프레임이 OS 단에서 묶이지 않고 빛의 속도로 발사됩니다! */
         int flag = 1;
         setsockopt(client_sock->fd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int));
 

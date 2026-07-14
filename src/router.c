@@ -71,7 +71,7 @@ static void impl_dispatch(Router* self, HttpRequest* req, HttpResponse* res) {
 
     int matched = 0;
     int route_count = self->routes->getSize(self->routes);
-
+printf("route_count=>%d\n", route_count);
     for (int i = 0; i < route_count; i++) {
         /* 🚨 get()은 BORROWED 객체를 반환하므로 절대 해제 금지! */
         Route* r = (Route*)self->routes->get(self->routes, i);
@@ -85,8 +85,7 @@ static void impl_dispatch(Router* self, HttpRequest* req, HttpResponse* res) {
         /* 2단계: URL Path 매칭 */
         const char* req_path_str = req->path ? req->path->c_str(req->path) : "/";
         const char* route_path_str = r->path ? r->path->c_str(r->path) : "/";
-
-        if (strcmp(req_path_str, route_path_str) == 0) {
+	if (strncmp(req_path_str, route_path_str, strlen(route_path_str)) == 0) {
             if (r->handler) {
                 /* 🚨 [Rule 6] user_ctx (BORROWED) 핸들러 관통 주입! */
                 r->handler(req, res, self->user_ctx);
