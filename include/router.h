@@ -49,4 +49,11 @@ struct Router {
 /* 생성자 (user_ctx 주입) */
 Router* new_Router(void* user_ctx);
 
+/* =========================================================
+ * ✨ [추가] 글로벌 에러 응답 유틸리티 ✨
+ * 어느 핸들러(Controller)에서든 호출하면 512바이트 패딩이 포함된
+ * 브라우저-프리패스(Bypass) 에러 화면을 즉각 발사합니다!
+ * ========================================================= */
+void Router_sendError(HttpResponse* res, int status, const char* error_code, const char* message);
+
 #endif /* ROUTER_H */

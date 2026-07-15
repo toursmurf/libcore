@@ -4,6 +4,56 @@
 #include <stdio.h>
 
 /* =========================================================
+ * ✨ [글로벌 에러 응답기] 모든 요청에서 재사용 가능한 표준 에러 출력 ✨
+ * 브라우저의 'Friendly Error Pages' 덮어쓰기를 원천 차단하는 512 Bytes 패딩 포함
+ * ========================================================= */
+void Router_sendError(HttpResponse* res, int status, const char* error_code, const char* message) {
+    if (!res) return;
+
+    res->setStatus(res, status);
+    res->setHeader(res, "Content-Type", "text/html; charset=utf-8");
+
+    char buffer[2048];
+    snprintf(buffer, sizeof(buffer),
+        "<!DOCTYPE html>\n"
+        "<html>\n"
+        "<head>\n"
+        "  <title>%d Error - Tus IT Engine</title>\n"
+        "</head>\n"
+        "<body style=\"background-color: #1e1e1e; color: #00ff00; font-family: 'Courier New', Courier, monospace; padding: 40px;\">\n"
+        "  <h1 style=\"color: #ff5555;\">🚨 %d %s</h1>\n"
+        "  <p style=\"color: #cccccc; font-size: 16px;\">Tus IT Engine API Error Encountered.</p>\n"
+        "  <div style=\"background-color: #2d2d2d; padding: 20px; border-radius: 5px; border-left: 5px solid #ff5555; margin-top: 20px;\">\n"
+        "    <pre style=\"color: #e0e0e0; font-size: 14px; margin: 0;\">\n"
+        "{\n"
+        "  \"error\": \"%s\",\n"
+        "  \"message\": \"%s\",\n"
+        "  \"status\": %d\n"
+        "}\n"
+        "    </pre>\n"
+        "  </div>\n"
+        "  <!-- [Browser Bypass Padding] \n"
+        "       Chrome and Edge browsers tend to override server error responses \n"
+        "       with their own default friendly error pages if the response body \n"
+        "       is smaller than 512 bytes. To ensure that this custom API error \n"
+        "       message is correctly displayed to the client or frontend application, \n"
+        "       we are padding this payload with additional text to exceed the \n"
+        "       512-byte threshold. This guarantees absolute visibility of our API \n"
+        "       rejection details! \n"
+        "       ....................................................................... \n"
+        "       ....................................................................... \n"
+        "       ....................................................................... \n"
+        "  -->\n"
+        "</body>\n"
+        "</html>\n",
+        status, status, error_code, error_code, message, status
+    );
+
+    res->sendText(res, buffer);
+}
+
+
+/* =========================================================
  * [1] Route 내부 구현부
  * ========================================================= */
 static void Route_finalize(Object* obj) {
@@ -65,28 +115,67 @@ static void impl_DELETE(Router* self, const char* path, HttpHandler handler) {
     impl_addRoute(self, HTTP_DELETE, path, handler);
 }
 
+/* ✨ [핵심] Express.js 스타일의 동적 라우팅 매칭 알고리즘 ✨ */
+static int match_route(const char* req_path, const char* route_path) {
+    const char *p = req_path;
+    const char *r = route_path;
+
+    while (*p != '\0' && *r != '\0') {
+        if (*r == ':') {
+            while (*r != '\0' && *r != '/') r++;
+
+            int param_len = 0;
+            while (*p != '\0' && *p != '/') {
+                if (!((*p >= 'a' && *p <= 'z') ||
+                      (*p >= 'A' && *p <= 'Z') ||
+                      (*p >= '0' && *p <= '9') ||
+                      *p == '-' || *p == '_')) {
+                    return 0;
+                }
+                p++;
+                param_len++;
+            }
+
+            if (param_len == 0) {
+                return 0;
+            }
+        }
+        else if (*p == *r) {
+            p++;
+            r++;
+        }
+        else {
+            return 0;
+        }
+    }
+
+    if (*p == '\0' && *r == '\0') return 1;
+    if (*p == '/' && *(p+1) == '\0' && *r == '\0') return 1;
+    if (*r == '/' && *(r+1) == '\0' && *p == '\0') return 1;
+
+    return 0;
+}
+
 /* 🚀 심장부: 패킷 디스패처 */
 static void impl_dispatch(Router* self, HttpRequest* req, HttpResponse* res) {
     if (!self || !req || !res) return;
 
     int matched = 0;
     int route_count = self->routes->getSize(self->routes);
+
     for (int i = 0; i < route_count; i++) {
-        /* 🚨 get()은 BORROWED 객체를 반환하므로 절대 해제 금지! */
         Route* r = (Route*)self->routes->get(self->routes, i);
         if (!r) continue;
 
-        /* 1단계: HTTP 메서드 매칭 */
         if (r->method != req->method && r->method != HTTP_UNKNOWN) {
             continue;
         }
 
-        /* 2단계: URL Path 매칭 */
         const char* req_path_str = req->path ? req->path->c_str(req->path) : "/";
         const char* route_path_str = r->path ? r->path->c_str(r->path) : "/";
-	if (strncmp(req_path_str, route_path_str, strlen(route_path_str)) == 0) {
+
+        if (match_route(req_path_str, route_path_str)) {
             if (r->handler) {
-                /* 🚨 [Rule 6] user_ctx (BORROWED) 핸들러 관통 주입! */
                 r->handler(req, res, self->user_ctx);
             }
             matched = 1;
@@ -94,10 +183,9 @@ static void impl_dispatch(Router* self, HttpRequest* req, HttpResponse* res) {
         }
     }
 
-    /* 🚨 [클순 마님(🔫) 패치] 404 처리 시 이중 전송(Protocol 오염) 완벽 방지! */
+    /* 🚨 라우터를 통과하지 못한 요청에 대해 전역 에러 응답기 호출! */
     if (!matched) {
-        res->setStatus(res, 404);  /* 상태만 404로 장전 (헤더 발사 안 함) */
-        res->sendText(res, "404 Not Found (Tus IT Engine)"); /* 단발 사격(1회 발사) */
+        Router_sendError(res, 404, "Route_Not_Found", "요청하신 URL 경로를 찾을 수 없거나, 잘못된 파라미터가 포함되어 라우터에서 차단되었습니다.");
     }
 }
 
@@ -107,7 +195,6 @@ static void impl_dispatch(Router* self, HttpRequest* req, HttpResponse* res) {
 static void Router_finalize(Object* obj) {
     Router* self = (Router*)obj;
 
-    /* 🚨 user_ctx는 [BORROWED] 상태이므로 여기서 절대 해제하지 않음! */
     if (self->routes) {
         RELEASE(self->routes);
     }
@@ -131,7 +218,6 @@ Router* new_Router(void* user_ctx) {
         return NULL;
     }
 
-    /* 🚀 외부 컨텍스트(DB/Config) [BORROWED] 저장 */
     self->user_ctx = user_ctx;
 
     self->addRoute = impl_addRoute;

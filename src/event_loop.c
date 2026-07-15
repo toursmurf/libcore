@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <stdio.h>
 
 extern Logger* logger;
 /* 🚨 [패치] 로거가 NULL일 경우 조용히 무시하여 Segfault 원천 차단 */
@@ -19,10 +20,6 @@ extern Logger* logger;
  * ──────────────────────────────────────── */
 static void impl_deferRelease(EventLoop* self, Object* obj) {
     if (!self || !obj) return;
-
-    /* 🚨 [결함 1 패치] 소유권 수지 완벽 일치!
-     * ArrayList가 RETAIN(+1)을 수행하므로, 호출자의 참조를 즉시 반납(-1)하여
-     * 리스트가 유일한 소유권을 갖게 함. 중복 예약이 와도 수지가 정확히 맞음! */
     self->deferred_cleanup_list->add(self->deferred_cleanup_list, obj);
     RELEASE(obj);
 }
@@ -186,7 +183,7 @@ static uint32_t map_events_to_epoll(EventMask mask) {
     uint32_t events = 0;
     if (mask & EV_READ)  events |= EPOLLIN;
     if (mask & EV_WRITE) events |= EPOLLOUT;
-    events |= (EPOLLERR | EPOLLHUP | EPOLLET);
+    events |= (EPOLLERR | EPOLLHUP | EPOLLET); /* 🚨 부장님이 짚어주신 EPOLLET 적용부 */
     return events;
 }
 
@@ -235,8 +232,6 @@ static int epoll_addSocket_impl(EventLoop* self, Socket* sock, EventMask mask) {
     if (!self || !sock || sock->fd < 0 || sock->fd >= 65536) return -1;
 
     PollContext* ctx = &self->ctx_pool[sock->fd];
-
-    /* 🚨 [결함 3 패치] 이번 호출에서 내가 RETAIN 한 것인지를 추적! */
     bool retained_now = false;
 
     if (ctx->sock == NULL) {
@@ -252,13 +247,14 @@ static int epoll_addSocket_impl(EventLoop* self, Socket* sock, EventMask mask) {
 
     if (epoll_ctl(self->epoll_fd, EPOLL_CTL_ADD, sock->fd, &ev) == -1) {
         if (errno == EEXIST) {
-            if (epoll_ctl(self->epoll_fd, EPOLL_CTL_MOD, sock->fd, &ev) == 0) return 0;
+            if (epoll_ctl(self->epoll_fd, EPOLL_CTL_MOD, sock->fd, &ev) == 0) {
+                return 0;
+            }
         }
 
-        /* 🚨 [결함 3 패치] 내가 RETAIN 한 경우에만 정확히 롤백! */
         if (retained_now) {
             ctx->sock = NULL;
-            ctx->generation++; /* Stale Event 통과 차단 */
+            ctx->generation++;
             RELEASE((Object*)sock);
         }
         return -1;
@@ -282,6 +278,7 @@ static int epoll_delSocket_impl(EventLoop* self, Socket* sock) {
 
 static int epoll_poll_impl(EventLoop* self, int timeout_ms) {
     int nfds = epoll_wait(self->epoll_fd, self->event_buffer, self->max_events, timeout_ms);
+
     if (nfds < 0) return nfds;
 
     for (int i = 0; i < nfds; i++) {
@@ -325,7 +322,6 @@ void event_loop_run(EventLoop* self) {
         int ret = self->poll(self, 100);
         if (ret < 0 && (errno == EINTR || ret == -ETIME)) continue;
 
-        /* 🚨 [결함 2 패치] 불필요한 for 데드코드 삭제! clear()가 전부 처리함! */
         self->deferred_cleanup_list->clear(self->deferred_cleanup_list);
     }
     LOG_W("[LOOP] Event loop exit signal received.");
