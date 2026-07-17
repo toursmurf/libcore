@@ -18,6 +18,16 @@ INC_DIR = include
 LIB_DIR = lib
 TEST_DIR = tests
 EXAMPLE_DIR = examples
+BIN_DIR = bin
+
+# 🎯 CI 검증 대상 단위 테스트 명시 (무한 대기하는 데몬 서버 제외!)
+CI_TESTS = \
+  arc_json_test \
+  arc_path_validator_test \
+  arc_string_builder_test \
+  arc_text_encoder_test \
+  arc_hashmap_arraylist_hashtable_test \
+  all_test_v2
 
 # 공통 CFLAGS 및 LIBS
 CFLAGS = -Wall -Wextra -Wunused-value -pthread -I/usr/include/mysql -I/usr/include/mysql/mysql -I$(INC_DIR)
@@ -70,7 +80,7 @@ EXAMPLE_SRCS = $(wildcard $(EXAMPLE_DIR)/*.c)
 EXAMPLE_BINS = $(EXAMPLE_SRCS:.c=)
 EX_COUNT = $(words $(EXAMPLE_BINS))
 
-.PHONY: all clean test examples
+.PHONY: all clean clean_bin test examples ci
 
 all: $(LIB_DIR)/libcore.a
 	@echo "-----------------------------------------"
@@ -103,9 +113,55 @@ $(EXAMPLE_DIR)/%: $(EXAMPLE_DIR)/%.c $(LIB_DIR)/libcore.a
 	@echo "🛠️  Building 예제: $@"
 	@$(CC) $(CFLAGS) $< $(LIB_DIR)/libcore.a $(LIBS) -o $@ -lm
 
-clean:
+# ----- ⚙️ 궁극의 CI 자동화 파이프라인 타겟 -----
+ci: clean_bin
+	@date +%s > .ci_start_time
+	@echo "=== STEP 1: Release 빌드 성능 검증 ==="
+	@$(MAKE) clean examples
+	@echo "✅ Release 통과 완료!"
+	@echo ""
+	@echo "=== STEP 2: Debug+ASan 빌드 및 샌드박스(bin) 격리 ==="
+	@$(MAKE) clean examples DEBUG=1
+	@mkdir -p $(BIN_DIR)
+	@for t in $(CI_TESTS); do \
+		install -m 755 $(EXAMPLE_DIR)/$$t $(BIN_DIR)/; \
+	done
+	@echo "✅ Debug 빌드 및 바이너리 설치(755) 완료!"
+	@echo ""
+	@echo "=== STEP 3: 런타임 샌니타이저 실행 검증 ==="
+	@PASS=0; FAIL=0; \
+	for t in $(CI_TESTS); do \
+		if ./$(BIN_DIR)/$$t > /dev/null 2>&1; then \
+			printf "▶ %-40s \033[32mPASS\033[0m\n" $$t; \
+			PASS=$$((PASS+1)); \
+		else \
+			printf "▶ %-40s \033[31mFAIL\033[0m\n" $$t; \
+			FAIL=$$((FAIL+1)); \
+		fi; \
+	done; \
+	echo ""; \
+	START=$$(cat .ci_start_time); \
+	END=$$(date +%s); \
+	ELAPSED=$$((END - START)); \
+	MIN=$$((ELAPSED / 60)); \
+	SEC=$$((ELAPSED % 60)); \
+	echo "✅ 최종 결과 | PASS: $$PASS  ❌ FAIL: $$FAIL"; \
+	if [ $$MIN -gt 0 ]; then \
+		echo "⏱️  전체 CI 실행 시간: $$MIN분 $$SEC초"; \
+	else \
+		echo "⏱️  전체 CI 실행 시간: $$SEC초"; \
+	fi; \
+	rm -f .ci_start_time; \
+	[ $$FAIL -eq 0 ] || exit 1
+
+# ----- 🧹 클린 타겟 -----
+clean_bin:
+	@rm -rf $(BIN_DIR) .ci_start_time
+	@echo "🧹 bin 폴더(격리 구역) 삭제 완료!"
+
+clean: clean_bin
 	@rm -f $(SRC_DIR)/*.o
 	@rm -f $(LIB_DIR)/libcore.a
 	@rm -f $(TEST_DIR)/run_test
 	@rm -f $(EXAMPLE_BINS)
-	@echo "🧹 클린 완료!"
+	@echo "🧹 전체 클린 완료!"
