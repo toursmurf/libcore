@@ -115,7 +115,7 @@ $(EXAMPLE_DIR)/%: $(EXAMPLE_DIR)/%.c $(LIB_DIR)/libcore.a
 
 # ----- ⚙️ 궁극의 CI 자동화 파이프라인 타겟 -----
 ci: clean_bin
-	@date +%s > .ci_start_time
+	@date +%s > .ci_timer
 	@echo "=== STEP 1: Release 빌드 성능 검증 ==="
 	@$(MAKE) clean examples
 	@echo "✅ Release 통과 완료!"
@@ -140,7 +140,7 @@ ci: clean_bin
 		fi; \
 	done; \
 	echo ""; \
-	START=$$(cat .ci_start_time); \
+	START=$$(cat .ci_timer); \
 	END=$$(date +%s); \
 	ELAPSED=$$((END - START)); \
 	MIN=$$((ELAPSED / 60)); \
@@ -151,12 +151,12 @@ ci: clean_bin
 	else \
 		echo "⏱️  전체 CI 실행 시간: $$SEC초"; \
 	fi; \
-	rm -f .ci_start_time; \
+	rm -f .ci_timer; \
 	[ $$FAIL -eq 0 ] || exit 1
 
 # ----- 🧹 클린 타겟 -----
 clean_bin:
-	@rm -rf $(BIN_DIR) .ci_start_time
+	@rm -rf $(BIN_DIR)
 	@echo "🧹 bin 폴더(격리 구역) 삭제 완료!"
 
 clean: clean_bin
