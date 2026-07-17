@@ -106,7 +106,7 @@ EXAMPLE_SRCS = $(wildcard $(EXAMPLE_DIR)/*.c)
 EXAMPLE_BINS = $(EXAMPLE_SRCS:.c=)
 EX_COUNT = $(words $(EXAMPLE_BINS))
 
-.PHONY: all clean clean_bin test examples ci
+.PHONY: all clean clean_bin clean_soft test examples ci
 
 all: $(LIB_DIR)/libcore.a
 	@echo "-----------------------------------------"
@@ -140,19 +140,19 @@ $(EXAMPLE_DIR)/%: $(EXAMPLE_DIR)/%.c $(LIB_DIR)/libcore.a
 	@$(CC) $(CFLAGS) $< $(LIB_DIR)/libcore.a $(LIBS) -o $@ -lm
 
 # ----- ⚙️ 궁극의 원클릭(One-Click) 투트랙 CI 파이프라인 -----
-ci: clean_bin
+ci: clean_bin clean_soft
 	@date +%s > .ci_timer
 	@echo "=========================================================="
 	@echo " 🚀 [STEP 1] Valgrind 전용 빌드 (ASan OFF) 가동"
 	@echo "=========================================================="
-	@$(MAKE) clean examples DEBUG=1 USE_ASAN=0 > /dev/null
+	@$(MAKE) clean_soft examples DEBUG=1 USE_ASAN=0 > /dev/null
 	@mkdir -p $(BIN_DIR)/valgrind
 	@for t in $(CI_TESTS); do install -m 755 $(EXAMPLE_DIR)/$$t $(BIN_DIR)/valgrind/; done
 
 	@echo "=========================================================="
 	@echo " 🚀 [STEP 2] ASan 전용 빌드 (ASan ON) 가동"
 	@echo "=========================================================="
-	@$(MAKE) clean examples DEBUG=1 USE_ASAN=1 > /dev/null
+	@$(MAKE) clean_soft examples DEBUG=1 USE_ASAN=1 > /dev/null
 	@mkdir -p $(BIN_DIR)/asan
 	@for t in $(CI_TESTS); do install -m 755 $(EXAMPLE_DIR)/$$t $(BIN_DIR)/asan/; done
 
@@ -191,7 +191,7 @@ ci: clean_bin
 	echo ""; \
 	if [ $$MIN -gt 0 ]; then \
 		echo "🎉 [Iron Fortress CI 2단계 통합 검증 완료] 총 소요 시간: $$MIN분 $$SEC초 BAAAAAAM!!!!"; \
-    else \
+	else \
 		echo "🎉 [Iron Fortress CI 2단계 통합 검증 완료] 총 소요 시간: $$SEC초 BAAAAAAM!!!!"; \
 	fi; \
 	rm -f .ci_timer; \
@@ -202,9 +202,12 @@ clean_bin:
 	@rm -rf $(BIN_DIR)
 	@echo "🧹 bin 폴더(격리 구역) 삭제 완료!"
 
-clean: clean_bin
+# 🛡️ [수정] bin 폴더는 놔두고 빌드 파일(o, a, 예제)만 조용히 날리는 소프트 클린
+clean_soft:
 	@rm -f $(SRC_DIR)/*.o
 	@rm -f $(LIB_DIR)/libcore.a
 	@rm -f $(TEST_DIR)/run_test
 	@rm -f $(EXAMPLE_BINS)
+
+clean: clean_bin clean_soft
 	@echo "🧹 전체 클린 완료!"
