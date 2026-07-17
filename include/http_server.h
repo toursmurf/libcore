@@ -1,3 +1,6 @@
+#ifndef HTTP_SERVER_H
+#define HTTP_SERVER_H
+
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
