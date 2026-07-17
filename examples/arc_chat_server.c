@@ -239,7 +239,7 @@ void handle_sigint(int sig) {
 int main() {
     signal(SIGINT, handle_sigint);
     ClientManager_Init();
-    logger = new_Logger(LOG_LEVEL_DEBUG);
+    logger = new_Logger(LOG_LEVEL_ERROR);
     TcpSocket* server = new_TcpServer("0.0.0.0", 8080);
     g_loop = new_EventLoop(1024);
     server->base.on_readable = on_client_accept;

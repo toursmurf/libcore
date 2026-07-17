@@ -43,7 +43,7 @@ int main(void) {
     // ---------------------------------------------------------
     // STEP 1: 최전선 전원 공급 (Logger)
     // ---------------------------------------------------------
-    logger = new_Logger(LOG_LEVEL_DEBUG);
+    logger = new_Logger(LOG_LEVEL_ERROR);
     logger->info(logger, "--- Imperial Genesis Integration Test Start ---");
 
     // 시그널 방패 장착

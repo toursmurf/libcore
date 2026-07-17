@@ -44,7 +44,7 @@ int main() {
     sigaction(SIGINT, &sa, NULL);
 
     // 2. 인프라 가동
-    logger = new_Logger(LOG_LEVEL_DEBUG);
+    logger = new_Logger(LOG_LEVEL_ERROR);
     ThreadPool* pool = new_ThreadPool(4, 1024);
     global_loop = new_EventLoop(1024);
     Scheduler* sched = new_Scheduler(pool, global_loop);

@@ -102,7 +102,7 @@ static void print_final_report(void) {
     snprintf(cmd, sizeof(cmd), "awk '/BEGIN_LIBCORE_" "CORE/{flag=1; next} /END_LIBCORE_" "CORE/{flag=0} flag {count++} END {print count+0}' %s 2>/dev/null", __FILE__);
     if ((f = popen(cmd, "r"))) { if (fscanf(f, "%d", &lib_lines) != 1) lib_lines = 0; pclose(f); }
 
-    double speed_ratio = (lib_time_val > 0) ? (raw_time_val / lib_time_val) : 0;
+    double time_diff = raw_time_val - lib_time_val;
     double prod_ratio  = (lib_lines > 0) ? ((double)raw_lines / lib_lines) : 0;
     const char* prod_msg = (prod_ratio > 1.0) ? "(압도적 생산성)" : "(...)";
 
@@ -114,7 +114,16 @@ static void print_final_report(void) {
     if (raw_time_val > 0 && lib_time_val > 0) {
         printf(" [1. 물리적 성능 (Speed & Memory)]\n");
         printf(" ⏱️  수행 시간          : RAW(%.3fs) vs LIBCORE(%.3fs)\n", raw_time_val, lib_time_val);
-        printf(" 🚀 속도 효율성        : libcore가 %.1f 배 더 빠름!!!!\n", speed_ratio);
+
+        /* 🛡️ [수정 완료] 비율 대신 '초 단위 차이' 명확히 표시 */
+        if (time_diff < 0) {
+            printf(" 🚀 속도 차이          : RAW가 %.3fs 더 빠름 (프레임워크 오버헤드)\n", -time_diff);
+        } else if (time_diff > 0) {
+            printf(" 🚀 속도 차이          : libcore가 %.3fs 더 빠름!!!! (추상화의 기적)\n", time_diff);
+        } else {
+            printf(" 🚀 속도 차이          : 완벽한 동률 (0.000s 차이)!!!!\n");
+        }
+
         printf(" 💾 최대 메모리 (RSS)  : RAW(%ld MB) vs LIBCORE(%ld MB)\n\n", raw_mem_kb / 1024, lib_mem_kb / 1024);
     }
 
@@ -363,7 +372,7 @@ static void libcore_main(void) {
  * MAIN
  * ───────────────────────────────────────────── */
 int main(int argc, char* argv[]) {
-    logger = new_Logger(LOG_LEVEL_INFO);
+    logger = new_Logger(LOG_LEVEL_ERROR); /* 🚀 노이즈 캔슬링 장착 완료 */
     print_system_banner();
 
     int run_raw_flag = 0, run_lib_flag = 0;

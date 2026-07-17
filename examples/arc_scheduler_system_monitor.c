@@ -79,7 +79,7 @@ int main() {
     sigaction(SIGINT, &sa, NULL);
 
     // 2. 로거 가동
-    logger = new_Logger(LOG_LEVEL_DEBUG);
+    logger = new_Logger(LOG_LEVEL_ERROR);
 
     LOG_I("====================================================");
     LOG_I("    Imperial Infrastructure Sentinel v1.1 Standard  ");

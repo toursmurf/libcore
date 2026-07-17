@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) {
    (void) argc;
    (void) argv;
     // 1. Logger 초기화 (가장 먼저 가동)
-    Logger* logger = new_Logger(LOG_LEVEL_INFO);
+    Logger* logger = new_Logger(LOG_LEVEL_ERROR);
     LOG_INFO(logger, "NMS Core Engine Start...");
 
     // 2. Config 객체 생성 및 로드
