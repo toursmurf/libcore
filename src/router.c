@@ -52,7 +52,6 @@ void Router_sendError(HttpResponse* res, int status, const char* error_code, con
     res->sendText(res, buffer);
 }
 
-
 /* =========================================================
  * [1] Route 내부 구현부
  * ========================================================= */
@@ -60,6 +59,7 @@ static void Route_finalize(Object* obj) {
     Route* self = (Route*)obj;
     if (self->path) {
         RELEASE(self->path);
+        self->path = NULL;
     }
 }
 
@@ -156,10 +156,28 @@ static int match_route(const char* req_path, const char* route_path) {
     return 0;
 }
 
-/* 🚀 심장부: 패킷 디스패처 */
+/* 🚀 심장부: 패킷 디스패처 (멤버 변수 pv 재사용 최적화 및 404 정제 완료) */
 static void impl_dispatch(Router* self, HttpRequest* req, HttpResponse* res) {
     if (!self || !req || !res) return;
 
+    const char* original_path = req->path ? req->path->c_str(req->path) : "/";
+    char safe_path[MAX_PATH_LEN + 1] = {0}; // 정규화된 경로를 담을 버퍼
+
+    // ✨✨ [1단계: Router 소유의 단일 PathValidator로 즉각 검증] ✨✨
+    if (self->pv) {
+        bool is_safe = self->pv->validate(self->pv, original_path, safe_path, sizeof(safe_path));
+
+        if (!is_safe) {
+            // 비정상/공격 경로는 여기서 400으로 조기 차단!
+            Router_sendError(res, 400, "Bad_Request", "보안 정책에 의해 차단된 비정상적인 URL 경로입니다.");
+            return;
+        }
+    } else {
+        Router_sendError(res, 500, "Internal_Server_Error", "보안 모듈이 초기화되지 않았습니다.");
+        return;
+    }
+
+    // ✨✨ [2단계: 안전이 보장된 정규화 경로(safe_path)로 라우팅 매칭 시작] ✨✨
     int matched = 0;
     int route_count = self->routes->getSize(self->routes);
 
@@ -171,10 +189,9 @@ static void impl_dispatch(Router* self, HttpRequest* req, HttpResponse* res) {
             continue;
         }
 
-        const char* req_path_str = req->path ? req->path->c_str(req->path) : "/";
         const char* route_path_str = r->path ? r->path->c_str(r->path) : "/";
 
-        if (match_route(req_path_str, route_path_str)) {
+        if (match_route(safe_path, route_path_str)) {
             if (r->handler) {
                 r->handler(req, res, self->user_ctx);
             }
@@ -183,9 +200,9 @@ static void impl_dispatch(Router* self, HttpRequest* req, HttpResponse* res) {
         }
     }
 
-    /* 🚨 라우터를 통과하지 못한 요청에 대해 전역 에러 응답기 호출! */
+    /* 🚨 라우터를 통과하지 못한 요청에 대해 전역 에러 응답기 호출! (의미 정제 완료) */
     if (!matched) {
-        Router_sendError(res, 404, "Route_Not_Found", "요청하신 URL 경로를 찾을 수 없거나, 잘못된 파라미터가 포함되어 라우터에서 차단되었습니다.");
+        Router_sendError(res, 404, "Route_Not_Found", "요청하신 URL 경로와 일치하는 라우트를 찾을 수 없습니다.");
     }
 }
 
@@ -195,8 +212,16 @@ static void impl_dispatch(Router* self, HttpRequest* req, HttpResponse* res) {
 static void Router_finalize(Object* obj) {
     Router* self = (Router*)obj;
 
+    /* 🚨 [안전 처리] 해제 후 NULL 포인터 초기화로 Dangling Pointer 원천 차단 */
     if (self->routes) {
         RELEASE(self->routes);
+        self->routes = NULL;
+    }
+    
+    /* ✨ Router 소멸 시 수문장(pv)도 동반 퇴근 (OWNED 해제) ✨ */
+    if (self->pv) {
+        RELEASE(self->pv);
+        self->pv = NULL;
     }
 }
 
@@ -212,8 +237,16 @@ Router* new_Router(void* user_ctx) {
 
     Object_Init((Object*)self, &_Router_Class);
 
+    /* ✨ [ARC 최적화] 실패 시 직접 해제 금지! RELEASE(self)에게 위임 ✨ */
     self->routes = new_ArrayList(32);
     if (!self->routes) {
+        RELEASE(self);
+        return NULL;
+    }
+
+    /* ✨ Router 생성 시 단 한 번만 PathValidator 고용 ✨ */
+    self->pv = new_PathValidator();
+    if (!self->pv) {
         RELEASE(self);
         return NULL;
     }
