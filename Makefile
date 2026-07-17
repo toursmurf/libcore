@@ -48,7 +48,6 @@ CI_TESTS = \
   arc_news_crawler   \
   compare_raw_vs_libcore
 
-
 # 공통 CFLAGS 및 LIBS
 CFLAGS = -Wall -Wextra -Wunused-value -pthread -I/usr/include/mysql -I/usr/include/mysql/mysql -I$(INC_DIR)
 LIBS = -L/usr/lib64/ -lmariadb -lcurl -lssl -lcrypto -lrt
@@ -64,12 +63,19 @@ ifeq ($(HAS_URING),1)
     BACKEND_STR = io_uring
 endif
 
-# 🛠️ 2-B. 빌드 모드 및 Sanitizer 동기화
+# 🛠️ 2-B. 빌드 모드 및 Sanitizer 동기화 (투트랙 분리 적용!)
 DEBUG ?= 0
+USE_ASAN ?= 0
+
 ifeq ($(DEBUG),1)
     MODE_STR = Debug (-O0 -g)
-    SANITIZER_STR = ON (ASan, UBSan)
-    CFLAGS += -O0 -g -fsanitize=address,undefined
+    ifeq ($(USE_ASAN),1)
+        SANITIZER_STR = ON (ASan, UBSan)
+        CFLAGS += -O0 -g -fsanitize=address,undefined
+    else
+        SANITIZER_STR = OFF (Valgrind Ready)
+        CFLAGS += -O0 -g
+    endif
 else
     MODE_STR = Release (-O2)
     SANITIZER_STR = OFF
@@ -133,46 +139,63 @@ $(EXAMPLE_DIR)/%: $(EXAMPLE_DIR)/%.c $(LIB_DIR)/libcore.a
 	@echo "🛠️  Building 예제: $@"
 	@$(CC) $(CFLAGS) $< $(LIB_DIR)/libcore.a $(LIBS) -o $@ -lm
 
-# ----- ⚙️ 궁극의 CI 자동화 파이프라인 타겟 -----
+# ----- ⚙️ 궁극의 원클릭(One-Click) 투트랙 CI 파이프라인 -----
 ci: clean_bin
 	@date +%s > .ci_timer
-	@echo "=== STEP 1: Release 빌드 성능 검증 ==="
-	@$(MAKE) clean examples
-	@echo "✅ Release 통과 완료!"
-	@echo ""
-	@echo "=== STEP 2: Debug+ASan 빌드 및 샌드박스(bin) 격리 ==="
-	@$(MAKE) clean examples DEBUG=1
-	@mkdir -p $(BIN_DIR)
-	@for t in $(CI_TESTS); do \
-		install -m 755 $(EXAMPLE_DIR)/$$t $(BIN_DIR)/; \
-	done
-	@echo "✅ Debug 빌드 및 바이너리 설치(755) 완료!"
-	@echo ""
-	@echo "=== STEP 3: 런타임 샌니타이저 실행 검증 ==="
-	@PASS=0; FAIL=0; \
+	@echo "=========================================================="
+	@echo " 🚀 [STEP 1] Valgrind 전용 빌드 (ASan OFF) 가동"
+	@echo "=========================================================="
+	@$(MAKE) clean examples DEBUG=1 USE_ASAN=0 > /dev/null
+	@mkdir -p $(BIN_DIR)/valgrind
+	@for t in $(CI_TESTS); do install -m 755 $(EXAMPLE_DIR)/$$t $(BIN_DIR)/valgrind/; done
+
+	@echo "=========================================================="
+	@echo " 🚀 [STEP 2] ASan 전용 빌드 (ASan ON) 가동"
+	@echo "=========================================================="
+	@$(MAKE) clean examples DEBUG=1 USE_ASAN=1 > /dev/null
+	@mkdir -p $(BIN_DIR)/asan
+	@for t in $(CI_TESTS); do install -m 755 $(EXAMPLE_DIR)/$$t $(BIN_DIR)/asan/; done
+
+	@echo "=========================================================="
+	@echo " ⚔️ [STEP 3] ASan 런타임 검증 (메모리 침범 쾌속 사냥)"
+	@echo "=========================================================="
+	@ASAN_PASS=0; ASAN_FAIL=0; \
 	for t in $(CI_TESTS); do \
-		if ./$(BIN_DIR)/$$t > /dev/null 2>&1; then \
-			printf "▶ %-40s \033[32mPASS\033[0m\n" $$t; \
-			PASS=$$((PASS+1)); \
+		if ./$(BIN_DIR)/asan/$$t > /dev/null 2>&1; then \
+			printf "▶ %-40s \033[32mPASS (ASan)\033[0m\n" $$t; \
+			ASAN_PASS=$$((ASAN_PASS+1)); \
 		else \
-			printf "▶ %-40s \033[31mFAIL\033[0m\n" $$t; \
-			FAIL=$$((FAIL+1)); \
+			printf "▶ %-40s \033[31mFAIL (ASan)\033[0m\n" $$t; \
+			ASAN_FAIL=$$((ASAN_FAIL+1)); \
 		fi; \
 	done; \
+	echo "✅ ASan 결과 | PASS: $$ASAN_PASS  ❌ FAIL: $$ASAN_FAIL"; \
+	if [ $$ASAN_FAIL -ne 0 ]; then exit 1; fi
+
+	@echo "=========================================================="
+	@echo " 🛡️ [STEP 4] Valgrind 런타임 검증 (1바이트 누수 정밀 추적)"
+	@echo "=========================================================="
+	@VAL_PASS=0; VAL_FAIL=0; \
+	for t in $(CI_TESTS); do \
+		if valgrind --leak-check=full --error-exitcode=1 --quiet ./$(BIN_DIR)/valgrind/$$t > /dev/null 2>&1; then \
+			printf "▶ %-40s \033[32mPASS (0 Bytes Leak)\033[0m\n" $$t; \
+			VAL_PASS=$$((VAL_PASS+1)); \
+		else \
+			printf "▶ %-40s \033[31mFAIL (Leak Detected!)\033[0m\n" $$t; \
+			VAL_FAIL=$$((VAL_FAIL+1)); \
+		fi; \
+	done; \
+	echo "✅ Valgrind 결과 | PASS: $$VAL_PASS  ❌ FAIL: $$VAL_FAIL"; \
+	START=$$(cat .ci_timer); END=$$(date +%s); ELAPSED=$$((END - START)); \
+	MIN=$$((ELAPSED / 60)); SEC=$$((ELAPSED % 60)); \
 	echo ""; \
-	START=$$(cat .ci_timer); \
-	END=$$(date +%s); \
-	ELAPSED=$$((END - START)); \
-	MIN=$$((ELAPSED / 60)); \
-	SEC=$$((ELAPSED % 60)); \
-	echo "✅ 최종 결과 | PASS: $$PASS  ❌ FAIL: $$FAIL"; \
 	if [ $$MIN -gt 0 ]; then \
-		echo "⏱️  전체 CI 실행 시간: $$MIN분 $$SEC초"; \
-	else \
-		echo "⏱️  전체 CI 실행 시간: $$SEC초"; \
+		echo "🎉 [Iron Fortress CI 2단계 통합 검증 완료] 총 소요 시간: $$MIN분 $$SEC초 BAAAAAAM!!!!"; \
+    else \
+		echo "🎉 [Iron Fortress CI 2단계 통합 검증 완료] 총 소요 시간: $$SEC초 BAAAAAAM!!!!"; \
 	fi; \
 	rm -f .ci_timer; \
-	[ $$FAIL -eq 0 ] || exit 1
+	[ $$VAL_FAIL -eq 0 ] || exit 1
 
 # ----- 🧹 클린 타겟 -----
 clean_bin:
