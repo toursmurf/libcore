@@ -86,7 +86,7 @@ endif
 # 🚀 libcore Build Configuration Banner
 # ==========================================
 $(info =========================================)
-$(info  libcore Build Configuration (v1.5 Final) )
+$(info  libcore Build Configuration (v1.6 Final) )
 $(info =========================================)
 $(info  Compiler   : $(CC))
 $(info  Backend    : $(BACKEND_STR))
