@@ -160,7 +160,7 @@ static int uring_delSocket_impl(EventLoop* self, Socket* sock) {
     struct io_uring_sqe *sqe = io_uring_get_sqe(&self->ring);
     if (!sqe) return -1;
 
-    io_uring_prep_poll_remove(sqe, sock);
+    io_uring_prep_poll_remove(sqe, (__u64)(uintptr_t)sock);
     io_uring_submit(&self->ring);
 
     PollContext* ctx = &self->ctx_pool[sock->fd];
