@@ -31,17 +31,17 @@ CI_TESTS = \
   arc_string_builder_test   \
   arc_text_encoder_test   \
   arc_json_test  \
+  arc_config_test \
+  arc_crypto_integration_test  \
+  arc_cron_shared_primitive_Integrated \
   arc_log_exception_integration_test  \
   arc_queue_test   \
   arc_thread_test   \
   arc_http_client_test  \
-  arc_queue_test   \
-  arc_stack_test   \
   arc_path_validator_test   \
   arc_list_test  \
   arc_regex_test   \
   arc_linkedlist_test  \
-  arc_json_test   \
   arc_byte_buffer_test   \
   arc_btree_test   \
   all_test_v2   \
