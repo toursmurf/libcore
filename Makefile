@@ -1,6 +1,9 @@
 # ==========================================
 # [1] 시스템 의존성 및 버전 자동 감지
 # ==========================================
+# 🛡️ OS 버전 자동 감지 (Rocky, Ubuntu 등)
+OS_INFO := $(shell grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d '"' -f 2 || uname -srm)
+
 HAS_URING := $(shell pkg-config --exists liburing 2>/dev/null && echo 1 || echo 0)
 OPENSSL_VER := $(shell pkg-config --modversion openssl 2>/dev/null || echo "Unknown")
 
@@ -20,7 +23,7 @@ TEST_DIR = tests
 EXAMPLE_DIR = examples
 BIN_DIR = bin
 
-# 🎯 CI 검증 대상 단위 테스트 명시 (무한 대기하는 데몬 서버 제외!)
+# 🎯 CI 검증 대상 단위 테스트 명시
 CI_TESTS = \
   arc_file_system_test  \
   arc_ringbuffer_test \
@@ -88,6 +91,7 @@ endif
 $(info =========================================)
 $(info  libcore Build Configuration (v1.6 Final) )
 $(info =========================================)
+$(info  OS Info    : $(OS_INFO))
 $(info  Compiler   : $(CC))
 $(info  Backend    : $(BACKEND_STR))
 $(info  OpenSSL    : $(OPENSSL_VER))
@@ -106,7 +110,7 @@ EXAMPLE_SRCS = $(wildcard $(EXAMPLE_DIR)/*.c)
 EXAMPLE_BINS = $(EXAMPLE_SRCS:.c=)
 EX_COUNT = $(words $(EXAMPLE_BINS))
 
-.PHONY: all clean clean_bin clean_soft test examples ci
+.PHONY: all clean clean_bin clean_soft test examples ci check_ci_deps
 
 all: $(LIB_DIR)/libcore.a
 	@echo "-----------------------------------------"
@@ -139,20 +143,38 @@ $(EXAMPLE_DIR)/%: $(EXAMPLE_DIR)/%.c $(LIB_DIR)/libcore.a
 	@echo "🛠️  Building 예제: $@"
 	@$(CC) $(CFLAGS) $< $(LIB_DIR)/libcore.a $(LIBS) -o $@ -lm
 
+# ----- 🛡️ [신규] CI 실행 전 의존성 검열관 -----
+check_ci_deps:
+	@echo "🔍 CI 환경 의존성(Valgrind, ASan, UBSan) 검사 중..."
+	@if ! command -v valgrind > /dev/null; then \
+		echo "❌ [ERROR] Valgrind가 설치되어 있지 않습니다."; \
+		echo "💡 [Rocky/RHEL/CentOS] sudo dnf install valgrind"; \
+		echo "💡 [Ubuntu/Debian] sudo apt-get install valgrind"; \
+		exit 1; \
+	fi
+	@echo "int main(){return 0;}" | $(CC) -fsanitize=address,undefined -x c - -o /dev/null 2>/dev/null; \
+	if [ $$? -ne 0 ]; then \
+		echo "❌ [ERROR] ASan/UBSan 라이브러리(libasan, libubsan)가 설치되어 있지 않습니다."; \
+		echo "💡 [Rocky/RHEL/CentOS] sudo dnf install libasan libubsan"; \
+		echo "💡 [Ubuntu/Debian] sudo apt-get install libasan libubsan"; \
+		exit 1; \
+	fi
+	@echo "✅ CI 환경 의존성 검증 완료!"
+
 # ----- ⚙️ 궁극의 원클릭(One-Click) 투트랙 CI 파이프라인 -----
-ci: clean_bin clean_soft
+ci: check_ci_deps clean_bin clean_soft
 	@date +%s > .ci_timer
 	@echo "=========================================================="
 	@echo " 🚀 [STEP 1] Valgrind 전용 빌드 (ASan OFF) 가동"
 	@echo "=========================================================="
-	@$(MAKE) clean_soft examples DEBUG=1 USE_ASAN=0 > /dev/null
+	@$(MAKE) clean_soft examples DEBUG=1 USE_ASAN=0 > /dev/null || (echo "❌ Valgrind용 빌드 실패!" && exit 1)
 	@mkdir -p $(BIN_DIR)/valgrind
 	@for t in $(CI_TESTS); do install -m 755 $(EXAMPLE_DIR)/$$t $(BIN_DIR)/valgrind/; done
 
 	@echo "=========================================================="
 	@echo " 🚀 [STEP 2] ASan 전용 빌드 (ASan ON) 가동"
 	@echo "=========================================================="
-	@$(MAKE) clean_soft examples DEBUG=1 USE_ASAN=1 > /dev/null
+	@$(MAKE) clean_soft examples DEBUG=1 USE_ASAN=1 > /dev/null || (echo "❌ ASan용 빌드 실패!" && exit 1)
 	@mkdir -p $(BIN_DIR)/asan
 	@for t in $(CI_TESTS); do install -m 755 $(EXAMPLE_DIR)/$$t $(BIN_DIR)/asan/; done
 
@@ -202,7 +224,7 @@ clean_bin:
 	@rm -rf $(BIN_DIR)
 	@echo "🧹 bin 폴더(격리 구역) 삭제 완료!"
 
-# 🛡️ [수정] bin 폴더는 놔두고 빌드 파일(o, a, 예제)만 조용히 날리는 소프트 클린
+# 🛡️ bin 폴더는 놔두고 빌드 파일(o, a, 예제)만 조용히 날리는 소프트 클린
 clean_soft:
 	@rm -f $(SRC_DIR)/*.o
 	@rm -f $(LIB_DIR)/libcore.a
