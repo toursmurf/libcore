@@ -1,8 +1,9 @@
 # ==========================================
 # [1] 시스템 의존성 및 버전 자동 감지
 # ==========================================
-# 🛡️ OS 버전 자동 감지 (Rocky, Ubuntu 등)
+# 🛡️ OS 및 커널 정보 자동 감지
 OS_INFO := $(shell grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d '"' -f 2 || uname -srm)
+KERNEL_INFO := $(shell uname -r)
 
 HAS_URING := $(shell pkg-config --exists liburing 2>/dev/null && echo 1 || echo 0)
 OPENSSL_VER := $(shell pkg-config --modversion openssl 2>/dev/null || echo "Unknown")
@@ -92,6 +93,7 @@ $(info =========================================)
 $(info  libcore Build Configuration (v1.6 Final) )
 $(info =========================================)
 $(info  OS Info    : $(OS_INFO))
+$(info  Kernel     : $(KERNEL_INFO))
 $(info  Compiler   : $(CC))
 $(info  Backend    : $(BACKEND_STR))
 $(info  OpenSSL    : $(OPENSSL_VER))
@@ -110,7 +112,7 @@ EXAMPLE_SRCS = $(wildcard $(EXAMPLE_DIR)/*.c)
 EXAMPLE_BINS = $(EXAMPLE_SRCS:.c=)
 EX_COUNT = $(words $(EXAMPLE_BINS))
 
-.PHONY: all clean clean_bin clean_soft test examples ci check_ci_deps
+.PHONY: all clean clean_bin clean_soft test examples ci check_asan check_valgrind ci-asan ci-valgrind
 
 all: $(LIB_DIR)/libcore.a
 	@echo "-----------------------------------------"
@@ -144,43 +146,31 @@ $(EXAMPLE_DIR)/%: $(EXAMPLE_DIR)/%.c $(LIB_DIR)/libcore.a
 	@$(CC) $(CFLAGS) $< $(LIB_DIR)/libcore.a $(LIBS) -o $@ -lm
 
 # ----- 🛡️ [신규] CI 실행 전 의존성 검열관 -----
-check_ci_deps:
-	@echo "🔍 CI 환경 의존성(Valgrind, ASan, UBSan) 검사 중..."
-	@if ! command -v valgrind > /dev/null; then \
-		echo "❌ [ERROR] Valgrind가 설치되어 있지 않습니다."; \
-		echo "💡 [Rocky/RHEL/CentOS] sudo dnf install valgrind"; \
-		echo "💡 [Ubuntu/Debian] sudo apt-get install valgrind"; \
-		exit 1; \
-	fi
+check_asan:
+	@echo "🔍 ASan/UBSan 설치 여부 확인..."
 	@echo "int main(){return 0;}" | $(CC) -fsanitize=address,undefined -x c - -o /dev/null 2>/dev/null; \
 	if [ $$? -ne 0 ]; then \
-		echo "❌ [ERROR] ASan/UBSan 라이브러리(libasan, libubsan)가 설치되어 있지 않습니다."; \
-		echo "💡 [Rocky/RHEL/CentOS] sudo dnf install libasan libubsan"; \
-		echo "💡 [Ubuntu/Debian] sudo apt-get install libasan libubsan"; \
+		echo "❌ [ERROR] libasan, libubsan이 없습니다 (dnf install libasan libubsan)"; \
 		exit 1; \
 	fi
-	@echo "✅ CI 환경 의존성 검증 완료!"
 
-# ----- ⚙️ 궁극의 원클릭(One-Click) 투트랙 CI 파이프라인 -----
-ci: check_ci_deps clean_bin clean_soft
-	@date +%s > .ci_timer
-	@echo "=========================================================="
-	@echo " 🚀 [STEP 1] Valgrind 전용 빌드 (ASan OFF) 가동"
-	@echo "=========================================================="
-	@$(MAKE) clean_soft examples DEBUG=1 USE_ASAN=0 > /dev/null || (echo "❌ Valgrind용 빌드 실패!" && exit 1)
-	@mkdir -p $(BIN_DIR)/valgrind
-	@for t in $(CI_TESTS); do install -m 755 $(EXAMPLE_DIR)/$$t $(BIN_DIR)/valgrind/; done
+check_valgrind:
+	@echo "🔍 Valgrind 설치 여부 확인..."
+	@if ! command -v valgrind > /dev/null; then \
+		echo "❌ [ERROR] Valgrind가 없습니다 (dnf install valgrind)"; \
+		exit 1; \
+	fi
 
+# ----- ⚡ [타겟 1] 쾌속 사냥 (ASan/UBSan 전용) -----
+ci-asan: check_asan clean_soft
+	@date +%s > .ci_asan_timer
 	@echo "=========================================================="
-	@echo " 🚀 [STEP 2] ASan 전용 빌드 (ASan ON) 가동"
+	@echo " 🚀 [ASan 모드] 빌드 및 메모리 침범 쾌속 사냥 가동"
 	@echo "=========================================================="
-	@$(MAKE) clean_soft examples DEBUG=1 USE_ASAN=1 > /dev/null || (echo "❌ ASan용 빌드 실패!" && exit 1)
+	@rm -rf $(BIN_DIR)/asan
 	@mkdir -p $(BIN_DIR)/asan
+	@$(MAKE) clean_soft examples DEBUG=1 USE_ASAN=1 > /dev/null || (echo "❌ ASan용 빌드 실패!" && exit 1)
 	@for t in $(CI_TESTS); do install -m 755 $(EXAMPLE_DIR)/$$t $(BIN_DIR)/asan/; done
-
-	@echo "=========================================================="
-	@echo " ⚔️ [STEP 3] ASan 런타임 검증 (메모리 침범 쾌속 사냥)"
-	@echo "=========================================================="
 	@ASAN_PASS=0; ASAN_FAIL=0; \
 	for t in $(CI_TESTS); do \
 		if ./$(BIN_DIR)/asan/$$t > /dev/null 2>&1; then \
@@ -192,11 +182,21 @@ ci: check_ci_deps clean_bin clean_soft
 		fi; \
 	done; \
 	echo "✅ ASan 결과 | PASS: $$ASAN_PASS  ❌ FAIL: $$ASAN_FAIL"; \
+	START=$$(cat .ci_asan_timer); END=$$(date +%s); ELAPSED=$$((END - START)); \
+	echo "⏱️ ASan 소요 시간: $$ELAPSED초"; \
+	rm -f .ci_asan_timer; \
 	if [ $$ASAN_FAIL -ne 0 ]; then exit 1; fi
 
+# ----- 🛡️ [타겟 2] 정밀 수색 (Valgrind 전용) -----
+ci-valgrind: check_valgrind clean_soft
+	@date +%s > .ci_val_timer
 	@echo "=========================================================="
-	@echo " 🛡️ [STEP 4] Valgrind 런타임 검증 (1바이트 누수 정밀 추적)"
+	@echo " 🛡️ [Valgrind 모드] 빌드 및 1바이트 누수 정밀 추적"
 	@echo "=========================================================="
+	@rm -rf $(BIN_DIR)/valgrind
+	@mkdir -p $(BIN_DIR)/valgrind
+	@$(MAKE) clean_soft examples DEBUG=1 USE_ASAN=0 > /dev/null || (echo "❌ Valgrind용 빌드 실패!" && exit 1)
+	@for t in $(CI_TESTS); do install -m 755 $(EXAMPLE_DIR)/$$t $(BIN_DIR)/valgrind/; done
 	@VAL_PASS=0; VAL_FAIL=0; \
 	for t in $(CI_TESTS); do \
 		if valgrind --leak-check=full --error-exitcode=1 --quiet ./$(BIN_DIR)/valgrind/$$t > /dev/null 2>&1; then \
@@ -208,16 +208,25 @@ ci: check_ci_deps clean_bin clean_soft
 		fi; \
 	done; \
 	echo "✅ Valgrind 결과 | PASS: $$VAL_PASS  ❌ FAIL: $$VAL_FAIL"; \
-	START=$$(cat .ci_timer); END=$$(date +%s); ELAPSED=$$((END - START)); \
+	START=$$(cat .ci_val_timer); END=$$(date +%s); ELAPSED=$$((END - START)); \
+	MIN=$$((ELAPSED / 60)); SEC=$$((ELAPSED % 60)); \
+	echo "⏱️ Valgrind 소요 시간: $$MIN분 $$SEC초"; \
+	rm -f .ci_val_timer; \
+	if [ $$VAL_FAIL -ne 0 ]; then exit 1; fi
+
+# ----- 👑 [타겟 3] 풀코스 (전체 검증) -----
+ci:
+	@date +%s > .ci_total_timer
+	@echo "=========================================================="
+	@echo " 👑 [Iron Fortress] 전체 통합 CI 파이프라인 가동"
+	@echo "=========================================================="
+	@$(MAKE) ci-asan
+	@$(MAKE) ci-valgrind
+	@START=$$(cat .ci_total_timer); END=$$(date +%s); ELAPSED=$$((END - START)); \
 	MIN=$$((ELAPSED / 60)); SEC=$$((ELAPSED % 60)); \
 	echo ""; \
-	if [ $$MIN -gt 0 ]; then \
-		echo "🎉 [Iron Fortress CI 2단계 통합 검증 완료] 총 소요 시간: $$MIN분 $$SEC초 BAAAAAAM!!!!"; \
-	else \
-		echo "🎉 [Iron Fortress CI 2단계 통합 검증 완료] 총 소요 시간: $$SEC초 BAAAAAAM!!!!"; \
-	fi; \
-	rm -f .ci_timer; \
-	[ $$VAL_FAIL -eq 0 ] || exit 1
+	echo "🎉 [Iron Fortress CI 전체 통합 검증 완벽 통과] 총 소요 시간: $$MIN분 $$SEC초 BAAAAAAM!!!!"; \
+	rm -f .ci_total_timer
 
 # ----- 🧹 클린 타겟 -----
 clean_bin:
