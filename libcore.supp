@@ -1,6 +1,32 @@
-# libcore v0.5 Valgrind Suppressions
-# curl/libc 내부 dlopen 및 NSS 캐시 관련 false positive 제거
+# libcore v1.6 Valgrind Suppressions
 
+# OpenSSL 전역 메모리 캐시 (Still Reachable) 무시
+{
+   OpenSSL_Still_Reachable_Malloc
+   Memcheck:Leak
+   match-leak-kinds: reachable,possible
+   fun:malloc
+   ...
+   obj:*/libcrypto.so*
+}
+{
+   OpenSSL_Still_Reachable_Realloc
+   Memcheck:Leak
+   match-leak-kinds: reachable,possible
+   fun:realloc
+   ...
+   obj:*/libcrypto.so*
+}
+{
+   OpenSSL_Still_Reachable_Calloc
+   Memcheck:Leak
+   match-leak-kinds: reachable,possible
+   fun:calloc
+   ...
+   obj:*/libcrypto.so*
+}
+
+# curl/libc 내부 dlopen 및 NSS 캐시 관련 false positive 제거
 {
    curl_dlopen_cache
    Memcheck:Leak
