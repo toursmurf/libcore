@@ -25,6 +25,22 @@
    ...
    obj:*/libcrypto.so*
 }
+{
+   OpenSSL_Still_Reachable_Memalign
+   Memcheck:Leak
+   match-leak-kinds: reachable,possible
+   fun:posix_memalign
+   ...
+   obj:*/libcrypto.so*
+}
+{
+   OpenSSL_Still_Reachable_Memalign2
+   Memcheck:Leak
+   match-leak-kinds: reachable,possible
+   fun:memalign
+   ...
+   obj:*/libcrypto.so*
+}
 
 # curl/libc 내부 dlopen 및 NSS 캐시 관련 false positive 제거
 {
