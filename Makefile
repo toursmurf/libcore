@@ -24,42 +24,53 @@ TEST_DIR = tests
 EXAMPLE_DIR = examples
 BIN_DIR = bin
 
-# 🎯 CI 검증 대상 단위 테스트 명시
-CI_TESTS = \
-  arc_file_system_test  \
+# ==========================================
+# 🎯 [2] CI 검증 대상 단위 테스트 명시 (분리 설계)
+# ==========================================
+# 🛡️ [2-A] Valgrind + ASan 모두 검증할 순수 코어 로직
+CORE_TESTS = \
+  arc_file_system_test \
   arc_ringbuffer_test \
-  arc_tree_test  \
-  arc_datetime_regex_locale_test  \
-  arc_vector_test   \
-  arc_stack_test  \
-  arc_string_builder_test   \
-  arc_text_encoder_test   \
-  arc_json_test  \
+  arc_tree_test \
+  arc_datetime_regex_locale_test \
+  arc_vector_test \
+  arc_stack_test \
+  arc_string_builder_test \
+  arc_text_encoder_test \
+  arc_json_test \
   arc_config_test \
-  arc_crypto_integration_test  \
+  arc_crypto_integration_test \
   arc_cron_shared_primitive_Integrated \
-  arc_log_exception_integration_test  \
-  arc_queue_test   \
-  arc_thread_test   \
-  arc_http_client_test  \
-  arc_path_validator_test   \
-  arc_list_test  \
-  arc_regex_test   \
-  arc_linkedlist_test  \
-  arc_byte_buffer_test   \
-  arc_btree_test   \
-  all_test_v2   \
-  arc_news_crawler   \
+  arc_log_exception_integration_test \
+  arc_queue_test \
+  arc_thread_test \
+  arc_http_client_test \
+  arc_path_validator_test \
+  arc_list_test \
+  arc_regex_test \
+  arc_linkedlist_test \
+  arc_byte_buffer_test \
+  arc_btree_test \
+  all_test_v2
+
+# 🚧 [2-B] 너무 무거워서 ASan으로만 검증할 녀석들 (네트워크, 벤치마크)
+HEAVY_TESTS = \
+  arc_news_crawler \
   compare_raw_vs_libcore
 
-# 공통 CFLAGS 및 LIBS
+# ASan은 가벼우니까 전체 다 돌림
+CI_TESTS = $(CORE_TESTS) $(HEAVY_TESTS)
+
+# ==========================================
+# [3] 공통 CFLAGS 및 LIBS
+# ==========================================
 CFLAGS = -Wall -Wextra -Wunused-value -pthread -I/usr/include/mysql -I/usr/include/mysql/mysql -I$(INC_DIR)
 LIBS = -L/usr/lib64/ -lmariadb -lcurl -lssl -lcrypto -lrt
 
 # ==========================================
-# [2] 환경별 컴파일 옵션 동적 할당
+# [4] 환경별 컴파일 옵션 동적 할당
 # ==========================================
-# 🚀 2-A. IO 백엔드 분기
+# 🚀 4-A. IO 백엔드 분기
 BACKEND_STR = epoll
 ifeq ($(HAS_URING),1)
     CFLAGS += -DHAS_LIBURING
@@ -67,7 +78,7 @@ ifeq ($(HAS_URING),1)
     BACKEND_STR = io_uring
 endif
 
-# 🛠️ 2-B. 빌드 모드 및 Sanitizer 동기화 (투트랙 분리 적용!)
+# 🛠️ 4-B. 빌드 모드 및 Sanitizer 동기화 (투트랙 분리 적용!)
 DEBUG ?= 0
 USE_ASAN ?= 0
 
@@ -161,7 +172,7 @@ check_valgrind:
 		exit 1; \
 	fi
 
-# ----- ⚡ [타겟 1] 쾌속 사냥 (ASan/UBSan 전용) -----
+# ----- ⚡ [타겟 1] 쾌속 사냥 (ASan/UBSan 전용 - 전체 테스트 25개) -----
 ci-asan: check_asan clean_soft
 	@date +%s > .ci_asan_timer
 	@echo "=========================================================="
@@ -173,11 +184,12 @@ ci-asan: check_asan clean_soft
 	@for t in $(CI_TESTS); do install -m 755 $(EXAMPLE_DIR)/$$t $(BIN_DIR)/asan/; done
 	@ASAN_PASS=0; ASAN_FAIL=0; \
 	for t in $(CI_TESTS); do \
+		printf "▶ %-40s " $$t; \
 		if ./$(BIN_DIR)/asan/$$t > /dev/null 2>&1; then \
-			printf "▶ %-40s \033[32mPASS (ASan)\033[0m\n" $$t; \
+			printf "\033[32m[PASS] ASan\033[0m\n"; \
 			ASAN_PASS=$$((ASAN_PASS+1)); \
 		else \
-			printf "▶ %-40s \033[31mFAIL (ASan)\033[0m\n" $$t; \
+			printf "\033[31m[FAIL] ASan Error\033[0m\n"; \
 			ASAN_FAIL=$$((ASAN_FAIL+1)); \
 		fi; \
 	done; \
@@ -187,7 +199,7 @@ ci-asan: check_asan clean_soft
 	rm -f .ci_asan_timer; \
 	if [ $$ASAN_FAIL -ne 0 ]; then exit 1; fi
 
-# ----- 🛡️ [타겟 2] 정밀 수색 (Valgrind 전용) -----
+# ----- 🛡️ [타겟 2] 정밀 수색 (Valgrind 전용 - 무거운 놈들 제외 코어만) -----
 ci-valgrind: check_valgrind clean_soft
 	@date +%s > .ci_val_timer
 	@echo "=========================================================="
@@ -196,14 +208,15 @@ ci-valgrind: check_valgrind clean_soft
 	@rm -rf $(BIN_DIR)/valgrind
 	@mkdir -p $(BIN_DIR)/valgrind
 	@$(MAKE) clean_soft examples DEBUG=1 USE_ASAN=0 > /dev/null || (echo "❌ Valgrind용 빌드 실패!" && exit 1)
-	@for t in $(CI_TESTS); do install -m 755 $(EXAMPLE_DIR)/$$t $(BIN_DIR)/valgrind/; done
+	@for t in $(CORE_TESTS); do install -m 755 $(EXAMPLE_DIR)/$$t $(BIN_DIR)/valgrind/; done
 	@VAL_PASS=0; VAL_FAIL=0; \
-	for t in $(CI_TESTS); do \
+	for t in $(CORE_TESTS); do \
+		printf "▶ %-40s " $$t; \
 		if valgrind --leak-check=full --error-exitcode=1 --quiet ./$(BIN_DIR)/valgrind/$$t > /dev/null 2>&1; then \
-			printf "▶ %-40s \033[32mPASS (0 Bytes Leak)\033[0m\n" $$t; \
+			printf "\033[32m[PASS] 0 Bytes Leak\033[0m\n"; \
 			VAL_PASS=$$((VAL_PASS+1)); \
 		else \
-			printf "▶ %-40s \033[31mFAIL (Leak Detected!)\033[0m\n" $$t; \
+			printf "\033[31m[FAIL] Leak Detected!\033[0m\n"; \
 			VAL_FAIL=$$((VAL_FAIL+1)); \
 		fi; \
 	done; \
@@ -233,7 +246,6 @@ clean_bin:
 	@rm -rf $(BIN_DIR)
 	@echo "🧹 bin 폴더(격리 구역) 삭제 완료!"
 
-# 🛡️ bin 폴더는 놔두고 빌드 파일(o, a, 예제)만 조용히 날리는 소프트 클린
 clean_soft:
 	@rm -f $(SRC_DIR)/*.o
 	@rm -f $(LIB_DIR)/libcore.a
