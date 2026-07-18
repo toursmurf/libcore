@@ -56,17 +56,17 @@ static int compare_pgroups(const void* a, const void* b) {
     return p2->count - p1->count;
 }
 
+/* 🚀 [수정 완료]: strncpy를 snprintf로 변경하여 -Wstringop-truncation 경고 해결 */
 static void clean_process_name(char* name, const char* cmd_full) {
     if (cmd_full[0] == '[') {
-        strncpy(name, cmd_full, 255);
+        snprintf(name, 256, "%s", cmd_full);
     } else {
         char* base = strrchr(cmd_full, '/');
         char* token = base ? base + 1 : (char*)cmd_full;
         char* sp = strchr(token, ' ');
         if (sp) *sp = '\0';
-        strncpy(name, token, 255);
+        snprintf(name, 256, "%s", token);
     }
-    name[255] = '\0';
 }
 
 static void handle_signal(int sig) {
@@ -105,7 +105,7 @@ static int collect_processes(ProcInfo* procs, int max, const char* filter) {
     char line[2048];
     while (fgets(line, sizeof(line), fp) && count < max) {
         ProcInfo p = {0};
-        char cmd_full[2048] = {0};
+        char cmd_full[1024] = {0};
 
         if (sscanf(line, "%63s %d %lf %lf %*s %*s %*s %15s %*s %*s %1023[^\n]",
                    p.user, &p.pid, &p.cpu, &p.mem, p.status, cmd_full) < 5) {
@@ -113,7 +113,8 @@ static int collect_processes(ProcInfo* procs, int max, const char* filter) {
         }
 
         clean_process_name(p.name, cmd_full);
-        strncpy(p.cmd, cmd_full, 1023);
+        /* 🚀 [수정 완료]: strncpy를 snprintf로 변경 */
+        snprintf(p.cmd, sizeof(p.cmd), "%s", cmd_full);
 
         if (filter && *filter) {
             if (!strstr(p.name, filter) && !strstr(p.cmd, filter)) {
@@ -554,7 +555,8 @@ static void handler_process_by_pid(HttpRequest* req, HttpResponse* res, void* ct
         if (sscanf(line, "%63s %d %lf %lf %*s %*s %*s %15s %*s %*s %1023[^\n]",
                    p.user, &p.pid, &p.cpu, &p.mem, p.status, cmd_full) >= 5) {
             clean_process_name(p.name, cmd_full);
-            strncpy(p.cmd, cmd_full, 1023);
+            /* 🚀 [수정 완료]: strncpy를 snprintf로 변경 */
+            snprintf(p.cmd, sizeof(p.cmd), "%s", cmd_full);
             found = 1;
         }
     }
