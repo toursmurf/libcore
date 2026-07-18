@@ -8,8 +8,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <stdio.h>
 
-/* --- [함수 프로토타입] --- */
+/* --- [메소드 프로토타입] --- */
 static HttpClientResponse* impl_execute(HttpClient* self, HttpClientRequest* req);
 static HttpClientResponse* impl_GET(HttpClient* self, const char* url, HashMap* query_params);
 static HttpClientResponse* impl_POST(HttpClient* self, const char* url, HashMap* data, PayloadType type);
@@ -36,17 +37,14 @@ static const Class _HttpClient_Class = {
 HttpClient* new_HttpClient(EventLoop* loop) {
     HttpClient* self = (HttpClient*)calloc(1, sizeof(HttpClient));
     if (!self) return NULL;
-
     Object_Init((Object*)self, &_HttpClient_Class);
     self->loop = loop;
     self->default_headers = new_HashMap(16);
     self->cookie_jar = new_ArrayList(4);
-
     if (!self->default_headers || !self->cookie_jar) {
         RELEASE((Object*)self);
         return NULL;
     }
-
     self->options.timeout_ms = 30000;
     self->options.max_redirects = 5;
     self->options.follow_redirects = true;
@@ -60,11 +58,9 @@ HttpClient* new_HttpClient(EventLoop* loop) {
     self->POST_MULTIPART = impl_POST_MULTIPART;
     self->setHeader      = impl_setHeader;
     self->setBearerToken = impl_setBearerToken;
-
     return self;
 }
 
-/* --- [메소드 구현] --- */
 static HttpClientResponse* impl_GET(HttpClient* self, const char* url, HashMap* query_params) {
     (void)query_params;
     HttpClientRequest req = { .method = "GET", .url = url, .payload_type = PAYLOAD_NONE };
@@ -100,9 +96,7 @@ static void impl_setHeader(HttpClient* self, const char* key, const char* value)
     if (!self || !key || !value) return;
     String* k = new_String(key);
     String* v = new_String(value);
-    if (k && v) {
-        self->default_headers->put(self->default_headers, k->c_str(k), (Object*)v);
-    }
+    if (k && v) { self->default_headers->put(self->default_headers, k->c_str(k), (Object*)v); }
     if (k) RELEASE((Object*)k);
     if (v) RELEASE((Object*)v);
 }
@@ -114,7 +108,6 @@ static void impl_setBearerToken(HttpClient* self, const char* token) {
     self->setHeader(self, "Authorization", buf);
 }
 
-/* --- [내부 로직] --- */
 static void update_cookie_jar(ArrayList* jar, HttpCookie* new_c) {
     if (!jar || !new_c || !new_c->name) return;
     int sz = jar->getSize(jar);
@@ -122,10 +115,8 @@ static void update_cookie_jar(ArrayList* jar, HttpCookie* new_c) {
         HttpCookie* c = (HttpCookie*)jar->get(jar, i);
         if (!c || !c->name) continue;
         if (strcmp(c->name, new_c->name) == 0 &&
-            ((!c->domain && !new_c->domain) ||
-             (c->domain && new_c->domain && strcasecmp(c->domain, new_c->domain) == 0)) &&
-            ((!c->path && !new_c->path) ||
-             (c->path && new_c->path && strcmp(c->path, new_c->path) == 0))) {
+            ((!c->domain && !new_c->domain) || (c->domain && new_c->domain && strcasecmp(c->domain, new_c->domain) == 0)) &&
+            ((!c->path && !new_c->path) || (c->path && new_c->path && strcmp(c->path, new_c->path) == 0))) {
             jar->removeResult(jar, i);
             break;
         }
@@ -136,16 +127,12 @@ static void update_cookie_jar(ArrayList* jar, HttpCookie* new_c) {
 static char* _build_raw_request(HttpClient* self, HttpClientRequest* req, HttpTransport* transport, size_t* out_len, char* out_boundary) {
     StringBuilder* sb = new_StringBuilder(1024);
     if (!sb) return NULL;
-
     sb->appendFormat(sb, "%s %s HTTP/1.1\r\n", req->method, transport->path);
     sb->appendFormat(sb, "Host: %s\r\n", transport->host);
-
     bool has_ua = self->default_headers && self->default_headers->get(self->default_headers, "User-Agent");
     bool has_accept = self->default_headers && self->default_headers->get(self->default_headers, "Accept");
-
-    if (!has_ua)     sb->append(sb, "User-Agent: WebCore-Client/1.6\r\n");
+    if (!has_ua) sb->append(sb, "User-Agent: WebCore-Client/1.6\r\n");
     if (!has_accept) sb->append(sb, "Accept: */*\r\n");
-
     if (self->default_headers) {
         ArrayList* keys = self->default_headers->keys(self->default_headers);
         if (keys) {
@@ -161,7 +148,6 @@ static char* _build_raw_request(HttpClient* self, HttpClientRequest* req, HttpTr
             RELEASE((Object*)keys);
         }
     }
-
     if (self->cookie_jar && self->cookie_jar->getSize(self->cookie_jar) > 0) {
         int  csize = self->cookie_jar->getSize(self->cookie_jar);
         bool first = true;
@@ -169,23 +155,16 @@ static char* _build_raw_request(HttpClient* self, HttpClientRequest* req, HttpTr
             HttpCookie* c = (HttpCookie*)self->cookie_jar->get(self->cookie_jar, i);
             if (!c || !c->name || !c->value) continue;
             char tmp[4096];
-            if (first) {
-                sb->append(sb, "Cookie: ");
-                snprintf(tmp, sizeof(tmp), "%s=%s", c->name, c->value);
-                first = false;
-            } else {
-                snprintf(tmp, sizeof(tmp), "; %s=%s", c->name, c->value);
-            }
+            if (first) { sb->append(sb, "Cookie: "); snprintf(tmp, sizeof(tmp), "%s=%s", c->name, c->value); first = false; }
+            else { snprintf(tmp, sizeof(tmp), "; %s=%s", c->name, c->value); }
             sb->append(sb, tmp);
         }
         if (!first) sb->append(sb, "\r\n");
     }
-
     char*       body_buf     = NULL;
     size_t      body_len     = 0;
     const char* content_type = NULL;
     bool        owned_body   = false;
-
     if (req->payload_type == PAYLOAD_FORM) {
         body_buf     = build_form_body(req->data, &body_len);
         content_type = "application/x-www-form-urlencoded";
@@ -208,7 +187,6 @@ static char* _build_raw_request(HttpClient* self, HttpClientRequest* req, HttpTr
         if (calc_len < 0) { RELEASE((Object*)sb); return NULL; }
         sb->appendFormat(sb, "Content-Length: %zu\r\n", (size_t)calc_len);
     }
-
     if (req->payload_type != PAYLOAD_MULTIPART) {
         if (body_len > 0 && content_type) {
             char tmp[256];
@@ -216,18 +194,10 @@ static char* _build_raw_request(HttpClient* self, HttpClientRequest* req, HttpTr
             sb->append(sb, tmp);
             snprintf(tmp, sizeof(tmp), "Content-Length: %zu\r\n", body_len);
             sb->append(sb, tmp);
-        } else {
-            sb->append(sb, "Content-Length: 0\r\n");
-        }
+        } else { sb->append(sb, "Content-Length: 0\r\n"); }
     }
-
-    sb->append(sb, "Connection: close\r\n");
-    sb->append(sb, "\r\n");
-
-    if (body_buf && body_len > 0) {
-        sb->appendBytes(sb, body_buf, body_len);
-    }
-
+    sb->append(sb, "Connection: close\r\n\r\n");
+    if (body_buf && body_len > 0) sb->appendBytes(sb, body_buf, body_len);
     *out_len = sb->length(sb);
     char* req_buf = safe_strdup(sb->c_str(sb), *out_len);
     if (owned_body && body_buf) free(body_buf);
@@ -236,89 +206,41 @@ static char* _build_raw_request(HttpClient* self, HttpClientRequest* req, HttpTr
 }
 
 static HttpClientResponse* impl_execute(HttpClient* self, HttpClientRequest* req) {
-    if (!self || !req || !req->url) {
-        printf("[DEBUG] Critical: Invalid self, req, or url\n");
-        return NULL;
-    }
+    if (!self || !req || !req->url) return NULL;
     char* current_url = safe_strdup(req->url, 2048);
     if (!current_url) return NULL;
-
     int redirect_count = 0;
     HttpClientResponse* final_res = NULL;
-
     while (redirect_count <= self->options.max_redirects) {
-        /* ring_ptr = NULL: HttpTransport 블로킹 TCP 경로 고정
-         * (io_uring 혜택은 HttpTransport 비동기 재설계 후 v1.7 예정) */
         HttpTransport* transport = HttpTransport_connect(current_url, NULL, self->options.timeout_ms);
-
-        if (!transport) {
-            printf("[DEBUG] Connection failed at URL: %s\n", current_url);
-            break;
-        }
-
+        if (!transport) break;
         size_t req_len = 0;
         char boundary[64] = {0};
         char* req_buf = _build_raw_request(self, req, transport, &req_len, boundary);
-
-        if (!req_buf) {
-            printf("[DEBUG] Build request failed\n");
-            HttpTransport_close(transport);
-            break;
-        }
-
-        ssize_t sent = HttpTransport_send(transport, req_buf, req_len);
+        if (!req_buf) { HttpTransport_close(transport); break; }
+        if (HttpTransport_send(transport, req_buf, req_len) < 0) { free(req_buf); HttpTransport_close(transport); break; }
         free(req_buf);
-
-        if (sent < 0) {
-            printf("[DEBUG] Send failed (errno: %ld)\n", sent);
-            HttpTransport_close(transport);
-            break;
-        }
-
         if (req->payload_type == PAYLOAD_MULTIPART) {
-            if (MultipartWriter_stream_send(req->data, req->files, boundary, transport) < 0) {
-                printf("[DEBUG] Multipart stream send failed\n");
-                HttpTransport_close(transport);
-                break;
-            }
+            if (MultipartWriter_stream_send(req->data, req->files, boundary, transport) < 0) { HttpTransport_close(transport); break; }
         }
-
         final_res = HttpResponseParser_parse(transport);
         HttpTransport_close(transport);
-
-        if (!final_res) {
-            printf("[DEBUG] HttpResponseParser_parse returned NULL. Response might be malformed or EOF.\n");
-            break;
-        }
-
-
-        // ... [쿠키 갱신 로직 그대로 유지] ...
+        if (!final_res) break;
         if (final_res->cookies && self->cookie_jar) {
             for (int i = 0; i < final_res->cookies->getSize(final_res->cookies); i++) {
                 String* ck_str = (String*)final_res->cookies->get(final_res->cookies, i);
                 if (!ck_str || !ck_str->c_str) continue;
                 HttpCookie* cookie = new_HttpCookie(ck_str->c_str(ck_str));
-                if (cookie) {
-                    update_cookie_jar(self->cookie_jar, cookie);
-                    RELEASE((Object*)cookie);
-                }
+                if (cookie) { update_cookie_jar(self->cookie_jar, cookie); RELEASE((Object*)cookie); }
             }
         }
-
-        // ... [리다이렉트 로직 그대로 유지] ...
-        if (final_res && (final_res->status_code == 301 || final_res->status_code == 302 ||
-                          final_res->status_code == 307 || final_res->status_code == 308)) {
+        if (final_res && (final_res->status_code == 301 || final_res->status_code == 302 || final_res->status_code == 307 || final_res->status_code == 308)) {
             if (self->options.follow_redirects) {
                 const char* loc = hashmap_get_str(final_res->headers, "Location");
                 if (loc) {
                     char* next_url = safe_strdup(loc, 2048);
                     if (!next_url) break;
-                    free(current_url);
-                    current_url = next_url;
-                    RELEASE((Object*)final_res);
-                    final_res = NULL;
-                    redirect_count++;
-                    continue;
+                    free(current_url); current_url = next_url; RELEASE((Object*)final_res); final_res = NULL; redirect_count++; continue;
                 }
             }
         }
@@ -327,8 +249,6 @@ static HttpClientResponse* impl_execute(HttpClient* self, HttpClientRequest* req
     free(current_url);
     return final_res;
 }
-
-/* --- [외부 노출 구현부] --- */
 
 static void HttpClientResponse_finalize(Object* obj) {
     HttpClientResponse* res = (HttpClientResponse*)obj;
@@ -354,8 +274,7 @@ HttpClientResponse* new_HttpClientResponse(void) {
 
 static void HttpCookie_finalize(Object* obj) {
     HttpCookie* c = (HttpCookie*)obj;
-    free(c->name); free(c->value);
-    free(c->domain); free(c->path);
+    free(c->name); free(c->value); free(c->domain); free(c->path);
 }
 
 static const Class _HttpCookie_Class = {
@@ -371,11 +290,7 @@ HttpCookie* new_HttpCookie(const char* raw_str) {
     if (raw_str) {
         char* dup = strdup(raw_str);
         char* eq = strchr(dup, '=');
-        if (eq) {
-            *eq = '\0';
-            c->name = strdup(dup);
-            c->value = strdup(eq + 1);
-        }
+        if (eq) { *eq = '\0'; c->name = strdup(dup); c->value = strdup(eq + 1); }
         free(dup);
     }
     return c;

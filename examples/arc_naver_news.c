@@ -1,10 +1,8 @@
 /**
  * @file arc_naver_news.c
- * @brief libcore HttpClient (동기 블로킹 TCP / HTTPS) 기반 네이버 뉴스 크롤러
- * @note  io_uring 링은 HttpClient 내부에 소유되나, impl_execute 경로는
- *        HttpTransport 블로킹 TCP/SSL을 사용 → io_uring 혜택 없음 실증 확인.
- *        (epoll 10.258s vs io_uring 10.331s — 차이 0.07초)
- *        실제 io_uring I/O 혜택은 HttpTransport 비동기 재설계 후 가능 (v1.7 예정)
+ * @brief libcore HttpClient 기반 네이버 뉴스 크롤러
+ * @note  HttpTransport가 자체 own_ring을 소유하여
+ *        비동기 io_uring Connect 후 SslClient로 제어권을 넘기는 하이브리드 엔진 적용 완료.
  */
 
 #include <stdio.h>
@@ -25,8 +23,8 @@ static NaverSection sections[] = {
     { "경제",    "https://news.naver.com/section/101" },
     { "사회",    "https://news.naver.com/section/102" },
     { "생활문화","https://news.naver.com/section/103" },
-    { "세계","https://news.naver.com/section/104" },
-    { "IT","https://news.naver.com/section/105" },
+    { "세계",    "https://news.naver.com/section/104" },
+    { "IT",      "https://news.naver.com/section/105" },
 };
 
 #define SECTION_COUNT \
@@ -47,6 +45,7 @@ typedef struct {
     char link[512];
 } NaverNewsItem;
 
+/* 🚀 HTML Entity 디코딩 문자열 리터럴 완벽 복원 */
 static void decode_html_entities(char* str, size_t max_len) {
     char out[2048] = {0};
     int  oi = 0, i = 0, len = (int)strlen(str);
@@ -59,22 +58,16 @@ static void decode_html_entities(char* str, size_t max_len) {
         else if (strncmp(&str[i], "&nbsp;", 6) == 0) { out[oi++] = ' ';  i += 6; }
         else if (strncmp(&str[i], "&#x27;", 6) == 0) { out[oi++] = '\''; i += 6; }
         else if (strncmp(&str[i], "&#x3D;", 6) == 0) { out[oi++] = '=';  i += 6; }
+        else if (strncmp(&str[i], "&#x2F;", 6) == 0) { out[oi++] = '/';  i += 6; }
         else if (strncmp(&str[i], "&#39;",  5) == 0) { out[oi++] = '\''; i += 5; }
         else if (strncmp(&str[i], "&#039;", 6) == 0) { out[oi++] = '\''; i += 6; }
-        else if (strncmp(&str[i], "&#8216;", 7) == 0) {
-            memcpy(&out[oi], "\xe2\x80\x98", 3); oi += 3; i += 7; }
-        else if (strncmp(&str[i], "&#8217;", 7) == 0) {
-            memcpy(&out[oi], "\xe2\x80\x99", 3); oi += 3; i += 7; }
-        else if (strncmp(&str[i], "&#8220;", 7) == 0) {
-            memcpy(&out[oi], "\xe2\x80\x9c", 3); oi += 3; i += 7; }
-        else if (strncmp(&str[i], "&#8221;", 7) == 0) {
-            memcpy(&out[oi], "\xe2\x80\x9d", 3); oi += 3; i += 7; }
-        else if (strncmp(&str[i], "&#8211;", 7) == 0) {
-            memcpy(&out[oi], "\xe2\x80\x93", 3); oi += 3; i += 7; }
-        else if (strncmp(&str[i], "&#8212;", 7) == 0) {
-            memcpy(&out[oi], "\xe2\x80\x94", 3); oi += 3; i += 7; }
-        else if (strncmp(&str[i], "&#8230;", 7) == 0) {
-            memcpy(&out[oi], "\xe2\x80\xa6", 3); oi += 3; i += 7; }
+        else if (strncmp(&str[i], "&#8216;", 7) == 0) { memcpy(&out[oi], "\xe2\x80\x98", 3); oi += 3; i += 7; }
+        else if (strncmp(&str[i], "&#8217;", 7) == 0) { memcpy(&out[oi], "\xe2\x80\x99", 3); oi += 3; i += 7; }
+        else if (strncmp(&str[i], "&#8220;", 7) == 0) { memcpy(&out[oi], "\xe2\x80\x9c", 3); oi += 3; i += 7; }
+        else if (strncmp(&str[i], "&#8221;", 7) == 0) { memcpy(&out[oi], "\xe2\x80\x9d", 3); oi += 3; i += 7; }
+        else if (strncmp(&str[i], "&#8211;", 7) == 0) { memcpy(&out[oi], "\xe2\x80\x93", 3); oi += 3; i += 7; }
+        else if (strncmp(&str[i], "&#8212;", 7) == 0) { memcpy(&out[oi], "\xe2\x80\x94", 3); oi += 3; i += 7; }
+        else if (strncmp(&str[i], "&#8230;", 7) == 0) { memcpy(&out[oi], "\xe2\x80\xa6", 3); oi += 3; i += 7; }
         else { out[oi++] = str[i++]; }
     }
     out[oi] = '\0';
@@ -183,10 +176,11 @@ static int parse_naver_news(
         if (tl < TITLE_MIN_LEN || tl > TITLE_MAX_LEN) {
             ptr = a_close + 4; continue;
         }
-				// 🚀 [패치] CSS 스타일 잔재 필터링
+
         if (strstr(title_raw, "style=") || strstr(title_raw, "display:")) {
             ptr = a_close + 4; continue;
         }
+
         memcpy(items[count].title, title_raw, tl + 1);
         memcpy(items[count].link,  url,       url_len + 1);
         count++;
@@ -276,7 +270,7 @@ static void* fetch_news(void* arg) {
 int main(void) {
     printf("\n");
     printf("========================================================\n");
-    printf("  libcore  - 네이버 뉴스 크롤러 (Cookie/Redirect/Multipart 완벽 지원)\n");
+    printf("  libcore v1.6.5 - 네이버 뉴스 크롤러 (하이브리드 비동기/동기 엔진)\n");
     printf("  HttpClient(동기 블로킹 TCP / HTTPS) + Chrome UA\n");
     printf("  ThreadPool + ArrayList + HashMap\n");
     printf("  Toos IT Holdings\n");
