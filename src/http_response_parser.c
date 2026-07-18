@@ -16,7 +16,10 @@ HttpClientResponse* HttpResponseParser_parse_with_status(HttpTransport* transpor
         strncpy(line, initial_status_line, sizeof(line)-1);
         line[sizeof(line)-1] = '\0';
     } else {
-        if (HttpTransport_recv_line(transport, line, sizeof(line)) <= 0) {
+        int ret = HttpTransport_recv_line(transport, line, sizeof(line));
+	if (ret <= 0) {
+	    // 🚨 범인 잡는 로그 추가!
+            printf("[DEBUG] 치명적 오류: 상태 줄을 읽을 수 없습니다. (ret: %d)\n", ret);
             RELEASE((Object*)res);
             return NULL;
         }
@@ -53,6 +56,7 @@ HttpClientResponse* HttpResponseParser_parse_with_status(HttpTransport* transpor
                 String* cstr = new_String(val);
                 if (cstr) {
                     res->cookies->add(res->cookies, (Object*)cstr);
+		    RELEASE((Object*)cstr);
                 }
             }
             if (strcasecmp(key, "Content-Length") == 0) content_length = atol(val);
