@@ -1,5 +1,5 @@
-#ifndef LIBCORE_HTTP_CLIENT_H
-#define LIBCORE_HTTP_CLIENT_H
+#ifndef HTTP_CLIENT_H
+#define HTTP_CLIENT_H
 
 #include "object.h"
 #include "string_obj.h"
@@ -88,4 +88,4 @@ HttpClient* new_HttpClient(EventLoop* loop);
 
 void execute_step7_wireless_control(EventLoop* loop);
 
-#endif /* LIBCORE_HTTP_CLIENT_H */
+#endif /* HTTP_CLIENT_H */  
