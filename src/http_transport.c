@@ -66,6 +66,7 @@ static ssize_t _do_async_recv(HttpTransport* transport, int fd, void* buf, size_
 
 HttpTransport* HttpTransport_connect(const char* url, void* ring, int timeout_ms) {
     (void)timeout_ms;
+    (void) ring;
     HttpTransport* transport = calloc(1, sizeof(HttpTransport));
     if (!transport) return NULL;
 
