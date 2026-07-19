@@ -4,12 +4,6 @@
  *
  * @note
  *   HttpClient는 현재 동기 블로킹 TCP/HTTPS 경로를 사용한다.
- *   io_uring 링이 HttpClient 내부에 존재하더라도 impl_execute() 경로가
- *   HttpTransport 블로킹 TCP/SSL을 사용하므로 이 예제에서는
- *   io_uring의 직접적인 비동기 I/O 성능 향상을 기대하지 않는다.
- *
- *   실제 io_uring 기반 비동기 HTTP 이점은 HttpTransport와 HttpClient의
- *   비동기 상태 머신 재설계 이후 적용할 수 있다.
  */
 
 #include <stdio.h>
