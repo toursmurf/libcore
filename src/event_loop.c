@@ -10,18 +10,25 @@
 #include <stdio.h>
 
 extern Logger* logger;
-/* 🚨 [클순 부장님 패치] 가변 인자 매크로 문법 완벽 수정 (컴파일 에러 해결) */
+/* 🚨 [패치] 로거가 NULL일 경우 조용히 무시하여 Segfault 원천 차단 */
 #define LOG_D(fmt, ...) do { if (logger) LOG_DEBUG(logger, fmt, ##__VA_ARGS__); } while(0)
 #define LOG_I(fmt, ...) do { if (logger) LOG_INFO(logger,  fmt, ##__VA_ARGS__); } while(0)
 #define LOG_W(fmt, ...) do { if (logger) LOG_WARN(logger,  fmt, ##__VA_ARGS__); } while(0)
 
+/* ────────────────────────────────────────
+ * [0] 지연 소각 (Deferred Release) 구현
+ * ──────────────────────────────────────── */
 static void impl_deferRelease(EventLoop* self, Object* obj) {
     if (!self || !obj) return;
     self->deferred_cleanup_list->add(self->deferred_cleanup_list, obj);
     RELEASE(obj);
 }
 
+/* ────────────────────────────────────────
+ * [1] io_uring 전용 로직 (HAS_LIBURING 활성화 시)
+ * ──────────────────────────────────────── */
 #ifdef HAS_LIBURING
+
 static bool detect_uring(void) {
     struct io_uring ring;
     int ret = io_uring_queue_init(1, &ring, 0);
@@ -164,13 +171,19 @@ static int uring_delSocket_impl(EventLoop* self, Socket* sock) {
     }
     return 0;
 }
+
 #endif /* HAS_LIBURING */
+
+
+/* ────────────────────────────────────────
+ * [2] epoll 전용 로직 및 공통 유틸리티
+ * ──────────────────────────────────────── */
 
 static uint32_t map_events_to_epoll(EventMask mask) {
     uint32_t events = 0;
     if (mask & EV_READ)  events |= EPOLLIN;
     if (mask & EV_WRITE) events |= EPOLLOUT;
-    events |= (EPOLLERR | EPOLLHUP | EPOLLET);
+    events |= (EPOLLERR | EPOLLHUP | EPOLLET); /* 🚨 부장님이 짚어주신 EPOLLET 적용부 */
     return events;
 }
 
@@ -234,8 +247,11 @@ static int epoll_addSocket_impl(EventLoop* self, Socket* sock, EventMask mask) {
 
     if (epoll_ctl(self->epoll_fd, EPOLL_CTL_ADD, sock->fd, &ev) == -1) {
         if (errno == EEXIST) {
-            if (epoll_ctl(self->epoll_fd, EPOLL_CTL_MOD, sock->fd, &ev) == 0) return 0;
+            if (epoll_ctl(self->epoll_fd, EPOLL_CTL_MOD, sock->fd, &ev) == 0) {
+                return 0;
+            }
         }
+
         if (retained_now) {
             ctx->sock = NULL;
             ctx->generation++;
@@ -248,7 +264,9 @@ static int epoll_addSocket_impl(EventLoop* self, Socket* sock, EventMask mask) {
 
 static int epoll_delSocket_impl(EventLoop* self, Socket* sock) {
     if (!self || !sock || sock->fd < 0 || sock->fd >= 65536) return -1;
+
     epoll_ctl(self->epoll_fd, EPOLL_CTL_DEL, sock->fd, NULL);
+
     PollContext* ctx = &self->ctx_pool[sock->fd];
     if (ctx->sock == sock) {
         ctx->sock = NULL;
@@ -260,6 +278,7 @@ static int epoll_delSocket_impl(EventLoop* self, Socket* sock) {
 
 static int epoll_poll_impl(EventLoop* self, int timeout_ms) {
     int nfds = epoll_wait(self->epoll_fd, self->event_buffer, self->max_events, timeout_ms);
+
     if (nfds < 0) return nfds;
 
     for (int i = 0; i < nfds; i++) {
@@ -269,13 +288,23 @@ static int epoll_poll_impl(EventLoop* self, int timeout_ms) {
 
         if (fd < 65536) {
             PollContext* ctx = &self->ctx_pool[fd];
+
             if (ctx->sock != NULL && ctx->generation == gen) {
                 Socket* sock = ctx->sock;
                 RETAIN((Object*)sock);
+
                 EventMask triggered = map_epoll_to_events(self->event_buffer[i].events);
-                if (sock->is_open && (triggered & EV_READ)  && sock->on_readable) sock->on_readable(sock, self);
-                if (sock->is_open && (triggered & EV_WRITE) && sock->on_writable) sock->on_writable(sock, self);
-                if (sock->is_open && (triggered & EV_ERROR) && sock->on_error)    sock->on_error(sock, self);
+
+                if (sock->is_open && (triggered & EV_READ)  && sock->on_readable) {
+                    sock->on_readable(sock, self);
+                }
+                if (sock->is_open && (triggered & EV_WRITE) && sock->on_writable) {
+                    sock->on_writable(sock, self);
+                }
+                if (sock->is_open && (triggered & EV_ERROR) && sock->on_error) {
+                    sock->on_error(sock, self);
+                }
+
                 RELEASE((Object*)sock);
             }
         }
@@ -285,11 +314,14 @@ static int epoll_poll_impl(EventLoop* self, int timeout_ms) {
 
 void event_loop_run(EventLoop* self) {
     if (!self) return;
+
     LOG_I("[LOOP] Event loop active. (Backend: %s). Press ^C to stop.",
           self->backend == EL_BACKEND_URING ? "io_uring" : "epoll");
+
     while (self->is_running) {
         int ret = self->poll(self, 100);
         if (ret < 0 && (errno == EINTR || ret == -ETIME)) continue;
+
         self->deferred_cleanup_list->clear(self->deferred_cleanup_list);
     }
     LOG_W("[LOOP] Event loop exit signal received.");
@@ -325,7 +357,10 @@ EventLoop* new_EventLoop(int max_events) {
     if (detect_uring()) {
         self->backend = EL_BACKEND_URING;
         int ret = io_uring_queue_init(self->max_events, &self->ring, 0);
-        if (ret < 0) { RELEASE(self); return NULL; }
+        if (ret < 0) {
+            RELEASE(self);
+            return NULL;
+        }
         self->addSocket   = uring_addSocket_impl;
         self->delSocket   = uring_delSocket_impl;
         self->poll        = uring_poll_impl;
@@ -336,9 +371,15 @@ EventLoop* new_EventLoop(int max_events) {
     {
         self->backend = EL_BACKEND_EPOLL;
         self->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
-        if (self->epoll_fd < 0) { RELEASE(self); return NULL; }
+        if (self->epoll_fd < 0) {
+            RELEASE(self);
+            return NULL;
+        }
         self->event_buffer = (struct epoll_event*)calloc(self->max_events, sizeof(struct epoll_event));
-        if (!self->event_buffer) { RELEASE(self); return NULL; }
+        if (!self->event_buffer) {
+            RELEASE(self);
+            return NULL;
+        }
         self->addSocket   = epoll_addSocket_impl;
         self->delSocket   = epoll_delSocket_impl;
         self->poll        = epoll_poll_impl;

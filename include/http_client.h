@@ -71,8 +71,6 @@ struct HttpClient {
     HashMap* default_headers;
     ArrayList* cookie_jar;
 
-    /* 🚀 client_ring 영구 제거됨 */
-
     HttpClientResponse* (*execute)(HttpClient* self, HttpClientRequest* req);
 
     HttpClientResponse* (*GET)   (HttpClient* self, const char* url, HashMap* query_params);
@@ -90,4 +88,4 @@ HttpClient* new_HttpClient(EventLoop* loop);
 
 void execute_step7_wireless_control(EventLoop* loop);
 
-#endif /* HTTP_CLIENT_H */
+#endif /* HTTP_CLIENT_H */  
