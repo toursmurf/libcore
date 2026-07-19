@@ -7,7 +7,7 @@ KERNEL_INFO := $(shell uname -r)
 
 HAS_URING := $(shell pkg-config --exists liburing 2>/dev/null && echo 1 || echo 0)
 OPENSSL_VER := $(shell pkg-config --modversion openssl 2>/dev/null || echo "Unknown")
-
+HAS_URING := 0
 # 🚨 MariaDB 동적 판별 로직
 MARIADB_VER_RAW := $(shell pkg-config --modversion libmariadb 2>/dev/null)
 ifeq ($(MARIADB_VER_RAW),)
