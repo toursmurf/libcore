@@ -25,8 +25,8 @@ static NaverSection sections[] = {
     { "경제",    "https://news.naver.com/section/101" },
     { "사회",    "https://news.naver.com/section/102" },
     { "생활문화","https://news.naver.com/section/103" },
-    { "세계","https://news.naver.com/section/104" },
-    { "IT","https://news.naver.com/section/105" },
+    { "세계",    "https://news.naver.com/section/104" },
+    { "IT",      "https://news.naver.com/section/105" },
 };
 
 #define SECTION_COUNT \
@@ -59,6 +59,7 @@ static void decode_html_entities(char* str, size_t max_len) {
         else if (strncmp(&str[i], "&nbsp;", 6) == 0) { out[oi++] = ' ';  i += 6; }
         else if (strncmp(&str[i], "&#x27;", 6) == 0) { out[oi++] = '\''; i += 6; }
         else if (strncmp(&str[i], "&#x3D;", 6) == 0) { out[oi++] = '=';  i += 6; }
+        else if (strncmp(&str[i], "&#x60;", 6) == 0) { out[oi++] = '`';  i += 6; } /* 🚀 [패치] 백틱 기호 추가 */
         else if (strncmp(&str[i], "&#39;",  5) == 0) { out[oi++] = '\''; i += 5; }
         else if (strncmp(&str[i], "&#039;", 6) == 0) { out[oi++] = '\''; i += 6; }
         else if (strncmp(&str[i], "&#8216;", 7) == 0) {
@@ -153,6 +154,10 @@ static int parse_naver_news(
         memcpy(url, url_s, url_len);
         url[url_len] = '\0';
 
+        /* 🚀 [패치] URL 내의 HTML 엔티티(&amp;, &#x3D; 등)를 파싱 직후 즉각 디코딩! */
+        decode_html_entities(url, sizeof(url));
+        url_len = strlen(url); /* 디코딩 후 줄어든 문자열 길이에 맞춰 재계산 */
+
         if (!strstr(url, "/article/")) { ptr = href + 1; continue; }
 
         bool dup = false;
@@ -183,7 +188,7 @@ static int parse_naver_news(
         if (tl < TITLE_MIN_LEN || tl > TITLE_MAX_LEN) {
             ptr = a_close + 4; continue;
         }
-				// 🚀 [패치] CSS 스타일 잔재 필터링
+        // 🚀 [패치] CSS 스타일 잔재 필터링
         if (strstr(title_raw, "style=") || strstr(title_raw, "display:")) {
             ptr = a_close + 4; continue;
         }
