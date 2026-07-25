@@ -5,8 +5,11 @@
  * @note  This example strictly follows the ARC memory management rules.
  */
 
+// ============================================================================
+// 🚨 TARGET OS: 64-bit Linux Only (32-bit not supported) 🚨
+// 🛡️ ARCHITECTURE: libcore Standard Object System Applied
+// ============================================================================
 #include "event_loop.h"
-#include "event_loop_internal.h" /* 🚀 [신규 패치] V1.6.x 3대 OS 통합 이벤트 백엔드 API 인클루드 */
 #include "tcp_socket.h"
 #include "logger.h"
 #include "ws_protocol.h"
@@ -186,10 +189,7 @@ static void on_client_readable(Socket* self, void* loop_ptr) {
         }
     }
     pthread_mutex_unlock(&manager.lock);
-
-    /* 🚀 [패치] 구형 delSocket -> 신형 event_backend_remove */
-    event_backend_remove(loop, self);
-
+    loop->delSocket(loop, self);
     if (target_uin[0] != '\0') {
         char leave_json[256];
         snprintf(leave_json, sizeof(leave_json), "{\"type\":\"leave\",\"uin\":\"%s\"}", target_uin);
@@ -214,8 +214,7 @@ static void on_handshake_pending(Socket* self, void* loop_ptr) {
         client->base.on_readable = on_client_readable;
     } else if (received > 0) {
         // ✅ [의장님 검수 3] 핸드셰이크 실패 시 좀비 세션 방지
-        /* 🚀 [패치] 구형 delSocket -> 신형 event_backend_remove */
-        event_backend_remove(loop, self);
+        loop->delSocket(loop, self);
         ClientManager_Remove(client);
     }
 }
@@ -227,44 +226,30 @@ static void on_client_accept(Socket* self, void* loop_ptr) {
     if (client) {
         ClientManager_Add(client);
         client->base.on_readable = on_handshake_pending;
-
-        /* 🚀 [패치] 구형 addSocket -> 신형 event_backend_add */
-        event_backend_add(loop, (Socket*)client, EVENT_READ);
-
+        loop->addSocket(loop, (Socket*)client, EV_READ);
         RELEASE((Object*)client);
     }
 }
 
 void handle_sigint(int sig) {
 	(void)sig;
-	/* 🚀 [패치] 구형 stop -> 신형 event_loop_stop */
-	if (g_loop) event_loop_stop(g_loop);
+	if (g_loop) g_loop->stop(g_loop);
 }
 
 int main() {
     signal(SIGINT, handle_sigint);
     ClientManager_Init();
-    logger = new_Logger(LOG_LEVEL_DEBUG);
+    logger = new_Logger(LOG_LEVEL_ERROR);
     TcpSocket* server = new_TcpServer("0.0.0.0", 8080);
-    g_loop = event_loop_create();
+    g_loop = new_EventLoop(1024);
     server->base.on_readable = on_client_accept;
-
-    /* 🚀 [패치] 구형 addSocket -> 신형 event_backend_add */
-    event_backend_add(g_loop, (Socket*)server, EVENT_READ);
-
+    g_loop->addSocket(g_loop, (Socket*)server, EV_READ);
     LOG_INFO(logger, "[P3] Fixed Iron Fortress Engine Ready!! (Port 8080)");
-
-    /* 🚀 [패치] 구형 run -> 신형 event_loop_run */
-    event_loop_run(g_loop);
+    g_loop->run(g_loop);
 
     ClientManager_Destroy();
-
-    /* 🚀 [패치] 구형 delSocket -> 신형 event_backend_remove */
-    event_backend_remove(g_loop, (Socket*)server);
-
-    /* 🚨 [의장님/클순 패치] 구시대 유물 삭제 및 ARC 규격 통일! */
+    g_loop->delSocket(g_loop, (Socket*)server);
     RELEASE((Object*)g_loop);
-
     RELEASE((Object*)server);
     RELEASE((Object*)logger);
     return 0;

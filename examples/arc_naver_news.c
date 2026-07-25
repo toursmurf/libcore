@@ -887,10 +887,6 @@ static void* fetch_news(void* arg)
     if (response == NULL) {
         task->status =
             FETCH_REQUEST_FAILED;
-        fprintf(stderr,
-          "[DEBUG] %s 실패: %s\n",
-          task->name,
-          strerror(errno));
 
         goto cleanup;
     }

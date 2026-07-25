@@ -56,7 +56,7 @@ static int compare_pgroups(const void* a, const void* b) {
     return p2->count - p1->count;
 }
 
-/* 🚨 [패치] strncpy -> snprintf 로 교체하여 -Wstringop-truncation 경고 원천 차단 */
+/* 🚀 [수정 완료]: strncpy를 snprintf로 변경하여 -Wstringop-truncation 경고 해결 */
 static void clean_process_name(char* name, const char* cmd_full) {
     if (cmd_full[0] == '[') {
         snprintf(name, 256, "%s", cmd_full);
@@ -73,11 +73,11 @@ static void handle_signal(int sig) {
     printf("\n🛑 [SIG %d] Received termination signal. Initiating graceful shutdown...\n", sig);
 
     if (g_server) {
-        RELEASE((Object*)g_server);
+        RELEASE(g_server);
         g_server = NULL;
     }
     if (g_loop) {
-        RELEASE((Object*)g_loop);
+        RELEASE(g_loop);
         g_loop = NULL;
     }
 
@@ -105,7 +105,7 @@ static int collect_processes(ProcInfo* procs, int max, const char* filter) {
     char line[2048];
     while (fgets(line, sizeof(line), fp) && count < max) {
         ProcInfo p = {0};
-        char cmd_full[2048] = {0};
+        char cmd_full[1024] = {0};
 
         if (sscanf(line, "%63s %d %lf %lf %*s %*s %*s %15s %*s %*s %1023[^\n]",
                    p.user, &p.pid, &p.cpu, &p.mem, p.status, cmd_full) < 5) {
@@ -113,8 +113,7 @@ static int collect_processes(ProcInfo* procs, int max, const char* filter) {
         }
 
         clean_process_name(p.name, cmd_full);
-
-        /* 🚨 [패치] gcc 경고 지점: snprintf로 교체 */
+        /* 🚀 [수정 완료]: strncpy를 snprintf로 변경 */
         snprintf(p.cmd, sizeof(p.cmd), "%s", cmd_full);
 
         if (filter && *filter) {
@@ -167,8 +166,7 @@ static char* build_process_json(ProcInfo* procs, int count, struct timeval* star
             }
         }
         if (!found && pg_count < MAX_PROCS) {
-            /* 🚨 [패치] strncpy -> snprintf 로 교체 */
-            snprintf(pg[pg_count].name, sizeof(pg[pg_count].name), "%s", procs[i].name);
+            strncpy(pg[pg_count].name, procs[i].name, 255);
             pg[pg_count].count = 1;
             pg_count++;
         }
@@ -321,8 +319,7 @@ static void handler_status(HttpRequest* req, HttpResponse* res, void* ctx) {
                     while (*p == ' ' || *p == '\t') p++;
                     char* nl = strchr(p, '\n');
                     if (nl) *nl = '\0';
-                    /* 🚨 [패치] strncpy -> snprintf 교체 */
-                    snprintf(cpu_model, sizeof(cpu_model), "%s", p);
+                    strncpy(cpu_model, p, sizeof(cpu_model)-1);
                     break;
                 }
             }
@@ -503,6 +500,7 @@ static void handler_processes(HttpRequest* req, HttpResponse* res, void* ctx) {
     const char* filter = req->query ? hashmap_get_str(req->query, "name") : NULL;
     ProcInfo* procs = calloc(MAX_PROCS, sizeof(ProcInfo));
     if (!procs) {
+        /* 🚀 [에러 방어막] 500 에러 시 Router_sendError 사용 */
         Router_sendError(res, 500, "Internal_Server_Error", "프로세스 조회를 위한 시스템 메모리 할당에 실패했습니다.");
         return;
     }
@@ -512,6 +510,7 @@ static void handler_processes(HttpRequest* req, HttpResponse* res, void* ctx) {
     free(procs);
 
     if (!json) {
+        /* 🚀 [에러 방어막] 500 에러 시 Router_sendError 사용 */
         Router_sendError(res, 500, "Internal_Server_Error", "프로세스 목록 JSON 데이터 생성에 실패했습니다.");
         return;
     }
@@ -531,6 +530,7 @@ static void handler_process_by_pid(HttpRequest* req, HttpResponse* res, void* ct
     const char* path = req->path ? req->path->c_str(req->path) : "/";
     int pid = 0;
     if (sscanf(path, "/processes/%d", &pid) != 1) {
+        /* 🚀 [핵심 수정] 404 에러 시 빈 화면 대신 Router_sendError 발사! (dkdkd 등 문자 입력 시 여기로 떨어짐) */
         Router_sendError(res, 404, "Invalid_PID_Format", "요청하신 프로세스 ID가 유효한 숫자 형식이 아닙니다.");
         return;
     }
@@ -541,6 +541,7 @@ static void handler_process_by_pid(HttpRequest* req, HttpResponse* res, void* ct
 
     FILE* fp = popen(cmd, "r");
     if (!fp) {
+        /* 🚀 [에러 방어막] 500 에러 시 Router_sendError 사용 */
         Router_sendError(res, 500, "Command_Execution_Failed", "시스템 내부 명령어(popen) 실행에 실패했습니다.");
         return;
     }
@@ -554,8 +555,7 @@ static void handler_process_by_pid(HttpRequest* req, HttpResponse* res, void* ct
         if (sscanf(line, "%63s %d %lf %lf %*s %*s %*s %15s %*s %*s %1023[^\n]",
                    p.user, &p.pid, &p.cpu, &p.mem, p.status, cmd_full) >= 5) {
             clean_process_name(p.name, cmd_full);
-
-            /* 🚨 [패치] gcc 경고 지점: snprintf로 교체 */
+            /* 🚀 [수정 완료]: strncpy를 snprintf로 변경 */
             snprintf(p.cmd, sizeof(p.cmd), "%s", cmd_full);
             found = 1;
         }
@@ -563,12 +563,14 @@ static void handler_process_by_pid(HttpRequest* req, HttpResponse* res, void* ct
     pclose(fp);
 
     if (!found) {
+        /* 🚀 [핵심 수정] 404 에러 시 빈 화면 대신 Router_sendError 발사! (없는 PID 입력 시 여기로 떨어짐) */
         Router_sendError(res, 404, "Process_Not_Found", "요청하신 ID의 프로세스를 시스템에서 찾을 수 없거나 이미 종료되었습니다.");
         return;
     }
 
     char* json = build_process_json(&p, 1, &start_t);
     if (!json) {
+        /* 🚀 [에러 방어막] 500 에러 시 Router_sendError 사용 */
         Router_sendError(res, 500, "Internal_Server_Error", "프로세스 상세 정보 JSON 데이터 생성에 실패했습니다.");
         return;
     }
@@ -585,6 +587,7 @@ static void handler_health(HttpRequest* req, HttpResponse* res, void* ctx) {
     struct timeval start_t, end_t;
     gettimeofday(&start_t, NULL);
 
+    /* ✨ 헬스 체크에도 타임스탬프 주입 ✨ */
     char ts[32];
     get_current_timestamp(ts, sizeof(ts));
 
@@ -606,12 +609,12 @@ int main(void) {
     signal(SIGINT,  handle_signal);
     signal(SIGTERM, handle_signal);
 
-    g_loop = event_loop_create();
+    g_loop = new_EventLoop(1024);
     if (!g_loop) return 1;
 
     Router* router = new_Router(NULL);
     if (!router) {
-        RELEASE((Object*)g_loop);
+        RELEASE(g_loop);
         return 1;
     }
 
@@ -622,10 +625,10 @@ int main(void) {
     router->GET(router, "/processes/:id", handler_process_by_pid);
 
     g_server = new_HttpServer(g_loop, router);
-    RELEASE((Object*)router);
+    RELEASE(router);
 
     if (!g_server) {
-        RELEASE((Object*)g_loop);
+        RELEASE(g_loop);
         return 1;
     }
 
@@ -633,11 +636,11 @@ int main(void) {
     event_loop_run(g_loop);
 
     if (g_server) {
-        RELEASE((Object*)g_server);
+        RELEASE(g_server);
         g_server = NULL;
     }
     if (g_loop) {
-        RELEASE((Object*)g_loop);
+        RELEASE(g_loop);
         g_loop = NULL;
     }
 

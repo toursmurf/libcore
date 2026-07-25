@@ -1,12 +1,9 @@
 # ==========================================
 # [1] 시스템 의존성 및 버전 자동 감지
 # ==========================================
-# 🛡️ 기본 OS 환경 변수 획득
-UNAME_S := $(shell uname -s 2>/dev/null || echo Windows_NT)
-
-# 🛡️ OS 및 커널 정보 자동 감지 (macOS 빈칸 출력 에러 완벽 해결!)
-OS_INFO := $(shell if [ -f /etc/os-release ]; then grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d '"' -f 2; else uname -srm; fi)
-KERNEL_INFO := $(shell uname -r 2>/dev/null || echo "Unknown")
+# 🛡️ OS 및 커널 정보 자동 감지
+OS_INFO := $(shell grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d '"' -f 2 || uname -srm)
+KERNEL_INFO := $(shell uname -r)
 
 HAS_URING := $(shell pkg-config --exists liburing 2>/dev/null && echo 1 || echo 0)
 OPENSSL_VER := $(shell pkg-config --modversion openssl 2>/dev/null || echo "Unknown")
@@ -65,67 +62,20 @@ HEAVY_TESTS = \
 CI_TESTS = $(CORE_TESTS) $(HEAVY_TESTS)
 
 # ==========================================
-# [3] 공통 CFLAGS 및 LIBS (크로스 플랫폼 스마트 링킹!)
+# [3] 공통 CFLAGS 및 LIBS
 # ==========================================
-CFLAGS = -Wall -Wextra -Wunused-value -pthread -I$(INC_DIR)
-LIBS = -lcurl -lssl -lcrypto
-
-# 🚀 리눅스 전용 라이브러리 및 기본 DB 경로 추가
-ifeq ($(UNAME_S), Linux)
-    LIBS += -lrt
-    CFLAGS += -I/usr/include/mysql -I/usr/include/mysql/mysql
-    LIBS += -L/usr/lib64/
-endif
-
-# 🚀 MariaDB가 감지된 경우에만 기본 DB 라이브러리 링킹
-ifneq ($(MARIADB_VER_RAW),)
-    LIBS += -lmariadb
-endif
+CFLAGS = -Wall -Wextra -Wunused-value -pthread -I/usr/include/mysql -I/usr/include/mysql/mysql -I$(INC_DIR)
+LIBS = -L/usr/lib64/ -lmariadb -lcurl -lssl -lcrypto -lrt
 
 # ==========================================
 # [4] 환경별 컴파일 옵션 동적 할당
 # ==========================================
-# 🚀 4-A. IO 백엔드 및 OS 분기 자동 감지
-ifeq ($(UNAME_S), Linux)
-    TARGET_OS = Linux
-    ifeq ($(HAS_URING),1)
-        CFLAGS += -DHAS_LIBURING
-        LIBS += -luring
-        BACKEND_STR = io_uring
-    else
-        BACKEND_STR = epoll
-    endif
-else ifeq ($(UNAME_S), Darwin)
-    TARGET_OS = macOS
-    BACKEND_STR = kqueue
-    CFLAGS += -DLIBCORE_USE_KQUEUE
-
-    # 🚀 Homebrew로 설치된 OpenSSL 경로 자동 주입
-    BREW_OPENSSL := $(shell brew --prefix openssl 2>/dev/null)
-    ifneq ($(BREW_OPENSSL),)
-        CFLAGS += -I$(BREW_OPENSSL)/include
-        LIBS += -L$(BREW_OPENSSL)/lib
-    endif
-
-    # 🚀 Homebrew로 설치된 MariaDB 경로 자동 주입 (하드코딩 영구 박멸!)
-    BREW_MARIADB := $(shell brew --prefix mariadb-connector-c 2>/dev/null)
-    ifneq ($(BREW_MARIADB),)
-        CFLAGS += -I$(BREW_MARIADB)/include/mariadb
-        LIBS += -L$(BREW_MARIADB)/lib/mariadb -L$(BREW_MARIADB)/lib
-    endif
-else ifneq (,$(findstring MINGW,$(UNAME_S))$(findstring MSYS,$(UNAME_S))$(findstring CYGWIN,$(UNAME_S)))
-    TARGET_OS = Windows
-    BACKEND_STR = IOCP
-    CFLAGS += -DLIBCORE_USE_IOCP
-    LIBS += -lws2_32 -lmswsock
-else ifeq ($(OS), Windows_NT)
-    TARGET_OS = Windows
-    BACKEND_STR = IOCP
-    CFLAGS += -DLIBCORE_USE_IOCP
-    LIBS += -lws2_32 -lmswsock
-else
-    TARGET_OS = $(UNAME_S)
-    BACKEND_STR = Unknown
+# 🚀 4-A. IO 백엔드 분기
+BACKEND_STR = epoll
+ifeq ($(HAS_URING),1)
+    CFLAGS += -DHAS_LIBURING
+    LIBS += -luring
+    BACKEND_STR = io_uring
 endif
 
 # 🛠️ 4-B. 빌드 모드 및 Sanitizer 동기화 (투트랙 분리 적용!)
@@ -151,9 +101,8 @@ endif
 # 🚀 libcore Build Configuration Banner
 # ==========================================
 $(info =========================================)
-$(info  libcore Build Configuration (v1.6.2 Final))
+$(info  libcore Build Configuration (v1.6 Final) )
 $(info =========================================)
-$(info  Target OS  : $(TARGET_OS))
 $(info  OS Info    : $(OS_INFO))
 $(info  Kernel     : $(KERNEL_INFO))
 $(info  Compiler   : $(CC))
@@ -212,15 +161,15 @@ check_asan:
 	@echo "🔍 ASan/UBSan 설치 여부 확인..."
 	@echo "int main(){return 0;}" | $(CC) -fsanitize=address,undefined -x c - -o /dev/null 2>/dev/null; \
 	if [ $$? -ne 0 ]; then \
-	   echo "❌ [ERROR] libasan, libubsan이 없습니다 (dnf install libasan libubsan)"; \
-	   exit 1; \
+		echo "❌ [ERROR] libasan, libubsan이 없습니다 (dnf install libasan libubsan)"; \
+		exit 1; \
 	fi
 
 check_valgrind:
 	@echo "🔍 Valgrind 설치 여부 확인..."
 	@if ! command -v valgrind > /dev/null; then \
-	   echo "❌ [ERROR] Valgrind가 없습니다 (dnf install valgrind)"; \
-	   exit 1; \
+		echo "❌ [ERROR] Valgrind가 없습니다 (dnf install valgrind)"; \
+		exit 1; \
 	fi
 
 # ----- ⚡ [타겟 1] 쾌속 사냥 (ASan/UBSan 전용 - 전체 테스트 25개) -----
@@ -235,14 +184,14 @@ ci-asan: check_asan clean_soft
 	@for t in $(CI_TESTS); do install -m 755 $(EXAMPLE_DIR)/$$t $(BIN_DIR)/asan/; done
 	@ASAN_PASS=0; ASAN_FAIL=0; \
 	for t in $(CI_TESTS); do \
-	   printf "▶ %-40s " $$t; \
-	   if ./$(BIN_DIR)/asan/$$t > /dev/null 2>&1; then \
-	      printf "\033[32m[PASS] ASan\033[0m\n"; \
-	      ASAN_PASS=$$((ASAN_PASS+1)); \
-	   else \
-	      printf "\033[31m[FAIL] ASan Error\033[0m\n"; \
-	      ASAN_FAIL=$$((ASAN_FAIL+1)); \
-	   fi; \
+		printf "▶ %-40s " $$t; \
+		if ./$(BIN_DIR)/asan/$$t > /dev/null 2>&1; then \
+			printf "\033[32m[PASS] ASan\033[0m\n"; \
+			ASAN_PASS=$$((ASAN_PASS+1)); \
+		else \
+			printf "\033[31m[FAIL] ASan Error\033[0m\n"; \
+			ASAN_FAIL=$$((ASAN_FAIL+1)); \
+		fi; \
 	done; \
 	echo "✅ ASan 결과 | PASS: $$ASAN_PASS  ❌ FAIL: $$ASAN_FAIL"; \
 	START=$$(cat .ci_asan_timer); END=$$(date +%s); ELAPSED=$$((END - START)); \
@@ -262,14 +211,14 @@ ci-valgrind: check_valgrind clean_soft
 	@for t in $(CORE_TESTS); do install -m 755 $(EXAMPLE_DIR)/$$t $(BIN_DIR)/valgrind/; done
 	@VAL_PASS=0; VAL_FAIL=0; \
 	for t in $(CORE_TESTS); do \
-	   printf "▶ %-40s " $$t; \
-	   if valgrind --leak-check=full --error-exitcode=1 --quiet ./$(BIN_DIR)/valgrind/$$t > /dev/null 2>&1; then \
-	      printf "\033[32m[PASS] 0 Bytes Leak\033[0m\n"; \
-	      VAL_PASS=$$((VAL_PASS+1)); \
-	   else \
-	      printf "\033[31m[FAIL] Leak Detected!\033[0m\n"; \
-	      VAL_FAIL=$$((VAL_FAIL+1)); \
-	   fi; \
+		printf "▶ %-40s " $$t; \
+		if valgrind --leak-check=full --error-exitcode=1 --quiet ./$(BIN_DIR)/valgrind/$$t > /dev/null 2>&1; then \
+			printf "\033[32m[PASS] 0 Bytes Leak\033[0m\n"; \
+			VAL_PASS=$$((VAL_PASS+1)); \
+		else \
+			printf "\033[31m[FAIL] Leak Detected!\033[0m\n"; \
+			VAL_FAIL=$$((VAL_FAIL+1)); \
+		fi; \
 	done; \
 	echo "✅ Valgrind 결과 | PASS: $$VAL_PASS  ❌ FAIL: $$VAL_FAIL"; \
 	START=$$(cat .ci_val_timer); END=$$(date +%s); ELAPSED=$$((END - START)); \
