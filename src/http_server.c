@@ -1,9 +1,12 @@
-#define _GNU_SOURCE 
+#define _GNU_SOURCE
+/* 단일 HTTP 페이로드 최대 크기: 10MB (OOM 방어) */
+#define MAX_HTTP_BODY_SIZE (10 * 1024 * 1024)
 #include "http_server.h"
 #include "tcp_socket.h"
 #include "ws_protocol.h"
 #include "string_obj.h"
 #include "logger.h" /* 🚨 로그 추적을 위해 명시적 추가 */
+#include "event_loop_internal.h" /* 🚀 [신규 패치] V1.6.x 3대 OS 통합 API 접근을 위한 핵심 헤더! */
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,7 +26,7 @@ static void append_out_buf(HttpConnection* conn, const uint8_t* data, size_t len
         while (new_cap < conn->out_len + len) new_cap *= 2;
         char* new_buf = (char*)realloc(conn->out_buf, new_cap);
         if (!new_buf) return;
-        conn->out_buf = (char *)new_buf; 
+        conn->out_buf = (char *)new_buf;
         conn->out_cap = new_cap;
     }
     memcpy(conn->out_buf + conn->out_len, data, len);
@@ -38,7 +41,7 @@ void HttpConnection_flush(HttpConnection* conn) {
 
     while (conn->out_len > 0) {
         ssize_t sent = conn->sock->send(conn->sock, conn->out_buf, conn->out_len, NULL, 0);
-        
+
         if (sent > 0) {
             if ((size_t)sent < conn->out_len) {
                 memmove(conn->out_buf, conn->out_buf + sent, conn->out_len - sent);
@@ -47,11 +50,11 @@ void HttpConnection_flush(HttpConnection* conn) {
                 conn->out_len = 0;
                 break;
             }
-        } 
+        }
         else if (sent == SOCKET_WOULD_BLOCK) {
-            break; 
-        } 
-        else if (sent <= 0) { 
+            break;
+        }
+        else if (sent <= 0) {
             if (sent < 0 && errno == EINTR) continue;
             if (conn->server && conn->server->loop) {
                 conn_shutdown(conn, conn->server->loop, conn->sock);
@@ -63,10 +66,12 @@ void HttpConnection_flush(HttpConnection* conn) {
     if (conn->server && conn->server->loop) {
         EventLoop* loop = conn->server->loop;
         if (conn->out_len > 0 && !conn->is_write_registered) {
-            loop->addSocket(loop, conn->sock, EV_READ | EV_WRITE);
+            /* 🚀 [패치] 구형 addSocket -> 신형 event_backend_modify */
+            event_backend_modify(loop, conn->sock, EVENT_READ | EVENT_WRITE);
             conn->is_write_registered = true;
         } else if (conn->out_len == 0 && conn->is_write_registered) {
-            loop->addSocket(loop, conn->sock, EV_READ);
+            /* 🚀 [패치] 구형 addSocket -> 신형 event_backend_modify */
+            event_backend_modify(loop, conn->sock, EVENT_READ);
             conn->is_write_registered = false;
         }
     }
@@ -128,16 +133,16 @@ HttpConnection* new_HttpConnection(Socket* client_sock, HttpServer* server) {
     self->state = HTTP_STATE_READ_HEADER;
     self->mode = CONN_MODE_HTTP;
     self->is_closing = false;
-    self->shutdown_done = false; 
+    self->shutdown_done = false;
     self->keep_alive = true;
     self->header_len = 0;
-    self->body_read = 0; 
-    
+    self->body_read = 0;
+
     self->out_buf = NULL;
     self->out_len = 0;
     self->out_cap = 0;
     self->is_write_registered = false;
-    
+
     self->ws_user_data = NULL;
 
     return self;
@@ -152,8 +157,12 @@ static void conn_shutdown(HttpConnection* conn, EventLoop* loop, Socket* s) {
     }
     conn->is_closing = true;
     remove_conn_from_server(conn);
-    loop->delSocket(loop, s);
-    loop->deferRelease(loop, (Object*)conn);
+
+    /* 🚀 [패치] 구형 delSocket -> 신형 event_backend_remove */
+    event_backend_remove(loop, s);
+
+    /* 🚀 [패치] 구형 deferRelease -> ARC 표준 RELEASE 통일 */
+    RELEASE((Object*)conn);
 }
 
 static void HttpConnection_parse_headers(HttpConnection* conn, char* header_end) {
@@ -208,7 +217,7 @@ int HttpConnection_ws_send(HttpConnection* conn, const char* msg) {
 
 void HttpConnection_ws_close(HttpConnection* conn) {
     if (!conn || conn->mode != CONN_MODE_WS || conn->is_closing) return;
-    
+
     conn->is_closing = true;
     if (conn->sock && conn->sock->is_open) {
         static const uint8_t close_frame[2] = { 0x88, 0x00 };
@@ -218,6 +227,8 @@ void HttpConnection_ws_close(HttpConnection* conn) {
 }
 
 static int HttpConnection_process_ws_frames(HttpConnection* conn, EventLoop* loop, Socket* s) {
+    /* ws_decode_frame2에서 MAX_WS_PAYLOAD_SIZE(1MB)로 1차 차단됨
+     * 여기서는 실제 메시지 처리 크기(8KB) 상한 적용 — 스택 보호 */
     char payload[8192];
 
     while (conn->header_len > 0) {
@@ -249,7 +260,7 @@ static int HttpConnection_process_ws_frames(HttpConnection* conn, EventLoop* loo
             if (plen <= 125) { pong[1] = (uint8_t)plen; }
             else { pong[1] = 126; pong[2] = (plen >> 8) & 0xFF; pong[3] = plen & 0xFF; hlen = 4; }
             memcpy(pong + hlen, payload, plen);
-            
+
             append_out_buf(conn, pong, hlen + plen);
             HttpConnection_flush(conn);
         } else if (conn->server && conn->server->on_ws_message) {
@@ -364,7 +375,7 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
                 else if (strcmp(method_str, "PUT") == 0) conn->req->method = HTTP_PUT;
                 else if (strcmp(method_str, "DELETE") == 0) conn->req->method = HTTP_DELETE;
                 else conn->req->method = HTTP_UNKNOWN;
-                
+
                 conn->req->path = new_String(path_str);
             } else {
                 conn->req->method = HTTP_GET;
@@ -376,17 +387,33 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
             const char* conn_hdr = hashmap_get_str(conn->req->headers, "connection");
             conn->keep_alive = !(conn_hdr && strcasecmp(conn_hdr, "close") == 0);
 
-            int content_length = 0;
+            long content_length = 0;
             char* cl_ptr = strcasestr(conn->header_buf, "Content-Length:");
             if (cl_ptr && cl_ptr < header_end) {
-                content_length = atoi(cl_ptr + 15);
+                char* endptr = NULL;
+                long cl_val = strtol(cl_ptr + 15, &endptr, 10);
+                /* [방어 1] 음수 차단 */
+                if (cl_val < 0) {
+                    const char* err_400 = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                    s->send(s, err_400, strlen(err_400), NULL, 0);
+                    conn_shutdown(conn, loop, s);
+                    return;
+                }
+                /* [방어 2] 상한(10MB) 초과 차단 */
+                if (cl_val > MAX_HTTP_BODY_SIZE) {
+                    const char* err_413 = "HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                    s->send(s, err_413, strlen(err_413), NULL, 0);
+                    conn_shutdown(conn, loop, s);
+                    return;
+                }
+                content_length = (endptr != cl_ptr + 15) ? cl_val : 0;
             }
 
             size_t header_block_size = (header_end + 4) - conn->header_buf;
             size_t body_in_buf = conn->header_len - header_block_size;
 
             if (content_length > 0) {
-                conn->req->body = calloc(1, content_length + 1);
+                conn->req->body = calloc(1, (size_t)content_length + 1);
                 if (!conn->req->body) {
                     conn_shutdown(conn, loop, s);
                     return;
@@ -410,8 +437,8 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
 
                 if (total_read < (size_t)content_length) {
                     conn->state = HTTP_STATE_READ_BODY;
-                    conn->body_read = total_read; 
-                    continue; 
+                    conn->body_read = total_read;
+                    continue;
                 }
             } else {
                 size_t consumed = header_block_size;
@@ -427,18 +454,24 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
 
         if (conn->state == HTTP_STATE_READ_BODY) {
             const char* cl_str = hashmap_get_str(conn->req->headers, "content-length");
-            int content_length = cl_str ? atoi(cl_str) : 0;
-            size_t total_read = conn->body_read; 
+            long content_length = 0;
+            if (cl_str) {
+                char* endptr = NULL;
+                long cl_val = strtol(cl_str, &endptr, 10);
+                content_length = (endptr != cl_str && cl_val > 0 && cl_val <= MAX_HTTP_BODY_SIZE)
+                                 ? cl_val : 0;
+            }
+            size_t total_read = conn->body_read;
 
             while (total_read < (size_t)content_length) {
                 char temp[4096];
-                size_t to_read = content_length - total_read;
+                size_t to_read = (size_t)content_length - total_read;
                 if (to_read > sizeof(temp)) to_read = sizeof(temp);
 
                 ssize_t rn = s->recv(s, temp, to_read, NULL, 0);
                 if (rn == SOCKET_WOULD_BLOCK) {
-                    conn->body_read = total_read; 
-                    return; 
+                    conn->body_read = total_read;
+                    return;
                 } else if (rn <= 0) {
                     if (rn < 0 && errno == EINTR) continue;
                     conn_shutdown(conn, loop, s);
@@ -450,7 +483,7 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
             }
 
             conn->state = HTTP_STATE_READ_HEADER;
-            conn->body_read = 0; 
+            conn->body_read = 0;
         }
 
         if (conn->router && conn->router->dispatch) {
@@ -498,7 +531,8 @@ static void HttpServer_finalize(Object* obj) {
     while (curr) {
         HttpConnection* next = curr->next;
         if (self->loop && curr->sock) {
-            self->loop->delSocket(self->loop, curr->sock);
+            /* 🚀 [패치] 구형 delSocket -> 신형 event_backend_remove */
+            event_backend_remove(self->loop, curr->sock);
         }
         curr->server = NULL;
         RELEASE((Object*)curr);
@@ -526,7 +560,7 @@ static void on_accept_cb(Socket* server_sock, void* loop_ptr) {
         Socket* client_sock = (Socket*)((TcpSocket*)server->server_sock)->accept(
             (TcpSocket*)server->server_sock, client_ip, &client_port);
 
-        if (!client_sock) break; 
+        if (!client_sock) break;
 
         int flag = 1;
         setsockopt(client_sock->fd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int));
@@ -547,7 +581,8 @@ static void on_accept_cb(Socket* server_sock, void* loop_ptr) {
         client_sock->on_readable = HttpConnection_on_readable;
         client_sock->on_writable = HttpConnection_on_writable;
 
-        loop->addSocket(loop, client_sock, EV_READ);
+        /* 🚀 [패치] 구형 addSocket -> 신형 event_backend_add */
+        event_backend_add(loop, client_sock, EVENT_READ);
     }
 }
 
@@ -563,13 +598,15 @@ static int impl_listen(HttpServer* self, int port) {
     self->server_sock->user_data = self;
     self->server_sock->on_readable = on_accept_cb;
 
-    self->loop->addSocket(self->loop, self->server_sock, EV_READ);
+    /* 🚀 [패치] 구형 addSocket -> 신형 event_backend_add */
+    event_backend_add(self->loop, self->server_sock, EVENT_READ);
     return 0;
 }
 
 static void impl_stop(HttpServer* self) {
     if (self && self->loop) {
-        self->loop->stop(self->loop);
+        /* 🚀 [패치] 구형 stop -> 공용 API event_loop_stop */
+        event_loop_stop(self->loop);
     }
 }
 

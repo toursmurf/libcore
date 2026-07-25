@@ -1,395 +1,466 @@
-#define _GNU_SOURCE
-#include "event_loop.h"
-#include "logger.h"
-#include <sys/epoll.h>
-#include <poll.h>
+#include "event_loop_internal.h"
 #include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
-#include <string.h>
 #include <stdio.h>
+#include <unistd.h>
+#include <sys/time.h>
 
-extern Logger* logger;
-/* 🚨 [패치] 로거가 NULL일 경우 조용히 무시하여 Segfault 원천 차단 */
-#define LOG_D(fmt, ...) do { if (logger) LOG_DEBUG(logger, fmt, ##__VA_ARGS__); } while(0)
-#define LOG_I(fmt, ...) do { if (logger) LOG_INFO(logger,  fmt, ##__VA_ARGS__); } while(0)
-#define LOG_W(fmt, ...) do { if (logger) LOG_WARN(logger,  fmt, ##__VA_ARGS__); } while(0)
-
-/* ────────────────────────────────────────
- * [0] 지연 소각 (Deferred Release) 구현
- * ──────────────────────────────────────── */
-static void impl_deferRelease(EventLoop* self, Object* obj) {
-    if (!self || !obj) return;
-    self->deferred_cleanup_list->add(self->deferred_cleanup_list, obj);
-    RELEASE(obj);
+static uint64_t get_current_ms(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (uint64_t)(tv.tv_sec) * 1000 + (uint64_t)(tv.tv_usec) / 1000;
 }
 
-/* ────────────────────────────────────────
- * [1] io_uring 전용 로직 (HAS_LIBURING 활성화 시)
- * ──────────────────────────────────────── */
-#ifdef HAS_LIBURING
-
-static bool detect_uring(void) {
-    struct io_uring ring;
-    int ret = io_uring_queue_init(1, &ring, 0);
-    if (ret == 0) {
-        io_uring_queue_exit(&ring);
-        return true;
-    }
-    return false;
-}
-
-static uint32_t map_events_to_poll(EventMask mask) {
-    uint32_t events = 0;
-    if (mask & EV_READ)  events |= POLLIN;
-    if (mask & EV_WRITE) events |= POLLOUT;
-    events |= (POLLERR | POLLHUP);
-    return events;
-}
-
-static EventMask map_poll_to_events(uint32_t events) {
-    EventMask mask = 0;
-    if (events & POLLIN)               mask |= EV_READ;
-    if (events & POLLOUT)              mask |= EV_WRITE;
-    if (events & (POLLERR | POLLHUP))  mask |= EV_ERROR;
-    return mask;
-}
-
-static int uring_poll_impl(EventLoop* self, int timeout_ms) {
-    struct io_uring_cqe *cqe;
-    unsigned head;
-    int count = 0;
-    int rearm_count = 0;
-
-    struct __kernel_timespec ts = {
-        .tv_sec  = timeout_ms / 1000,
-        .tv_nsec = (timeout_ms % 1000) * 1000000
-    };
-
-    int ret = io_uring_wait_cqe_timeout(&self->ring, &cqe, &ts);
-    if (ret < 0) return ret;
-
-    io_uring_for_each_cqe(&self->ring, head, cqe) {
-        uint64_t user_data = cqe->user_data;
-        uint32_t fd = (uint32_t)(user_data & 0xFFFFFFFF);
-        uint32_t gen = (uint32_t)(user_data >> 32);
-
-        if (fd < 65536) {
-            PollContext* ctx = &self->ctx_pool[fd];
-
-            if (ctx->sock != NULL && ctx->generation == gen) {
-                Socket* sock = ctx->sock;
-                RETAIN((Object*)sock);
-
-                EventMask triggered = map_poll_to_events(cqe->res);
-
-                if (sock->is_open && (triggered & EV_READ)  && sock->on_readable) {
-                    sock->on_readable(sock, self);
-                }
-                if (sock->is_open && (triggered & EV_WRITE) && sock->on_writable) {
-                    sock->on_writable(sock, self);
-                }
-                if (sock->is_open && (triggered & EV_ERROR) && sock->on_error) {
-                    sock->on_error(sock, self);
-                }
-
-                if (sock->is_open && self->ctx_pool[fd].sock == sock) {
-                    bool needs_rearm = true;
-                    #ifdef IORING_CQE_F_MORE
-                    if (cqe->flags & IORING_CQE_F_MORE) needs_rearm = false;
-                    #endif
-
-                    if (needs_rearm) {
-                        EventMask rearm_mask = 0;
-                        if (sock->on_readable) rearm_mask |= EV_READ;
-                        if (sock->on_writable) rearm_mask |= EV_WRITE;
-
-                        struct io_uring_sqe *sqe = io_uring_get_sqe(&self->ring);
-                        if (sqe) {
-                            io_uring_prep_poll_add(sqe, sock->fd, map_events_to_poll(rearm_mask));
-                            #ifdef IORING_POLL_ADD_MULTI
-                            sqe->len |= IORING_POLL_ADD_MULTI;
-                            #endif
-                            io_uring_sqe_set_data(sqe, (void*)(uintptr_t)user_data);
-                            rearm_count++;
-                        }
-                    }
-                }
-                RELEASE((Object*)sock);
-            }
-        }
-        count++;
-    }
-
-    io_uring_cq_advance(&self->ring, count);
-
-    if (rearm_count > 0) {
-        io_uring_submit(&self->ring);
-    }
-    return count;
-}
-
-static int uring_addSocket_impl(EventLoop* self, Socket* sock, EventMask mask) {
-    if (!self || !sock || sock->fd < 0 || sock->fd >= 65536) return -1;
-
-    struct io_uring_sqe *sqe = io_uring_get_sqe(&self->ring);
-    if (!sqe) return -1;
-
-    PollContext* ctx = &self->ctx_pool[sock->fd];
-    if (ctx->sock == NULL) {
-        ctx->sock = sock;
-        ctx->fd = sock->fd;
-        RETAIN((Object*)ctx->sock);
-    }
-
-    io_uring_prep_poll_add(sqe, sock->fd, map_events_to_poll(mask));
-    #ifdef IORING_POLL_ADD_MULTI
-    sqe->len |= IORING_POLL_ADD_MULTI;
-    #endif
-
-    uint64_t user_data = ((uint64_t)ctx->generation << 32) | (uint64_t)sock->fd;
-    io_uring_sqe_set_data(sqe, (void*)(uintptr_t)user_data);
-
-    io_uring_submit(&self->ring);
-    return 0;
-}
-
-static int uring_delSocket_impl(EventLoop* self, Socket* sock) {
-    if (!self || !sock || sock->fd < 0 || sock->fd >= 65536) return -1;
-
-    struct io_uring_sqe *sqe = io_uring_get_sqe(&self->ring);
-    if (!sqe) return -1;
-
-    io_uring_prep_poll_remove(sqe, (__u64)(uintptr_t)sock);
-    io_uring_submit(&self->ring);
-
-    PollContext* ctx = &self->ctx_pool[sock->fd];
-    if (ctx->sock == sock) {
-        ctx->sock = NULL;
-        ctx->generation++;
-        RELEASE((Object*)sock);
-    }
-    return 0;
-}
-
-#endif /* HAS_LIBURING */
-
-
-/* ────────────────────────────────────────
- * [2] epoll 전용 로직 및 공통 유틸리티
- * ──────────────────────────────────────── */
-
-static uint32_t map_events_to_epoll(EventMask mask) {
-    uint32_t events = 0;
-    if (mask & EV_READ)  events |= EPOLLIN;
-    if (mask & EV_WRITE) events |= EPOLLOUT;
-    events |= (EPOLLERR | EPOLLHUP | EPOLLET); /* 🚨 부장님이 짚어주신 EPOLLET 적용부 */
-    return events;
-}
-
-static EventMask map_epoll_to_events(uint32_t events) {
-    EventMask mask = 0;
-    if (events & EPOLLIN)               mask |= EV_READ;
-    if (events & EPOLLOUT)              mask |= EV_WRITE;
-    if (events & (EPOLLERR | EPOLLHUP)) mask |= EV_ERROR;
-    return mask;
-}
-
+/* =========================================================
+ * 🚨 ARC 소멸자(Finalizer) 정의
+ * ========================================================= */
 static void EventLoop_finalize(Object* obj) {
     EventLoop* self = (EventLoop*)obj;
-
-    if (self->deferred_cleanup_list) {
-        RELEASE(self->deferred_cleanup_list);
-    }
-
-    if (self->ctx_pool) {
-        for (int i = 0; i < 65536; i++) {
-            if (self->ctx_pool[i].sock != NULL) {
-                RELEASE((Object*)self->ctx_pool[i].sock);
-                self->ctx_pool[i].sock = NULL;
-            }
-        }
-        free(self->ctx_pool);
-        self->ctx_pool = NULL;
-    }
-
-#ifdef HAS_LIBURING
-    if (self->backend == EL_BACKEND_URING) {
-        io_uring_queue_exit(&self->ring);
-    } else
-#endif
-    {
-        if (self->epoll_fd >= 0) close(self->epoll_fd);
-    }
-
-    if (self->event_buffer) {
-        free(self->event_buffer);
-        self->event_buffer = NULL;
+    if (self) {
+        event_backend_destroy(self); /* 기존 destroy 로직이 이곳으로 흡수 */
     }
 }
 
-static int epoll_addSocket_impl(EventLoop* self, Socket* sock, EventMask mask) {
-    if (!self || !sock || sock->fd < 0 || sock->fd >= 65536) return -1;
-
-    PollContext* ctx = &self->ctx_pool[sock->fd];
-    bool retained_now = false;
-
-    if (ctx->sock == NULL) {
-        ctx->sock = sock;
-        ctx->fd = sock->fd;
-        RETAIN((Object*)ctx->sock);
-        retained_now = true;
-    }
-
-    struct epoll_event ev;
-    ev.events = map_events_to_epoll(mask);
-    ev.data.u64 = ((uint64_t)ctx->generation << 32) | (uint64_t)sock->fd;
-
-    if (epoll_ctl(self->epoll_fd, EPOLL_CTL_ADD, sock->fd, &ev) == -1) {
-        if (errno == EEXIST) {
-            if (epoll_ctl(self->epoll_fd, EPOLL_CTL_MOD, sock->fd, &ev) == 0) {
-                return 0;
-            }
-        }
-
-        if (retained_now) {
-            ctx->sock = NULL;
-            ctx->generation++;
-            RELEASE((Object*)sock);
-        }
-        return -1;
-    }
-    return 0;
-}
-
-static int epoll_delSocket_impl(EventLoop* self, Socket* sock) {
-    if (!self || !sock || sock->fd < 0 || sock->fd >= 65536) return -1;
-
-    epoll_ctl(self->epoll_fd, EPOLL_CTL_DEL, sock->fd, NULL);
-
-    PollContext* ctx = &self->ctx_pool[sock->fd];
-    if (ctx->sock == sock) {
-        ctx->sock = NULL;
-        ctx->generation++;
-        RELEASE((Object*)sock);
-    }
-    return 0;
-}
-
-static int epoll_poll_impl(EventLoop* self, int timeout_ms) {
-    int nfds = epoll_wait(self->epoll_fd, self->event_buffer, self->max_events, timeout_ms);
-
-    if (nfds < 0) return nfds;
-
-    for (int i = 0; i < nfds; i++) {
-        uint64_t ud = self->event_buffer[i].data.u64;
-        uint32_t fd = (uint32_t)(ud & 0xFFFFFFFF);
-        uint32_t gen = (uint32_t)(ud >> 32);
-
-        if (fd < 65536) {
-            PollContext* ctx = &self->ctx_pool[fd];
-
-            if (ctx->sock != NULL && ctx->generation == gen) {
-                Socket* sock = ctx->sock;
-                RETAIN((Object*)sock);
-
-                EventMask triggered = map_epoll_to_events(self->event_buffer[i].events);
-
-                if (sock->is_open && (triggered & EV_READ)  && sock->on_readable) {
-                    sock->on_readable(sock, self);
-                }
-                if (sock->is_open && (triggered & EV_WRITE) && sock->on_writable) {
-                    sock->on_writable(sock, self);
-                }
-                if (sock->is_open && (triggered & EV_ERROR) && sock->on_error) {
-                    sock->on_error(sock, self);
-                }
-
-                RELEASE((Object*)sock);
-            }
-        }
-    }
-    return nfds;
-}
-
-void event_loop_run(EventLoop* self) {
-    if (!self) return;
-
-    LOG_I("[LOOP] Event loop active. (Backend: %s). Press ^C to stop.",
-          self->backend == EL_BACKEND_URING ? "io_uring" : "epoll");
-
-    while (self->is_running) {
-        int ret = self->poll(self, 100);
-        if (ret < 0 && (errno == EINTR || ret == -ETIME)) continue;
-
-        self->deferred_cleanup_list->clear(self->deferred_cleanup_list);
-    }
-    LOG_W("[LOOP] Event loop exit signal received.");
-}
-
-static void EventLoop_stop_impl(EventLoop* self) {
-    if (self) self->is_running = false;
-}
-
-static const Class _eventLoopClass = {
-    .name     = "EventLoop",
-    .size     = sizeof(EventLoop),
+static const Class _EventLoop_Class = {
+    .name = "EventLoop",
+    .size = sizeof(EventLoop),
     .finalize = EventLoop_finalize
 };
 
-EventLoop* new_EventLoop(int max_events) {
-    EventLoop* self = (EventLoop*)calloc(1, sizeof(EventLoop));
-    if (!self) return NULL;
-    Object_Init((Object*)self, &_eventLoopClass);
+/* =========================================================
+ * 공용 외부 API (Front API) 구현부
+ * ========================================================= */
+ /* 래퍼 함수 */
+ static int _addSocket(EventLoop* self,
+     Socket* sock, uint32_t mask) {
+     return event_backend_add(self, sock, mask);
+ }
+ static int _delSocket(EventLoop* self,
+     Socket* sock) {
+     return event_backend_remove(self, sock);
+ }
+ static void _poll(EventLoop* self,
+     int timeout_ms) {
+     LibcoreEvent events[64];
+     event_backend_wait(self, events, 64,
+         timeout_ms);
+ }
+static void _stop(EventLoop* self) {
+    if (self) self->running = false;
+}
 
-    self->is_running = true;
-    self->max_events = (max_events > 0) ? max_events : 64;
+EventLoop* event_loop_create(void) {
+    EventLoop* loop = calloc(1, sizeof(EventLoop));
+    if (!loop) return NULL;
 
-    self->ctx_pool = (PollContext*)calloc(65536, sizeof(PollContext));
-    self->deferred_cleanup_list = new_ArrayList(64);
+    /* 🚨 Object_Init을 통해 ARC 체계에 정식 편입 */
+    Object_Init((Object*)loop, &_EventLoop_Class);
 
-    if (!self->ctx_pool || !self->deferred_cleanup_list) {
-        RELEASE(self);
+    loop->running = 0;
+    loop->thread_id = 0;
+   loop->addSocket = _addSocket;
+    loop->delSocket = _delSocket;
+    loop->poll      = _poll;
+    loop->stop      = _stop;
+    loop->addTimer  = NULL;
+    loop->removeTimer  = NULL;
+    if (event_backend_init(loop) < 0) {
+        RELEASE((Object*)loop); /* 🚨 실패 시에도 ARC 해제 규격 통일 */
         return NULL;
     }
+    return loop;
+}
 
-#ifdef HAS_LIBURING
-    if (detect_uring()) {
-        self->backend = EL_BACKEND_URING;
-        int ret = io_uring_queue_init(self->max_events, &self->ring, 0);
-        if (ret < 0) {
-            RELEASE(self);
-            return NULL;
+/* 🚨 기존 event_loop_destroy 함수는 삭제됨 (RELEASE가 대신함) */
+
+void event_loop_stop(EventLoop* loop) {
+    if (loop) {
+        loop->running = 0;
+    }
+}
+
+int event_loop_run(EventLoop* loop) {
+    if (!loop) return -1;
+    loop->running = 1;
+
+    LibcoreEvent events[64];
+    while (loop->running) {
+        int n = event_backend_wait(loop, events, 64, 1000);
+        if (n < 0) break;
+
+        for (int i = 0; i < n; i++) {
+            SocketContext* ctx = events[i].ctx;
+            if (!ctx || !ctx->sock) continue;
+            Socket* sock = ctx->sock;
+
+            /* CLOSE/ERROR 는 on_readable 로 전달 (연결 종료 처리) */
+            if (events[i].mask & (EVENT_CLOSE | EVENT_ERROR)) {
+                if (sock->on_readable)
+                    sock->on_readable(sock, loop);
+                continue;
+            }
+            if ((events[i].mask & EVENT_READ) && sock->on_readable)
+                sock->on_readable(sock, loop);
+            if ((events[i].mask & EVENT_WRITE) && sock->on_writable)
+                sock->on_writable(sock, loop);
         }
-        self->addSocket   = uring_addSocket_impl;
-        self->delSocket   = uring_delSocket_impl;
-        self->poll        = uring_poll_impl;
-        self->addTimer    = NULL;
-        self->removeTimer = NULL;
-    } else
-#endif
-    {
-        self->backend = EL_BACKEND_EPOLL;
-        self->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
-        if (self->epoll_fd < 0) {
-            RELEASE(self);
-            return NULL;
-        }
-        self->event_buffer = (struct epoll_event*)calloc(self->max_events, sizeof(struct epoll_event));
-        if (!self->event_buffer) {
-            RELEASE(self);
-            return NULL;
-        }
-        self->addSocket   = epoll_addSocket_impl;
-        self->delSocket   = epoll_delSocket_impl;
-        self->poll        = epoll_poll_impl;
-        self->addTimer    = NULL;
-        self->removeTimer = NULL;
+    }
+    return 0;
+}
+
+
+/* =========================================================
+ * 🪟 Windows: IOCP Backend (Proactor)
+ * ========================================================= */
+#if defined(LIBCORE_USE_IOCP)
+
+static void socket_context_try_destroy(SocketContext* ctx) {
+    if (ctx && ctx->closing && ctx->pending_io == 0) {
+        free(ctx);
+    }
+}
+
+int event_backend_init(EventLoop* loop) {
+    loop->impl = calloc(1, sizeof(struct EventLoopImpl));
+    if (!loop->impl) goto fail;
+
+    loop->impl->iocp_handle = NULL;
+    loop->impl->iocp_handle = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+    if (!loop->impl->iocp_handle) goto fail;
+    return 0;
+fail:
+    event_backend_destroy(loop);
+    return -1;
+}
+
+int event_backend_add(EventLoop* loop, Socket* sock, uint32_t mask) {
+    if (!loop || !loop->impl || !sock) return -1;
+    if (sock->fd < 0 || sock->fd >= 65536) return -1;
+
+    SocketContext* ctx = calloc(1, sizeof(SocketContext));
+    if (!ctx) return -1;
+    ctx->sock = sock;
+
+    HANDLE h = CreateIoCompletionPort((HANDLE)(uintptr_t)sock->fd,
+                                      loop->impl->iocp_handle,
+                                      (ULONG_PTR)ctx, 0);
+    if (!h) {
+        free(ctx);
+        return -1;
     }
 
-    self->deferRelease = impl_deferRelease;
-    self->run  = event_loop_run;
-    self->stop = EventLoop_stop_impl;
+    loop->impl->ctx_map[sock->fd] = ctx;
 
-    return self;
+    if (mask & EVENT_READ) {
+        ctx->pending_io++;
+    }
+    return 0;
 }
+
+int event_backend_modify(EventLoop* loop, Socket* sock, uint32_t mask) {
+    if (!loop || !loop->impl || !sock) return -1;
+    if (sock->fd < 0 || sock->fd >= 65536) return -1;
+
+    SocketContext* ctx = loop->impl->ctx_map[sock->fd];
+    if (!ctx) return -1;
+
+    if (mask & EVENT_WRITE) {
+        ctx->pending_io++;
+    }
+    return 0;
+}
+
+int event_backend_remove(EventLoop* loop, Socket* sock) {
+    if (!loop || !loop->impl || !sock) return -1;
+    if (sock->fd < 0 || sock->fd >= 65536) return -1;
+
+    SocketContext* ctx = loop->impl->ctx_map[sock->fd];
+    if (!ctx) return -1;
+
+    ctx->closing = true;
+    loop->impl->ctx_map[sock->fd] = NULL;
+    socket_context_try_destroy(ctx);
+    return 0;
+}
+
+int event_backend_wait(EventLoop* loop, LibcoreEvent* events, int max_events, int timeout_ms) {
+    if (!loop || !loop->impl || !events || max_events <= 0) return -1;
+
+    DWORD bytes_transferred = 0;
+    ULONG_PTR completion_key = 0;
+    LPOVERLAPPED overlapped = NULL;
+
+    BOOL res = GetQueuedCompletionStatus(loop->impl->iocp_handle,
+                                         &bytes_transferred,
+                                         &completion_key,
+                                         &overlapped,
+                                         timeout_ms);
+
+    if (!res && overlapped == NULL) {
+        return 0; /* 타임아웃 */
+    }
+
+    SocketContext* ctx = (SocketContext*)completion_key;
+    if (ctx) {
+        events[0].ctx = ctx;
+        events[0].mask = 0;
+        events[0].timestamp_ms = get_current_ms();
+        events[0].transferred = (size_t)bytes_transferred;
+
+        ctx->pending_io--;
+
+        if (!res || bytes_transferred == 0) {
+            events[0].mask |= (EVENT_CLOSE | EVENT_ERROR);
+        } else {
+            /* V1.x 단순화 모델: 읽기/쓰기 완료 시 기본 플래그 매핑 */
+            events[0].mask |= EVENT_READ;
+        }
+
+        socket_context_try_destroy(ctx);
+        return 1;
+    }
+    return 0;
+}
+
+void event_backend_destroy(EventLoop* loop) {
+    if (loop && loop->impl) {
+        if (loop->impl->iocp_handle) CloseHandle(loop->impl->iocp_handle);
+
+        for (int i = 0; i < 65536; i++) {
+            if (loop->impl->ctx_map[i]) {
+                free(loop->impl->ctx_map[i]);
+                loop->impl->ctx_map[i] = NULL;
+            }
+        }
+        free(loop->impl);
+        loop->impl = NULL;
+    }
+}
+
+
+/* =========================================================
+ * 🍎 macOS: kqueue Backend (Reactor)
+ * ========================================================= */
+#elif defined(LIBCORE_USE_KQUEUE)
+
+int event_backend_init(EventLoop* loop) {
+    loop->impl = calloc(1, sizeof(struct EventLoopImpl));
+    if (!loop->impl) goto fail;
+
+    loop->impl->kq_fd = -1;
+    loop->impl->kq_fd = kqueue();
+    if (loop->impl->kq_fd == -1) goto fail;
+    return 0;
+fail:
+    event_backend_destroy(loop);
+    return -1;
+}
+
+int event_backend_add(EventLoop* loop, Socket* sock, uint32_t mask) {
+    if (!loop || !loop->impl || !sock) return -1;
+    if (sock->fd < 0 || sock->fd >= 65536) return -1;
+
+    SocketContext* ctx = calloc(1, sizeof(SocketContext));
+    if (!ctx) return -1;
+    ctx->sock = sock;
+
+    struct kevent ev[2];
+    int n = 0;
+    if (mask & EVENT_READ)  EV_SET(&ev[n++], sock->fd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, ctx);
+    if (mask & EVENT_WRITE) EV_SET(&ev[n++], sock->fd, EVFILT_WRITE, EV_ADD | EV_ENABLE, 0, 0, ctx);
+
+    if (n > 0 && kevent(loop->impl->kq_fd, ev, n, NULL, 0, NULL) == -1) {
+        free(ctx);
+        return -1;
+    }
+
+    loop->impl->ctx_map[sock->fd] = ctx;
+    return 0;
+}
+
+int event_backend_modify(EventLoop* loop, Socket* sock, uint32_t mask) {
+    if (!loop || !loop->impl || !sock) return -1;
+    if (sock->fd < 0 || sock->fd >= 65536) return -1;
+
+    SocketContext* ctx = loop->impl->ctx_map[sock->fd];
+    if (!ctx) return -1;
+
+    struct kevent ev[2];
+    int n = 0;
+    if (mask & EVENT_READ)  EV_SET(&ev[n++], sock->fd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, ctx);
+    if (mask & EVENT_WRITE) EV_SET(&ev[n++], sock->fd, EVFILT_WRITE, EV_ADD | EV_ENABLE, 0, 0, ctx);
+
+    return (n > 0) ? kevent(loop->impl->kq_fd, ev, n, NULL, 0, NULL) : 0;
+}
+
+int event_backend_remove(EventLoop* loop, Socket* sock) {
+    if (!loop || !loop->impl || !sock) return -1;
+    if (sock->fd < 0 || sock->fd >= 65536) return -1;
+
+    SocketContext* ctx = loop->impl->ctx_map[sock->fd];
+    if (!ctx) return -1;
+
+    struct kevent ev[2];
+    EV_SET(&ev[0], sock->fd, EVFILT_READ, EV_DELETE, 0, 0, ctx);
+    EV_SET(&ev[1], sock->fd, EVFILT_WRITE, EV_DELETE, 0, 0, ctx);
+    kevent(loop->impl->kq_fd, ev, 2, NULL, 0, NULL);
+
+    loop->impl->ctx_map[sock->fd] = NULL;
+    free(ctx);
+    return 0;
+}
+
+int event_backend_wait(EventLoop* loop, LibcoreEvent* events, int max_events, int timeout_ms) {
+    if (!loop || !loop->impl || !events || max_events <= 0) return -1;
+
+    struct kevent kq_events[max_events];
+    struct timespec ts;
+    struct timespec* pts = NULL;
+
+    if (timeout_ms >= 0) {
+        ts.tv_sec = timeout_ms / 1000;
+        ts.tv_nsec = (timeout_ms % 1000) * 1000000;
+        pts = &ts;
+    }
+
+    int n = kevent(loop->impl->kq_fd, NULL, 0, kq_events, max_events, pts);
+    if (n < 0) return -1;
+
+    uint64_t now = get_current_ms();
+
+    for (int i = 0; i < n; i++) {
+        events[i].ctx = (SocketContext*)kq_events[i].udata;
+        events[i].mask = 0;
+        events[i].timestamp_ms = now;
+
+        if (kq_events[i].filter == EVFILT_READ)  events[i].mask |= EVENT_READ;
+        if (kq_events[i].filter == EVFILT_WRITE) events[i].mask |= EVENT_WRITE;
+        if (kq_events[i].flags & EV_EOF)         events[i].mask |= EVENT_CLOSE;
+        if (kq_events[i].flags & EV_ERROR)       events[i].mask |= EVENT_ERROR;
+    }
+
+    return n;
+}
+
+void event_backend_destroy(EventLoop* loop) {
+    if (loop && loop->impl) {
+        if (loop->impl->kq_fd != -1) close(loop->impl->kq_fd);
+
+        for (int i = 0; i < 65536; i++) {
+            if (loop->impl->ctx_map[i]) {
+                free(loop->impl->ctx_map[i]);
+                loop->impl->ctx_map[i] = NULL;
+            }
+        }
+        free(loop->impl);
+        loop->impl = NULL;
+    }
+}
+
+
+/* =========================================================
+ * 🐧 Linux: epoll Backend (Reactor)
+ * ========================================================= */
+#else
+
+int event_backend_init(EventLoop* loop) {
+    loop->impl = calloc(1, sizeof(struct EventLoopImpl));
+    if (!loop->impl) goto fail;
+
+    loop->impl->epoll_fd = -1;
+    loop->impl->epoll_fd = epoll_create1(0);
+    if (loop->impl->epoll_fd == -1) goto fail;
+    return 0;
+fail:
+    event_backend_destroy(loop);
+    return -1;
+}
+
+int event_backend_add(EventLoop* loop, Socket* sock, uint32_t mask) {
+    if (!loop || !loop->impl || !sock) return -1;
+    if (sock->fd < 0 || sock->fd >= 65536) return -1;
+
+    SocketContext* ctx = calloc(1, sizeof(SocketContext));
+    if (!ctx) return -1;
+    ctx->sock = sock;
+
+    struct epoll_event ev = {0};
+    if (mask & EVENT_READ) ev.events |= EPOLLIN;
+    if (mask & EVENT_WRITE) ev.events |= EPOLLOUT;
+    ev.data.ptr = ctx;
+
+    if (epoll_ctl(loop->impl->epoll_fd, EPOLL_CTL_ADD, sock->fd, &ev) == -1) {
+        free(ctx);
+        return -1;
+    }
+
+    loop->impl->ctx_map[sock->fd] = ctx;
+    return 0;
+}
+
+int event_backend_modify(EventLoop* loop, Socket* sock, uint32_t mask) {
+    if (!loop || !loop->impl || !sock) return -1;
+    if (sock->fd < 0 || sock->fd >= 65536) return -1;
+
+    SocketContext* ctx = loop->impl->ctx_map[sock->fd];
+    if (!ctx) return -1;
+
+    struct epoll_event ev = {0};
+    if (mask & EVENT_READ) ev.events |= EPOLLIN;
+    if (mask & EVENT_WRITE) ev.events |= EPOLLOUT;
+    ev.data.ptr = ctx;
+    return epoll_ctl(loop->impl->epoll_fd, EPOLL_CTL_MOD, sock->fd, &ev);
+}
+
+int event_backend_remove(EventLoop* loop, Socket* sock) {
+    if (!loop || !loop->impl || !sock) return -1;
+    if (sock->fd < 0 || sock->fd >= 65536) return -1;
+
+    SocketContext* ctx = loop->impl->ctx_map[sock->fd];
+    if (!ctx) return -1;
+
+    epoll_ctl(loop->impl->epoll_fd, EPOLL_CTL_DEL, sock->fd, NULL);
+    loop->impl->ctx_map[sock->fd] = NULL;
+
+    free(ctx);
+    return 0;
+}
+
+int event_backend_wait(EventLoop* loop, LibcoreEvent* events, int max_events, int timeout_ms) {
+    if (!loop || !loop->impl || !events || max_events <= 0) return -1;
+
+    struct epoll_event ep_events[max_events];
+    int n = epoll_wait(loop->impl->epoll_fd, ep_events, max_events, timeout_ms);
+    if (n < 0) return -1;
+
+    uint64_t now = get_current_ms();
+
+    for (int i = 0; i < n; i++) {
+        events[i].ctx = (SocketContext*)ep_events[i].data.ptr;
+        events[i].mask = 0;
+        events[i].timestamp_ms = now;
+
+        if (ep_events[i].events & EPOLLIN) events[i].mask |= EVENT_READ;
+        if (ep_events[i].events & EPOLLOUT) events[i].mask |= EVENT_WRITE;
+        if (ep_events[i].events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) {
+            events[i].mask |= (EVENT_CLOSE | EVENT_ERROR);
+        }
+    }
+    return n;
+}
+
+void event_backend_destroy(EventLoop* loop) {
+    if (loop && loop->impl) {
+        if (loop->impl->epoll_fd != -1) close(loop->impl->epoll_fd);
+
+        for (int i = 0; i < 65536; i++) {
+            if (loop->impl->ctx_map[i]) {
+                free(loop->impl->ctx_map[i]);
+                loop->impl->ctx_map[i] = NULL;
+            }
+        }
+        free(loop->impl);
+        loop->impl = NULL;
+    }
+}
+
+#endif

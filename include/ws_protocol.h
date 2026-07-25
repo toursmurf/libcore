@@ -4,6 +4,9 @@
 #ifndef WS_PROTOCOL_H
 #define WS_PROTOCOL_H
 
+/* 단일 WS 프레임 페이로드 최대 크기: 1MB (서버 자원 보호) */
+#define MAX_WS_PAYLOAD_SIZE (1024 * 1024)
+
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/types.h>
