@@ -5,8 +5,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Valgrind](https://img.shields.io/badge/Valgrind-0%20bytes-brightgreen)](/)
-[![Platform](https://img.shields.io/badge/Platform-Linux%2064bit-lightgrey)](/)
-[![Version](https://img.shields.io/badge/Version-v1.6.2-orange)](/)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey)](/)
+[![Version](https://img.shields.io/badge/Version-v1.7.0-orange)](/)
 
 ---
 
@@ -91,12 +91,12 @@ libcore solves these problems.
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                   libcore v1.6.2                    │
+│                   libcore v1.7.0                    │
 ├─────────────────────────────────────────────────────┤
 │                                                     │
 │  ┌──────────────┐    ┌──────────────────────────┐   │
 │  │  EventLoop   │◄───│  Socket                  │   │
-│  │  (epoll)     │    │  TcpSocket / SslSocket   │   │
+│  │  epoll/kqueue│    │  TcpSocket / SslSocket   │   │
 │  │              │◄───│  UdpSocket               │   │
 │  │              │◄───│  UnixSocket              │   │
 │  └──────┬───────┘    └──────────────────────────┘   │
@@ -128,7 +128,7 @@ libcore solves these problems.
 
 | 특징 / Feature | 설명 / Description |
 |---|---|
-| **EventLoop** | epoll 기반 단일 스레드 비동기 I/O / epoll-based single-thread async I/O |
+| **EventLoop** | Linux: epoll / macOS: kqueue — OS 자동 감지 |
 | **ARC 메모리** | RETAIN/RELEASE 기반 자동 메모리 관리 / Auto memory via RETAIN/RELEASE |
 | **Socket 추상화** | TCP/UDP/Unix/SSL 통일 인터페이스 / Unified TCP/UDP/Unix/SSL interface |
 | **ThreadPool** | 작업 큐 기반 스레드 풀 / Task queue-based thread pool |
@@ -152,20 +152,25 @@ cd libcore
 make examples
 ```
 
-빌드 시 환경이 자동으로 감지됩니다 / Build environment is auto-detected:
+빌드 시 OS가 자동으로 감지됩니다 / OS is auto-detected at build time:
 
 ```
+# Linux (epoll)
 =========================================
- libcore Build Configuration (v1.6.2 Final)
+ libcore Build Configuration (v1.7.0)
 =========================================
- OS Info    : Rocky Linux 9.7 (Blue Onyx)
- Kernel     : 6.1.x
- Compiler   : gcc
+ Target OS  : Linux
  Backend    : epoll
  OpenSSL    : 3.5.1
- MariaDB    : 3.4.8
- Sanitizer  : OFF
- Mode       : Release (-O2)
+=========================================
+
+# macOS (kqueue)
+=========================================
+ libcore Build Configuration (v1.7.0)
+=========================================
+ Target OS  : macOS
+ Backend    : kqueue
+ OpenSSL    : 3.6.3
 =========================================
 ```
 
@@ -279,7 +284,7 @@ Concurrency   Thread / ThreadPool / Semaphore
               RingBuffer / Mutex / RWLock / CondVar
 
 Network       Socket / TcpSocket / UdpSocket / UnixSocket / SslSocket
-              EventLoop / Timer / Scheduler / ByteBuffer
+              EventLoop (epoll / kqueue) / Timer / Scheduler / ByteBuffer
 
 HTTP Layer    HttpServer / HttpClient / HttpTransport
               Router (동적 :id 파라미터) / Cookie
@@ -309,7 +314,7 @@ Utilities     Logger / AsyncLogger / Exception
 | `arc_reactor_multi_server.c` | TCP+UDP+Unix 멀티플렉싱 / Multiplexing |
 | `arc_toostalk_server.c` | WebSocket 채팅 서버 / WebSocket Chat |
 | `arc_http_client_test.c` | HTTPS 클라이언트 / HTTPS Client |
-| `arc_naver_news.c` | 병렬 뉴스 크롤러 90건/10초 / Parallel news crawler |
+| `arc_naver_news.c` | 병렬 뉴스 크롤러 90건 / Parallel news crawler |
 | `arc_news_crawler.c` | 다국어 뉴스 크롤러 / Multi-source news crawler |
 | `arc_process_agent.c` | 프로세스 모니터링 에이전트 / Process monitoring agent |
 | `arc_thread_test.c` | ThreadPool 동작 검증 / ThreadPool test |
@@ -328,6 +333,7 @@ Utilities     Logger / AsyncLogger / Exception
 
 | 버전 / Version | 주요 내용 / Highlights |
 |---|---|
+| **v1.7.0** | macOS (kqueue) 정식 지원 — Linux + macOS 멀티플랫폼 |
 | **v1.6.2** | Content-Length 바운드 검증, WS 프레임 상한, EventLoop Object 상속 |
 | **v1.6.1** | arc_process_agent Health Score, CPU/메모리/디스크/load_avg |
 | **v1.6.0** | PathValidator / StringBuilder / TextEncoder / Router :id |
@@ -335,6 +341,16 @@ Utilities     Logger / AsyncLogger / Exception
 | **v1.5.1** | WebSocket 업그레이드, ToosTalk TT-1 가동 |
 | **v1.5.0** | WebCore 완성 — HttpServer/HttpClient/SSL/Router/Cookie |
 | **v1.0** | Iron Fortress — 67모듈, Valgrind 0 bytes, CI 5관왕 |
+
+---
+
+## 플랫폼 지원 / Platform Support
+
+| OS | 백엔드 / Backend | 상태 / Status |
+|---|---|---|
+| Linux (Ubuntu / Rocky / Debian) | epoll | ✅ 완전 지원 |
+| macOS (Apple Silicon / Intel) | kqueue | ✅ v1.7.0 정식 지원 |
+| Windows | IOCP | 🔜 예정 |
 
 ---
 
@@ -359,6 +375,7 @@ Utilities     Logger / AsyncLogger / Exception
 
 ```
 OS       : Linux 64-bit (Ubuntu / Rocky / Debian)
+           macOS (Apple Silicon M1/M2/M3, Intel)
 Compiler : GCC 9+ / Clang 10+
 Make     : GNU Make
 OpenSSL  : 3.x (HTTPS/SSL 지원 / for HTTPS/SSL)
@@ -387,4 +404,4 @@ MIT License — Free to use, modify, and distribute.
 *Java-like API / Python-like usability / C-level performance / ARC memory safety.*
 *Valgrind clean / Zero-Malloc / Graceful shutdown / MIT License.*
 
-**Toos IT Holdings | Iron Fortress v1.6.2**
+**Toos IT Holdings | Iron Fortress v1.7.0**
