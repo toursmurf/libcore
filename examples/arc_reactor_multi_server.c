@@ -90,7 +90,7 @@ void server_on_readable(Socket* self, void* loop_ptr) {
 int main() {
     signal(SIGINT, sigint_handler);
 
-    EventLoop* loop = new_EventLoop(1024);
+    EventLoop* loop = event_loop_create();
     TcpSocket* tcp_svr = new_TcpServer("0.0.0.0", 8080);
     UnixSocket* unix_svr = new_UnixServer("/tmp/arc_ipc.sock");
     UdpSocket* udp_svr = new_UdpServer("0.0.0.0", 9000);
@@ -108,11 +108,11 @@ int main() {
     loop->addSocket(loop, &unix_svr->base, EV_READ);
     loop->addSocket(loop, &udp_svr->base, EV_READ);
 
-    while (keep_running && loop->is_running) {
+    while (keep_running && loop->running) {
         loop->poll(loop, 1000);
     }
 
-    loop->stop(loop);
+    event_loop_stop(loop);
 
     // 자원 정리
     loop->delSocket(loop, &tcp_svr->base);

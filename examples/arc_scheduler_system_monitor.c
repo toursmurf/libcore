@@ -14,7 +14,6 @@
 #include <signal.h>
 
 extern Logger *logger;
-void event_loop_run(EventLoop* loop);
 
 // [전역 사령부] 시그널 핸들러가 통제할 수 있도록 배치
 EventLoop* global_loop = NULL; 
@@ -33,7 +32,7 @@ EventLoop* global_loop = NULL;
 void handle_sigint(int sig) {
     (void)sig;
     if (global_loop) {
-        global_loop->is_running = false; 
+        global_loop->running = false;
     }
 }
 
@@ -79,7 +78,7 @@ int main() {
     sigaction(SIGINT, &sa, NULL);
 
     // 2. 로거 가동
-    logger = new_Logger(LOG_LEVEL_ERROR);
+    logger = new_Logger(LOG_LEVEL_DEBUG);
 
     LOG_I("====================================================");
     LOG_I("    Imperial Infrastructure Sentinel v1.1 Standard  ");
@@ -87,7 +86,7 @@ int main() {
 
     // 3. 인프라 준비
     ThreadPool* pool = new_ThreadPool(4, 1024);
-    global_loop = new_EventLoop(1024);
+    global_loop = event_loop_create();
     Scheduler* sched = new_Scheduler(pool, global_loop);
 
     // 4. 임무 스케줄링 (이름, 주기(ms), 반복, 우선순위, 콜백)

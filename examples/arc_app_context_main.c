@@ -43,7 +43,7 @@ int main(void) {
     // ---------------------------------------------------------
     // STEP 1: 최전선 전원 공급 (Logger)
     // ---------------------------------------------------------
-    logger = new_Logger(LOG_LEVEL_ERROR);
+    logger = new_Logger(LOG_LEVEL_DEBUG);
     logger->info(logger, "--- Imperial Genesis Integration Test Start ---");
 
     // 시그널 방패 장착
@@ -69,7 +69,7 @@ int main(void) {
     // STEP 4: 인프라 서비스 생성 및 등록 (ServiceRegistry / DI)
     // ---------------------------------------------------------
     ThreadPool* pool = new_ThreadPool(2, 1024);
-    EventLoop* loop = new_EventLoop(1024);
+    EventLoop* loop = event_loop_create();
     Scheduler* sched = new_Scheduler(pool, loop);
 
     // 서비스 레지스트리에 등록 (이제 어디서든 g_app으로 꺼내 쓸 수 있음!)

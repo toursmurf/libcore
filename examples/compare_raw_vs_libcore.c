@@ -14,13 +14,20 @@
 #include <fcntl.h>
 #include <time.h>
 #include <pthread.h>
+#include <signal.h>      /* 🚀 [패치 1] SIGPIPE 방어용 헤더 추가 */
 #include <sys/socket.h>
-#include <sys/epoll.h>
 #include <sys/un.h>
 #include <sys/utsname.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/resource.h>
+
+/* 🚀 [OS 분기] 리눅스면 epoll, macOS(Apple)/BSD면 kqueue 장전! */
+#if defined(__linux__) || defined(__gnu_linux__)
+#include <sys/epoll.h>
+#else
+#include <sys/event.h>
+#endif
 
 #include "libcore.h"
 
@@ -72,7 +79,12 @@ static void print_system_banner(void) {
     printf("║          🚀 투스it홀딩스 - Iron Fortress v1.1 벤치마크          ║\n");
     printf("╚═════════════════════════════════════════════════════════════╝\n");
 
+/* 🚀 [패치 3] macOS 전용 CPU 사양 추출! */
+#if defined(__APPLE__)
+    FILE* f = popen("sysctl -n machdep.cpu.brand_string 2>/dev/null", "r");
+#else
     FILE* f = popen("cat /proc/cpuinfo | grep 'model name' | head -n 1 | cut -d ':' -f 2 | sed 's/^ //'", "r");
+#endif
     if (f && fgets(buf, sizeof(buf), f)) {
         buf[strcspn(buf, "\n")] = 0;
         printf(" 💻 H/W 사양 : %s\n", buf);
@@ -115,7 +127,6 @@ static void print_final_report(void) {
         printf(" [1. 물리적 성능 (Speed & Memory)]\n");
         printf(" ⏱️  수행 시간          : RAW(%.3fs) vs LIBCORE(%.3fs)\n", raw_time_val, lib_time_val);
 
-        /* 🛡️ [수정 완료] 비율 대신 '초 단위 차이' 명확히 표시 */
         if (time_diff < 0) {
             printf(" 🚀 속도 차이          : RAW가 %.3fs 더 빠름 (프레임워크 오버헤드)\n", -time_diff);
         } else if (time_diff > 0) {
@@ -129,7 +140,7 @@ static void print_final_report(void) {
 
     printf(" [2. 소프트웨어 생산성 (Code Lines)]\n");
     printf(" 📜 전체 벤치마크 코드(%s) : %d Lines\n", __FILE__, total_lines);
-    printf(" ⚔️  RAW epoll 핵심 로직        : %d Lines (순수 C 노가다)\n", raw_lines);
+    printf(" ⚔️  RAW epoll/kqueue 핵심 로직 : %d Lines (순수 C 노가다)\n", raw_lines);
     printf(" 🛡️  libcore 핵심 로직          : %d Lines %s\n", lib_lines, prod_msg);
     if (lib_lines > 0) {
         printf(" 📈 코드 생산성 비율            : %.1f 배 효율적!!!!\n\n", prod_ratio);
@@ -148,7 +159,7 @@ static void* client_load(void* arg) {
     usleep(200000);
 
     int tcp, udp, unx;
-    char buf[4] = "ping";
+    char buf[] = "ping";
     struct sockaddr_in taddr = { .sin_family = AF_INET, .sin_port = htons(TCP_PORT) };
     struct sockaddr_un xaddr = { .sun_family = AF_UNIX };
 
@@ -183,28 +194,23 @@ static void* client_load(void* arg) {
 }
 
 /* ─────────────────────────────────────────────
- * PART 1: RAW epoll
+ * PART 1: RAW epoll / kqueue
  * ───────────────────────────────────────────── */
  /* BEGIN_RAW_CORE */
 static void raw_main(void) {
-    printf("\n[ RAW_MAIN - epoll 직접 구현 모드 ]\n");
+    printf("\n[ RAW_MAIN - OS Native 다이렉트 꽂기 모드 ]\n");
     pthread_t tid;
     pthread_create(&tid, NULL, client_load, NULL);
     double start = now_sec();
-    long t_c = 0;
-    long u_c = 0;
-    long x_c = 0;
-    int epfd, tfd, ufd, xfd;
-    int opt = 1;
-    int rbuf = 20 * 1024 * 1024;
+    long t_c = 0, u_c = 0, x_c = 0;
+    int tfd, ufd, xfd;
+    int opt = 1, rbuf = 20 * 1024 * 1024;
     char sock_type[65536] = {0};
     struct sockaddr_in addr = {0};
     struct sockaddr_un xaddr = {0};
-    struct epoll_event ev = { .events = EPOLLIN };
-    struct epoll_event events[MAX_EVENTS];
     char buf[BUF_SIZE];
     ssize_t r;
-    epfd = epoll_create1(0);
+
     tfd = socket(AF_INET, SOCK_STREAM, 0);
     setsockopt(tfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     addr.sin_family = AF_INET;
@@ -212,37 +218,68 @@ static void raw_main(void) {
     addr.sin_addr.s_addr = INADDR_ANY;
     bind(tfd, (struct sockaddr*)&addr, sizeof(addr));
     listen(tfd, 128);
+
     ufd = socket(AF_INET, SOCK_DGRAM, 0);
     setsockopt(ufd, SOL_SOCKET, SO_RCVBUF, &rbuf, sizeof(rbuf));
     addr.sin_port = htons(UDP_PORT);
     bind(ufd, (struct sockaddr*)&addr, sizeof(addr));
+
     unlink(UNIX_PATH);
     xfd = socket(AF_UNIX, SOCK_STREAM, 0);
     xaddr.sun_family = AF_UNIX;
     strncpy(xaddr.sun_path, UNIX_PATH, sizeof(xaddr.sun_path) - 1);
     bind(xfd, (struct sockaddr*)&xaddr, sizeof(xaddr));
     listen(xfd, 128);
-    ev.data.fd = tfd;
-    epoll_ctl(epfd, EPOLL_CTL_ADD, tfd, &ev);
-    ev.data.fd = ufd;
-    epoll_ctl(epfd, EPOLL_CTL_ADD, ufd, &ev);
-    ev.data.fd = xfd;
-    epoll_ctl(epfd, EPOLL_CTL_ADD, xfd, &ev);
+
+/* 🚀 OS별 Event API 셋업 */
+#if defined(__linux__) || defined(__gnu_linux__)
+    int epfd = epoll_create1(0);
+    struct epoll_event ev;
+    struct epoll_event events[MAX_EVENTS];
+    ev.events = EPOLLIN;
+    ev.data.fd = tfd; epoll_ctl(epfd, EPOLL_CTL_ADD, tfd, &ev);
+    ev.data.fd = ufd; epoll_ctl(epfd, EPOLL_CTL_ADD, ufd, &ev);
+    ev.data.fd = xfd; epoll_ctl(epfd, EPOLL_CTL_ADD, xfd, &ev);
+#else
+    int kq = kqueue();
+    struct kevent kev;
+    struct kevent events[MAX_EVENTS];
+    EV_SET(&kev, tfd, EVFILT_READ, EV_ADD, 0, 0, NULL); kevent(kq, &kev, 1, NULL, 0, NULL);
+    EV_SET(&kev, ufd, EVFILT_READ, EV_ADD, 0, 0, NULL); kevent(kq, &kev, 1, NULL, 0, NULL);
+    EV_SET(&kev, xfd, EVFILT_READ, EV_ADD, 0, 0, NULL); kevent(kq, &kev, 1, NULL, 0, NULL);
+#endif
+
     while (t_c < TARGET || x_c < TARGET || u_c < TARGET * 0.95) {
+/* 🚀 OS별 Wait 처리 */
+#if defined(__linux__) || defined(__gnu_linux__)
         int n = epoll_wait(epfd, events, MAX_EVENTS, 1000);
-        if (n <= 0) {
-            break;
-        }
+#else
+        struct timespec timeout = {1, 0}; /* 1초 대기 (1000ms) */
+        int n = kevent(kq, NULL, 0, events, MAX_EVENTS, &timeout);
+#endif
+        if (n <= 0) break;
+
         for (int i = 0; i < n; i++) {
+/* 🚀 OS별 File Descriptor 식별 */
+#if defined(__linux__) || defined(__gnu_linux__)
             int fd = events[i].data.fd;
+#else
+            int fd = events[i].ident;
+#endif
             if (fd == tfd || fd == xfd) {
                 int c = accept(fd, NULL, NULL);
                 if (c >= 0) {
                     fcntl(c, F_SETFL, fcntl(c, F_GETFL, 0) | O_NONBLOCK);
-                    sock_type[c] = (fd == tfd) ? 1 : 2; /* 🚀 족보 기록 */
-                    ev.data.fd = c;
+                    sock_type[c] = (fd == tfd) ? 1 : 2; /* 족보 기록 */
+/* 🚀 OS별 소켓 등록 */
+#if defined(__linux__) || defined(__gnu_linux__)
                     ev.events = EPOLLIN;
+                    ev.data.fd = c;
                     epoll_ctl(epfd, EPOLL_CTL_ADD, c, &ev);
+#else
+                    EV_SET(&kev, c, EVFILT_READ, EV_ADD, 0, 0, NULL);
+                    kevent(kq, &kev, 1, NULL, 0, NULL);
+#endif
                 }
             } else {
                 while ((r = recv(fd, buf, BUF_SIZE, MSG_DONTWAIT)) > 0) {
@@ -253,16 +290,18 @@ static void raw_main(void) {
                     if (fd == ufd) {
                         u_c++;
                     } else {
-                        /* 🚀 족보를 기반으로 100% 정확한 카운트! */
-                        if (sock_type[fd] == 1) {
-                            t_c += (r / 4);
-                        } else if (sock_type[fd] == 2) {
-                            x_c += (r / 4);
-                        }
+                        if (sock_type[fd] == 1) t_c += (r / 4);
+                        else if (sock_type[fd] == 2) x_c += (r / 4);
                     }
                 }
                 if (r == 0) {
+/* 🚀 OS별 소켓 해제 */
+#if defined(__linux__) || defined(__gnu_linux__)
                     epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+#else
+                    EV_SET(&kev, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+                    kevent(kq, &kev, 1, NULL, 0, NULL);
+#endif
                     close(fd);
                 }
             }
@@ -271,10 +310,15 @@ static void raw_main(void) {
             report_progress("RAW", t_c, u_c, x_c);
         }
     }
+
+#if defined(__linux__) || defined(__gnu_linux__)
+    close(epfd);
+#else
+    close(kq);
+#endif
     close(tfd);
     close(ufd);
     close(xfd);
-    close(epfd);
     pthread_join(tid, NULL);
     raw_time_val = now_sec() - start;
     raw_mem_kb   = get_peak_rss_kb();
@@ -306,7 +350,8 @@ static void on_read(Socket* s, void* ctx) {
         }
     }
     if (lc_tcp >= TARGET && lc_unx >= TARGET && lc_udp >= TARGET * 0.95) {
-        loop->stop(loop);
+        /* 🚀 [패치] 신규 EventLoop 글로벌 API 적용 */
+        event_loop_stop(loop);
     }
 }
 static void on_accept(Socket* s, void* ctx) {
@@ -318,7 +363,7 @@ static void on_accept(Socket* s, void* ctx) {
     if (c) {
         c->on_readable = on_read;
         loop->addSocket(loop, c, EV_READ);
-        RELEASE((Object*)c);
+        /* 🚨 [패치 2] RELEASE((Object*)c); 제거!! (EventLoop가 끝날 때까지 생존 보장) */
     }
 }
 static void libcore_main(void) {
@@ -326,12 +371,17 @@ static void libcore_main(void) {
     pthread_t tid;
     pthread_create(&tid, NULL, client_load, NULL);
     double start = now_sec();
-    loop = new_EventLoop(1024);
+    
+    /* 🚀 [패치] 신규 EventLoop 생성 API 적용 */
+    loop = event_loop_create();
 
     Exception* err = NULL;
     char tcp_url[64], udp_url[64];
     snprintf(tcp_url, sizeof(tcp_url), "tcp://0.0.0.0:%d", TCP_PORT);
     snprintf(udp_url, sizeof(udp_url), "udp://0.0.0.0:%d", UDP_PORT);
+
+    /* 🚀 [패치 3] RAW 모드가 남긴 소켓 찌꺼기 완벽 청소! */
+    unlink(UNIX_PATH);
 
     /* 🚀 클순 부장님 지적 사항 완벽 반영: Exception NULL 체크 방어막 가동! */
     Socket* ts = createServer(tcp_url, &err);
@@ -354,7 +404,9 @@ static void libcore_main(void) {
     loop->addSocket(loop, us, EV_READ);
     loop->addSocket(loop, xs, EV_READ);
 
-    loop->run(loop);
+    /* 🚀 [패치] 신규 EventLoop 실행 글로벌 API 적용 */
+    event_loop_run(loop);
+    
     pthread_join(tid, NULL);
 
     RELEASE((Object*)ts);
@@ -372,6 +424,9 @@ static void libcore_main(void) {
  * MAIN
  * ───────────────────────────────────────────── */
 int main(int argc, char* argv[]) {
+    /* 🚀 [패치 1] 파이프 깨짐(SIGPIPE)으로 인한 프로세스 폭사 완벽 방어! */
+    signal(SIGPIPE, SIG_IGN); 
+
     logger = new_Logger(LOG_LEVEL_ERROR); /* 🚀 노이즈 캔슬링 장착 완료 */
     print_system_banner();
 

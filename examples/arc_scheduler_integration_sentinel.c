@@ -1,8 +1,3 @@
-/**
- * @file arc_scheduler_integration_sentinel.c
- * @brief 투스 제국 시스템 통합 스케줄러 센티넬 (Sentinel)
- */
-
 #include "scheduler.h"
 #include "logger.h"
 #include "threadpool.h"
@@ -28,7 +23,7 @@ EventLoop* global_loop = NULL;
 void handle_sigint(int sig) {
     (void)sig;
     if (global_loop) {
-        global_loop->is_running = false; // volatile 필드 타격!
+        global_loop->running = false; // volatile 필드 타격!
     }
 }
 
@@ -44,9 +39,9 @@ int main() {
     sigaction(SIGINT, &sa, NULL);
 
     // 2. 인프라 가동
-    logger = new_Logger(LOG_LEVEL_ERROR);
+    logger = new_Logger(LOG_LEVEL_DEBUG);
     ThreadPool* pool = new_ThreadPool(4, 1024);
-    global_loop = new_EventLoop(1024);
+    global_loop = event_loop_create();
     Scheduler* sched = new_Scheduler(pool, global_loop);
 
     // 3. 임무 배치
@@ -63,22 +58,29 @@ int main() {
     // 4. 가동 및 정지 (이제 ^C가 완벽히 먹힙니다!)
     event_loop_run(global_loop);
 
-    // 5. 우아한 퇴근 및 중복 없는 단일 소각 로직
+    // 5. 우아한 퇴근
     LOG_W("[SYSTEM] Loop broken. Cleaning up resources...");
 
-    // 타이머 제거
     if (global_loop->removeTimer) {
       global_loop->removeTimer(global_loop, pulse);
     }
 
-    // 객체 소각 (각 개체당 딱 한 번만 수행!)
-    if (pulse)       RELEASE((Object*)pulse);
-    if (sched)       RELEASE((Object*)sched);
-    if (global_loop) RELEASE((Object*)global_loop);
-    if (pool)        RELEASE((Object*)pool);
-    if (logger)      RELEASE((Object*)logger);
+    RELEASE((Object*)pulse);
+    RELEASE((Object*)sched);
+    RELEASE((Object*)global_loop);
+    RELEASE((Object*)pool);
+    RELEASE((Object*)logger);
 
     printf("   [CLEANUP] Sentinel safely deactivated. BAAAM!!!\n");
 
+    // 1. 스케줄러를 먼저 파괴 (내부에서 pool과 loop를 RELEASE함)
+    if (sched) RELEASE((Object*)sched);
+
+    // 2. main이 소유했던 참조권을 마저 해제 ✅
+    if (global_loop)  RELEASE((Object*)global_loop);
+    if (pool)  RELEASE((Object*)pool);
+
+    // 3. 로거 소각
+    if (logger) RELEASE((Object*)logger);
     return 0;
 }
