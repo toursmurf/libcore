@@ -4,9 +4,6 @@
 #include <limits.h>
 #include <errno.h>
 
-/* ============================================================
- * [1] 클래스 정의
- * ============================================================ */
 static const Class _SslSocket_Class = {
     .name     = "SslSocket",
     .size     = sizeof(SslSocket),
@@ -17,9 +14,6 @@ const Class* ssl_socket_class_ptr(void) {
     return &_SslSocket_Class;
 }
 
-/* ============================================================
- * [2] 공통 VTable 구현
- * ============================================================ */
 static int SslSocket_getFD_impl(Socket* s) {
     return s ? s->fd : -1;
 }
@@ -29,21 +23,27 @@ static void SslSocket_close_impl(Socket* s) {
     SslSocket* self = (SslSocket*)s;
 
     if (self->ssl) {
-        /* 양방향 종료 — ret==0 이면 한 번 더 */
         int ret = SSL_shutdown(self->ssl);
         if (ret == 0) SSL_shutdown(self->ssl);
+
+        /* 🚀 SSL_free는 내부적으로 BIO를 통해 fd를 닫습니다. */
         SSL_free(self->ssl);
         self->ssl = NULL;
+
+        /* 🚨 Double Free 폭탄 제거: fd가 이미 닫혔으므로 즉시 무효화! */
+        s->fd = -1;
     }
     if (self->ctx) {
-        SSL_CTX_free(self->ctx);  /* refcount 기반 — 안전!! */
+        SSL_CTX_free(self->ctx);
         self->ctx = NULL;
     }
+
+    /* 혹시라도 SSL_free를 거치지 않은 순수 Socket의 경우에만 작동합니다. */
     if (s->fd >= 0) {
         close(s->fd);
         s->fd      = -1;
-        s->is_open = false;
     }
+    s->is_open = false;
 }
 
 static ssize_t SslSocket_send_impl(Socket* s, const void* buf, size_t len,
@@ -67,7 +67,6 @@ static ssize_t SslSocket_send_impl(Socket* s, const void* buf, size_t len,
             if (err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_READ) {
                 return (total > 0) ? (ssize_t)total : SOCKET_WOULD_BLOCK;
             }
-            /* 🚨 SYSCALL 에러 시 errno 확인 (인터럽트는 재시도 유도) */
             if (err == SSL_ERROR_SYSCALL) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
                     return (total > 0) ? (ssize_t)total : SOCKET_WOULD_BLOCK;
@@ -97,7 +96,6 @@ static ssize_t SslSocket_recv_impl(Socket* s, void* buf, size_t len,
         if (err == SSL_ERROR_ZERO_RETURN) {
             s->is_open = false;
         } else if (err == SSL_ERROR_SYSCALL) {
-            /* 🚨 SYSCALL 에러 시 errno 확인 */
             if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
                 return SOCKET_WOULD_BLOCK;
             }
@@ -108,24 +106,17 @@ static ssize_t SslSocket_recv_impl(Socket* s, void* buf, size_t len,
     return (ssize_t)n;
 }
 
-/* ============================================================
- * [3] 소멸자
- * ============================================================ */
 void SslSocket_finalize(Object* obj) {
     SslSocket* self = (SslSocket*)obj;
     if (self) SslSocket_close_impl(&self->base);
 }
 
-/* ============================================================
- * [4] 베이스 초기화 — VTable 1회 설정
- * ============================================================ */
 void SslSocket_init_base(SslSocket* self, int fd) {
     if (!self) return;
 
     Socket_init_base(&self->base, fd, SOCKET_TCP);
     self->base.base.type = &_SslSocket_Class;
 
-    /* SSL 전용 VTable 1회 설정!! */
     self->base.send  = SslSocket_send_impl;
     self->base.recv  = SslSocket_recv_impl;
     self->base.close = SslSocket_close_impl;

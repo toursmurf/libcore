@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <fcntl.h>   /* 🚀 fcntl 추가 */
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -56,8 +57,18 @@ SslSocket* new_SslServer(const char* host, int port,
         SSL_CTX_free(ctx); return NULL;
     }
 
-    /* [B] TCP 서버 소켓 */
-    int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    /* 🚀 [B] TCP 서버 소켓 (macOS 호환 플래그 분기) */
+    int fd = -1;
+#if defined(__linux__) || defined(__gnu_linux__)
+    fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+#else
+    fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd >= 0) {
+        int flags = fcntl(fd, F_GETFL, 0);
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    }
+#endif
+
     if (fd < 0) { SSL_CTX_free(ctx); return NULL; }
 
     int opt = 1;
@@ -70,7 +81,7 @@ SslSocket* new_SslServer(const char* host, int port,
     else addr.sin_addr.s_addr = INADDR_ANY;
 
     if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) != 0 ||
-        listen(fd, TCP_BACKLOG) != 0) {
+        listen(fd, 1024) != 0) {
         SSL_CTX_free(ctx); close(fd); return NULL;
     }
 
@@ -98,13 +109,24 @@ SslSocket* SslSocket_accept(SslSocket* server) {
     if (!server || !server->ctx) return NULL;
     if (server->base.fd < 0)     return NULL;
 
-    /* [A] accept4 (Linux 전용) */
     struct sockaddr_in cli_addr = {0};
     socklen_t cli_len = sizeof(cli_addr);
-    int cli_fd = accept4(server->base.fd,
-                         (struct sockaddr*)&cli_addr,
-                         &cli_len,
-                         SOCK_NONBLOCK | SOCK_CLOEXEC);
+
+    /* 🚀 [A] accept 처리 (Linux는 accept4, macOS는 accept 후 fcntl 주입) */
+    int cli_fd = -1;
+#if defined(__linux__) || defined(__gnu_linux__)
+    cli_fd = accept4(server->base.fd,
+                     (struct sockaddr*)&cli_addr,
+                     &cli_len,
+                     SOCK_NONBLOCK | SOCK_CLOEXEC);
+#else
+    cli_fd = accept(server->base.fd, (struct sockaddr*)&cli_addr, &cli_len);
+    if (cli_fd >= 0) {
+        int flags = fcntl(cli_fd, F_GETFL, 0);
+        fcntl(cli_fd, F_SETFL, flags | O_NONBLOCK);
+    }
+#endif
+
     if (cli_fd < 0) return NULL;
 
     /* [B] 클라이언트 SslSocket 객체 할당 */
@@ -145,9 +167,6 @@ SslSocket* SslSocket_accept(SslSocket* server) {
     /* 🚨 [V1.6 Tech Debt] 비동기 TLS 핸드셰이크 지원
      * 현재 cli_fd는 SOCK_NONBLOCK 상태이므로, SSL_accept 호출 시
      * SSL_ERROR_WANT_READ/WRITE가 발생하며 즉시 실패(NULL) 처리됩니다.
-     * V1.5의 목표는 '안정적인 동기/비동기 혼합 클라이언트 및 서버'이므로
-     * 우선은 실패로 두고, V1.6 이상에서 EventLoop 상태 머신에
-     * 비동기 핸드셰이크(Handshake)를 완벽히 통합할 예정입니다.
      */
     if (SSL_accept(client->ssl) <= 0) {
         RELEASE(client);

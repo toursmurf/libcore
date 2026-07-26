@@ -3,6 +3,12 @@
 #include <stdlib.h>
 #include <errno.h>
 
+/* 🚀 [패치] macOS의 깐깐한 세마포어 Deprecated 경고 완전 묵살! */
+#ifdef __APPLE__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 static void impl_wait(Semaphore* self) {
     // [맥/환경 의존성 방어] EINTR이면 실제로 소유를 얻기 전까지 재시도합니다.
     while (sem_wait(&self->sem) == -1 && errno == EINTR) {
@@ -47,3 +53,7 @@ Semaphore* new_Semaphore(int initial_value) {
     s->tryWait = impl_tryWait; s->getValue = impl_getValue;
     return s;
 }
+
+#ifdef __APPLE__
+#pragma clang diagnostic pop
+#endif

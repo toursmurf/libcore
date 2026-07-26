@@ -1,4 +1,5 @@
 #include "logger.h"
+#include "time_utils.h"
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -7,13 +8,6 @@
 /* =========================
    내부 유틸
    ========================= */
-
-static uint64_t now_ms() {
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    return (uint64_t)ts.tv_sec * 1000ULL + ts.tv_nsec / 1000000ULL;
-}
-
 static const char* level_str[] = {
     "",
     "DEBUG",

@@ -2,6 +2,7 @@
 // 🚨 TARGET OS: 64-bit Linux Only (32-bit not supported) 🚨
 // ============================================================================
 #include "ws_protocol.h"
+/* MAX_WS_PAYLOAD_SIZE: ws_protocol.h 에서 선언됨 */
 #include "crypto.h"
 #include <stdio.h>
 #include <string.h>
@@ -135,6 +136,9 @@ ssize_t ws_decode_frame2(const uint8_t* in_buf, size_t in_len,
                       ((size_t)in_buf[8] << 8)  | ((size_t)in_buf[9]);
         header_len = 10;
     }
+
+    /* [방어] 상한 초과 프레임 — 정수 오버플로우 및 OOM 방어 */
+    if (payload_len > MAX_WS_PAYLOAD_SIZE) return -2;
 
     if (payload_len + 1 > max_out) return -2;           /* 수용 불가 크기 */
 

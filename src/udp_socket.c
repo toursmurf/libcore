@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h> 
 #include <arpa/inet.h>
+#include <fcntl.h> /* 🚀 [패치] fcntl 추가 */
 
 static void UdpSocket_finalize(Object* obj) { // 👈 void* -> Object*
     Socket_finalize(obj);
@@ -47,20 +48,42 @@ UdpSocket* new_UdpSocket_from_fd(int fd) {
 }
 
 UdpSocket* new_UdpServer(const char* host, int port) {
-    int fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    /* 🚀 [패치] macOS 호환성을 위한 socket 분기 처리 */
+    int fd = -1;
+#if defined(__linux__) || defined(__gnu_linux__)
+    fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+#else
+    fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd >= 0) {
+        int flags = fcntl(fd, F_GETFL, 0);
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    }
+#endif
     if (fd < 0) return NULL;
+
     UdpSocket* self = new_UdpSocket_from_fd(fd);
     if (!self) { close(fd); return NULL; }
     if (self->base.bind(&self->base, host, port) != 0) {
-        RELEASE(self); 
+        RELEASE(self);
         return NULL;
     }
     return self;
 }
 
 UdpSocket* new_UdpClient(void) {
-    int fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    /* 🚀 [패치] macOS 호환성을 위한 socket 분기 처리 */
+    int fd = -1;
+#if defined(__linux__) || defined(__gnu_linux__)
+    fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+#else
+    fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd >= 0) {
+        int flags = fcntl(fd, F_GETFL, 0);
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    }
+#endif
     if (fd < 0) return NULL;
+
     UdpSocket* self = new_UdpSocket_from_fd(fd);
     if (!self) { close(fd); return NULL; }
     return self;

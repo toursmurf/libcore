@@ -1,5 +1,9 @@
 #include "db.h"
-#include <mysql/mysql.h>
+#if defined(__linux__) || defined(__gnu_linux__)
+	#include <mysql/mysql.h>
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
+	#include <mysql.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

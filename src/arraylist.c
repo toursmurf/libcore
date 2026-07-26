@@ -29,6 +29,7 @@ const Class arrayListClass = {
 };  
 
 static inline bool is_arraylist(Object *obj) {
+    (void) obj;
     return (obj && obj->type == &arrayListClass);
 }
 
@@ -282,6 +283,7 @@ ArrayList* new_ArrayList(int initial_capacity) {
     list->isEmpty = impl_isEmpty;  
     list->trimToSize = impl_trimToSize;  
     list->destroy = impl_destroy; 
+    list->is_arraylist = is_arraylist;
 
     return list;  
 }

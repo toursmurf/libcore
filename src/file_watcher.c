@@ -3,8 +3,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/inotify.h>
 #include <errno.h>
+
+/* ============================================================================
+ * 🐧 Linux: inotify 구현부 (원본 로직 완벽 보존)
+ * ============================================================================ */
+#if defined(__linux__) || defined(__gnu_linux__)
+
+#include <sys/inotify.h>
 
 #define EVENT_BUF_SIZE 4096
 
@@ -112,3 +118,71 @@ FileWatcher* new_FileWatcher(void) {
 
     return self;
 }
+
+/* ============================================================================
+ * 🍎 macOS / 🪟 Windows: 스텁(Stub) 구현부 (빌드 통과용 빈 껍데기)
+ * ============================================================================ */
+#else
+
+// 1. finalize (ARC)
+static void FileWatcher_finalize(Object* obj) {
+    FileWatcher* self = (FileWatcher*)obj;
+    if (!self) return;
+    // 맥/윈도우는 일단 fd 할당을 안 하므로 닫을 것도 없음
+}
+
+// 2. watch
+static bool FileWatcher_watch(FileWatcher* self, Path* target) {
+    /* 경고(Warning) 제거 마법 */
+    (void)self;
+    (void)target;
+    return false; // 아직 미구현 상태이므로 false 반환
+}
+
+// 3. onEvent
+static void FileWatcher_onEvent(FileWatcher* self, EventCallback cb) {
+    if (!self) return;
+    self->callback = cb;
+}
+
+// 4. poll
+static void FileWatcher_poll(FileWatcher* self) {
+    (void)self;
+    // 동작 없음
+}
+
+// 5. stop
+static void FileWatcher_stop(FileWatcher* self) {
+    (void)self;
+    // 동작 없음
+}
+
+// FileWatcher_Class 정의
+const Class FileWatcher_Class = {
+    .name = "FileWatcher",
+    .size = sizeof(FileWatcher),
+    .finalize = FileWatcher_finalize
+};
+
+// 6. 생성자 (Constructor)
+FileWatcher* new_FileWatcher(void) {
+    FileWatcher* self = (FileWatcher*)calloc(1, sizeof(FileWatcher));
+    if (!self) return NULL;
+
+    Object_Init((Object*)self, &FileWatcher_Class);
+
+    // inotifyFd가 없으므로 쓰레기값 방지를 위해 -1 할당
+    self->inotifyFd = -1;
+    self->watchFd = -1;
+    self->callback = NULL;
+
+    // VTable 매핑
+    self->watch = FileWatcher_watch;
+    self->onEvent = FileWatcher_onEvent;
+    self->poll = FileWatcher_poll;
+    self->stop = FileWatcher_stop;
+
+    return self;
+}
+
+#endif

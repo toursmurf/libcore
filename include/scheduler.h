@@ -11,6 +11,7 @@
 #include <pthread.h>
 
 extern const Class Scheduler_Class;
+
 typedef enum {
     JOB_PRIO_LOW    = 0,
     JOB_PRIO_NORMAL = 1,
@@ -24,10 +25,10 @@ typedef struct Scheduler Scheduler;
 struct ScheduleJob {
     Object          base;
     char            name[64];
-    Timer* timer;      // [OWNED]
+    Timer*          timer;      // [OWNED]
     TimerCallback   callback;
-    void* user_data;  // [BORROWED]
-    Scheduler* scheduler;  // [Check 1] 지휘부 참조 필드 추가!!
+    void*           user_data;  // [BORROWED]
+    Scheduler*      scheduler;  // [Check 1] 지휘부 참조 필드 추가!!
     atomic_size_t   run_count;
     time_t          last_run;
     JobPriority     priority;
@@ -35,10 +36,10 @@ struct ScheduleJob {
 
 struct Scheduler {
     Object          base;
-    ArrayList* jobs;       // [OWNED]
+    ArrayList*      jobs;       // [OWNED]
     pthread_mutex_t lock;
-    ThreadPool* pool;       // [BORROWED]
-    EventLoop* loop;       // [BORROWED]
+    ThreadPool*     pool;       // [BORROWED]
+    EventLoop*      loop;       // [BORROWED]
 
     bool (*add)     (Scheduler* self, const char* name, long ms, bool repeat, TimerCallback cb, void* ud);
     bool (*addEx)   (Scheduler* self, const char* name, long ms, bool repeat, JobPriority prio, TimerCallback cb, void* ud);

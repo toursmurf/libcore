@@ -6,13 +6,15 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h> /* 🚨 [핵심] TCP 옵션 헤더 */
 
 // [1] 전방 선언 및 클래스 정의
 static void TcpSocket_finalize(Object* obj);
 
 static const Class _tcpSocketClass = {
-		.name = "TcpSocket",
-		.size = sizeof(TcpSocket),
+    .name = "TcpSocket",
+    .size = sizeof(TcpSocket),
     .finalize = TcpSocket_finalize
 };
 
@@ -32,7 +34,6 @@ static int TcpSocket_bind_impl(Socket* s, const char* ip, int port) {
     if (ip) inet_pton(AF_INET, ip, &addr.sin_addr);
     else addr.sin_addr.s_addr = INADDR_ANY;
 
-    // 포트 재사용 설정 (서버 필수 전술)
     int opt = 1;
     setsockopt(s->fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     return bind(s->fd, (struct sockaddr*)&addr, sizeof(addr));
@@ -52,7 +53,6 @@ static int TcpSocket_connect_impl(Socket* s, const char* ip, int port) {
 
     int res = connect(s->fd, (struct sockaddr*)&addr, sizeof(addr));
 
-    // [의장님 설계]: Non-blocking 상태에서 연결 중이면 표준 상수로 응답
     if (res < 0 && errno == EINPROGRESS) return SOCKET_WOULD_BLOCK;
     return res;
 }
@@ -62,8 +62,18 @@ static TcpSocket* TcpSocket_accept_impl(TcpSocket* self, char* ip, int* port) {
     struct sockaddr_in addr;
     socklen_t addr_len = sizeof(addr);
 
-    // [클순 지적]: accept4를 이용한 원자적 Non-blocking 적용
-    int c_fd = accept4(self->base.fd, (struct sockaddr*)&addr, &addr_len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+    /* 🚀 [패치] macOS 호환성을 위한 accept 분기 처리 */
+    int c_fd = -1;
+#if defined(__linux__) || defined(__gnu_linux__)
+    c_fd = accept4(self->base.fd, (struct sockaddr*)&addr, &addr_len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+#else
+    c_fd = accept(self->base.fd, (struct sockaddr*)&addr, &addr_len);
+    if (c_fd >= 0) {
+        int flags = fcntl(c_fd, F_GETFL, 0);
+        fcntl(c_fd, F_SETFL, flags | O_NONBLOCK);
+    }
+#endif
+
     if (c_fd < 0) return NULL;
 
     if (ip) inet_ntop(AF_INET, &addr.sin_addr, ip, INET_ADDRSTRLEN);
@@ -81,13 +91,16 @@ TcpSocket* new_TcpSocket_from_fd(int fd) {
     TcpSocket* self = (TcpSocket*)calloc(1, sizeof(TcpSocket));
     if (!self) return NULL;
 
-    // 부모 소켓 베이스 초기화 (SOCKET_TCP 명시)
     Socket_init_base(&self->base, fd, SOCKET_TCP);
 
-    // 클래스 타입 재각인
+    /* 🚨 [클순 부장님 마스터 패치]
+     * 클라이언트/서버 불문하고 모든 TCP 소켓의 Nagle 족쇄를 원천 해제!
+     * 클라이언트 측 버퍼링(1턴 지연) 영구 박멸! */
+    int flag = 1;
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int));
+
     self->base.base.type = &_tcpSocketClass;
 
-    // TCP 전용 VTable 오버라이딩
     self->base.bind    = TcpSocket_bind_impl;
     self->base.listen  = TcpSocket_listen_impl;
     self->base.connect = TcpSocket_connect_impl;
@@ -97,8 +110,17 @@ TcpSocket* new_TcpSocket_from_fd(int fd) {
 }
 
 TcpSocket* new_TcpServer(const char* ip, int port) {
-    // [의장님 분석]: SOCK_NONBLOCK은 Socket_init_base와 중복되지만 안전함
-    int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    /* 🚀 [패치] macOS 호환성을 위한 socket 분기 처리 */
+    int fd = -1;
+#if defined(__linux__) || defined(__gnu_linux__)
+    fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+#else
+    fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd >= 0) {
+        int flags = fcntl(fd, F_GETFL, 0);
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    }
+#endif
     if (fd < 0) return NULL;
 
     TcpSocket* self = new_TcpSocket_from_fd(fd);
@@ -113,14 +135,23 @@ TcpSocket* new_TcpServer(const char* ip, int port) {
 }
 
 TcpSocket* new_TcpClient(const char* ip, int port) {
-    int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    /* 🚀 [패치] macOS 호환성을 위한 socket 분기 처리 */
+    int fd = -1;
+#if defined(__linux__) || defined(__gnu_linux__)
+    fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+#else
+    fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd >= 0) {
+        int flags = fcntl(fd, F_GETFL, 0);
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    }
+#endif
     if (fd < 0) return NULL;
 
     TcpSocket* self = new_TcpSocket_from_fd(fd);
     if (!self) { close(fd); return NULL; }
 
     if (ip) {
-        // [사령관님 지침]: 이미 connect 내부에서 처리된 반환값을 신뢰함
         int ret = self->base.connect(&self->base, ip, port);
         if (ret < 0 && ret != SOCKET_WOULD_BLOCK) {
             RELEASE(self);

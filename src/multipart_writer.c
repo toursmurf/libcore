@@ -14,7 +14,7 @@
 void generate_multipart_boundary(char* buf, size_t size) {
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    static _Atomic unsigned int multipart_counter = ATOMIC_VAR_INIT(0);
+    static _Atomic unsigned int multipart_counter = 0;
     unsigned int count = atomic_fetch_add(&multipart_counter, 1);
     snprintf(buf, size, "----WebCoreFormBoundary%08lX%04X%04X",
              (long)tv.tv_usec, getpid() & 0xFFFF, count & 0xFFFF);

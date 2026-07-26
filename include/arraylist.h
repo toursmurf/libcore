@@ -46,6 +46,7 @@ struct ArrayList {
     ArrayListIterator* (*iterator)(ArrayList* self);  
     void (*destroy)(ArrayList* self);
     Object* (*detach)(ArrayList *self, int index);
+    bool (*is_arraylist)(Object *obj);
 };  
 
 ArrayList* new_ArrayList(int initial_capacity);  

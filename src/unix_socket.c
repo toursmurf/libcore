@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/un.h>
 #include <errno.h>
+#include <fcntl.h> /* 🚀 [패치] fcntl 추가 */
 
 // [1] 시그니처 수정: Object* 로 고정 (경고 해결)
 static void UnixSocket_finalize(Object* obj) {
@@ -65,12 +66,22 @@ static int UnixSocket_connect_impl(Socket* s, const char* path, int port) {
 // [수정] 인자 2개 명시 (UnixSocket*, char*)
 static UnixSocket* UnixSocket_accept_impl(UnixSocket* self, char* path) {
     if (!self) return NULL;
-    
+
     // 🚨 [수정 1]: Valgrind 경고 방어를 위해 메모리 공간 0으로 초기화!
     struct sockaddr_un addr = {0};
     socklen_t addr_len = sizeof(addr);
 
-    int c_fd = accept4(self->base.fd, (struct sockaddr*)&addr, &addr_len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+    /* 🚀 [패치] macOS 호환성을 위한 accept 분기 처리 */
+    int c_fd = -1;
+#if defined(__linux__) || defined(__gnu_linux__)
+    c_fd = accept4(self->base.fd, (struct sockaddr*)&addr, &addr_len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+#else
+    c_fd = accept(self->base.fd, (struct sockaddr*)&addr, &addr_len);
+    if (c_fd >= 0) {
+        int flags = fcntl(c_fd, F_GETFL, 0);
+        fcntl(c_fd, F_SETFL, flags | O_NONBLOCK);
+    }
+#endif
     if (c_fd < 0) return NULL;
 
     if (path) {
@@ -114,7 +125,17 @@ UnixSocket* new_UnixSocket_from_fd(int fd) {
 }
 
 UnixSocket* new_UnixServer(const char* path) {
-    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    /* 🚀 [패치] macOS 호환성을 위한 socket 분기 처리 */
+    int fd = -1;
+#if defined(__linux__) || defined(__gnu_linux__)
+    fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+#else
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd >= 0) {
+        int flags = fcntl(fd, F_GETFL, 0);
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    }
+#endif
     if (fd < 0) return NULL;
 
     UnixSocket* self = new_UnixSocket_from_fd(fd);
@@ -129,7 +150,17 @@ UnixSocket* new_UnixServer(const char* path) {
 }
 
 UnixSocket* new_UnixClient(const char* path) {
-    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    /* 🚀 [패치] macOS 호환성을 위한 socket 분기 처리 */
+    int fd = -1;
+#if defined(__linux__) || defined(__gnu_linux__)
+    fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+#else
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd >= 0) {
+        int flags = fcntl(fd, F_GETFL, 0);
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    }
+#endif
     if (fd < 0) return NULL;
 
     UnixSocket* self = new_UnixSocket_from_fd(fd);

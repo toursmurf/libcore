@@ -3,7 +3,7 @@
  * [scheduler.c] 투스it홀딩스 제국 - 고정밀 타이머 스케줄러 엔진
  * ────────────────────────────────────────────────────────────────────────
  * 1. 암시적 선언 경고 소각 : event_loop_add_timer 등 글로벌 함수 호출 제거 ✅
- * 2. VTable 다형성 맵핑    : self->loop->addTimer 등 객체 지향 메서드 체인 적용 ✅
+ * 2. VTable 다형성 맵핑    : 구형 EventLoop 종속성(addTimer/removeTimer) 완전 철거 ✅
  * 3. 생명주기 오너십       : Job 및 Timer의 정확한 RETAIN/RELEASE 락온 ✅
  * ────────────────────────────────────────────────────────────────────────
  */
@@ -16,7 +16,7 @@
 #include <string.h>
 #include <unistd.h>
 
-extern Logger *logger; 
+extern Logger *logger;
 #undef LOG_D
 #undef LOG_I
 #undef LOG_E
@@ -27,65 +27,60 @@ extern Logger *logger;
 /* [INTERNAL] Classes & Callbacks */
 static void ScheduleJob_finalize(Object* obj) {
     ScheduleJob* self = (ScheduleJob*)obj;
-    if (self->timer) { 
-        RELEASE((Object*)self->timer); 
-        self->timer = NULL; 
+    if (self->timer) {
+        RELEASE((Object*)self->timer);
+        self->timer = NULL;
     }
     LOG_D("[JOB] Finalized: '%s'", self->name);
 }
 
-static Class Job_Class = { 
-    .name = "ScheduleJob", 
-    .size = sizeof(ScheduleJob), 
-    .finalize = ScheduleJob_finalize 
+static Class Job_Class = {
+    .name = "ScheduleJob",
+    .size = sizeof(ScheduleJob),
+    .finalize = ScheduleJob_finalize
 };
 
 static void* schedule_job_worker_bridge(void* arg) {
     ScheduleJob* job = (ScheduleJob*)arg;
     job->last_run = time(NULL);
     atomic_fetch_add(&job->run_count, 1);
-    
+
     if (job->callback) {
         job->callback(job->user_data);
     }
-    
+
     RELEASE((Object*)job);
     return NULL;
 }
 
 static void on_scheduler_timer_tick(void* ud) {
     ScheduleJob* job = (ScheduleJob*)ud;
-    Scheduler* sched = job->scheduler; 
-    RETAIN((Object*)job); 
-    
+    Scheduler* sched = job->scheduler;
+    RETAIN((Object*)job);
+
     // 🚨 threadpool.h 설계도 규격: pool->submit(pool, func, arg) ✅
     if (sched->pool && sched->pool->submit) {
         sched->pool->submit(sched->pool, (TaskRoutine)schedule_job_worker_bridge, job);
     } else {
-        LOG_E("[SCHED] Submit failed!"); 
+        LOG_E("[SCHED] Submit failed!");
         RELEASE((Object*)job);
     }
 }
 
 static void Scheduler_finalize(Object* obj) {
     Scheduler* self = (Scheduler*)obj;
-    
+
     // 1. 동기화 시작
     pthread_mutex_lock(&self->lock);
-    
+
     // 2. 내부 작업(Job)들 연쇄 석방
     if (self->jobs) {
         int count = self->jobs->getSize(self->jobs);
         for (int i = 0; i < count; i++) {
             ScheduleJob* job = (ScheduleJob*)self->jobs->get(self->jobs, i);
-            if (self->loop && job && job->timer) {
-                // 🚨 [FIX] VTable 직접 호출: 루프에서 타이머 제거 
-                if (self->loop->removeTimer) {
-                    self->loop->removeTimer(self->loop, job->timer);
-                }
-            }
+            /* 🚀 [패치] 구형 V1.0 잔재인 removeTimer 호출부 완전 삭제 */
             // 스케줄러가 잡고 있던 Job 소유권 해제 (-1)
-            RELEASE((Object*)job); 
+            RELEASE((Object*)job);
         }
 
         // 리스트 자체를 파괴 (ArrayList 내부 카운트 -1)
@@ -99,10 +94,10 @@ static void Scheduler_finalize(Object* obj) {
     if (self->loop) { RELEASE((Object*)self->loop); self->loop = NULL; }
 
     pthread_mutex_unlock(&self->lock);
-    
+
     // 3. 동기화 도구 파괴
     pthread_mutex_destroy(&self->lock);
-    
+
     LOG_I("[SCHED] Scheduler finalized and infrastructure released.");
 }
 
@@ -115,31 +110,28 @@ const Class Scheduler_Class = {
 /* [VTABLE IMPLEMENTATION] */
 static bool Scheduler_addEx_impl(Scheduler* self, const char* name, long ms, bool repeat, JobPriority prio, TimerCallback cb, void* ud) {
     if (!self || !cb) return false;
-    
+
     ScheduleJob* job = (ScheduleJob*)calloc(1, sizeof(ScheduleJob));
     if (!job) return false;
-    
+
     Object_Init((Object*)job, &Job_Class);
     snprintf(job->name, sizeof(job->name), "%s", name ? name : "UnnamedJob");
-    job->callback = cb; 
-    job->user_data = ud; 
-    job->priority = prio; 
-    job->scheduler = self; 
-    
+    job->callback = cb;
+    job->user_data = ud;
+    job->priority = prio;
+    job->scheduler = self;
+
     job->timer = new_TimerNamed(job->name, ms, repeat, on_scheduler_timer_tick, job);
-    if (!job->timer) { 
-        RELEASE((Object*)job); 
-        return false; 
+    if (!job->timer) {
+        RELEASE((Object*)job);
+        return false;
     }
-    
+
     pthread_mutex_lock(&self->lock);
     self->jobs->add(self->jobs, (Object*)job);
-    
-    // 🚨 [FIX] VTable 직접 호출: 루프에 타이머 등록
-    if (self->loop->addTimer) {
-        self->loop->addTimer(self->loop, job->timer);
-    }
-    
+
+    /* 🚀 [패치] 구형 V1.0 잔재인 addTimer 호출부 완전 삭제 */
+
     pthread_mutex_unlock(&self->lock);
     LOG_I("[SCHED] Registered: '%s' (%ldms)", job->name, ms);
     return true;
@@ -151,20 +143,17 @@ static bool Scheduler_add_impl(Scheduler* self, const char* name, long ms, bool 
 
 static bool Scheduler_remove_impl(Scheduler* self, const char* name) {
     if (!self || !name) return false;
-    
+
     pthread_mutex_lock(&self->lock);
     bool found = false;
     int count = self->jobs->getSize(self->jobs);
-    
+
     for (int i = 0; i < count; i++) {
         ScheduleJob* job = (ScheduleJob*)self->jobs->get(self->jobs, i);
         if (strcmp(job->name, name) == 0) {
             job->timer->stop(job->timer);
-            
-            // 🚨 [FIX] VTable 직접 호출: 루프에서 타이머 제거
-            if (self->loop->removeTimer) {
-                self->loop->removeTimer(self->loop, job->timer);
-            }
+
+            /* 🚀 [패치] 구형 V1.0 잔재인 removeTimer 호출부 완전 삭제 */
             
             self->jobs->remove(self->jobs, i); 
             RELEASE((Object*)job); 
