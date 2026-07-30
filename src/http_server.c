@@ -368,33 +368,14 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
 
             char method_str[16] = {0};
             char path_str[256] = {0};
-		if (sscanf(conn->header_buf, "%15s %255s", method_str, path_str) == 2) {
+
+            if (sscanf(conn->header_buf, "%15s %255s", method_str, path_str) == 2) {
                 if (strcmp(method_str, "GET") == 0) conn->req->method = HTTP_GET;
                 else if (strcmp(method_str, "POST") == 0) conn->req->method = HTTP_POST;
                 else if (strcmp(method_str, "PUT") == 0) conn->req->method = HTTP_PUT;
                 else if (strcmp(method_str, "DELETE") == 0) conn->req->method = HTTP_DELETE;
                 else conn->req->method = HTTP_UNKNOWN;
 
-                /* 🚀 [신규 패치] ? 문자를 찾아 경로와 쿼리 스트링 완벽 분리 */
-                char* qs = strchr(path_str, '?');
-                if (qs) {
-                    *qs = '\0'; /* 경로 문자열 종료 처리 */
-                    qs++;       /* 쿼리 스트링 시작점 이동 */
-
-                    /* 쿼리 스트링 파싱 (key=value&key2=value2) */
-                    char* saveptr;
-                    char* token = strtok_r(qs, "&", &saveptr);
-                    while (token) {
-                        char* eq = strchr(token, '=');
-                        if (eq) {
-                            *eq = '\0';
-                            hashmap_put_str(conn->req->query, token, eq + 1);
-                        }
-                        token = strtok_r(NULL, "&", &saveptr);
-                    }
-                }
-                
-                /* ? 이후가 깔끔하게 잘려나간 순수 경로(/logs)만 저장 */
                 conn->req->path = new_String(path_str);
             } else {
                 conn->req->method = HTTP_GET;
