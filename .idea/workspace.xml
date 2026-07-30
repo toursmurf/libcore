@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="6066df65-ef08-4f07-a4e8-385f1c9f9ab8" name="변경" comment="">
+      <change beforePath="$PROJECT_DIR$/examples/arc_chat_server.c" beforeDir="false" afterPath="$PROJECT_DIR$/examples/arc_chat_server.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/examples/arc_process_agent.c" beforeDir="false" afterPath="$PROJECT_DIR$/examples/arc_process_agent.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/examples/icq.html" beforeDir="false" afterPath="$PROJECT_DIR$/examples/icq.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/time_utils.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/time_utils.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/time_utils.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/time_utils.c" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ComposerSettings">
+    <execution>
+      <executable />
+    </execution>
+  </component>
+  <component name="DBNavigator.Project.Workspace.Settings">
+    <assistant-settings>
+      <credential-settings>
+        <credentials />
+      </credential-settings>
+      <profile-settings>
+        <profiles />
+      </profile-settings>
+      <mcp-server-settings>
+        <workspace-integration value="false" />
+        <mcp-servers />
+        <mcp-tool-approvals />
+      </mcp-server-settings>
+    </assistant-settings>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;toursmurf&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/toursmurf/libcore.git&quot;,
+    &quot;accountId&quot;: &quot;13c7a576-f172-41d3-baba-d26d52eeb722&quot;
+  }
+}</component>
+  <component name="MacroExpansionManager">
+    <option name="directoryName" value="7jmRweIU" />
+  </component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="NextEditCompletionFeaturesState">
+    <decayedCancelled>
+      <entry key="MS100" value="1.000416326368936" />
+      <entry key="MS500" value="1.2375234446742502" />
+      <entry key="S2" value="2.579234479472628" />
+      <entry key="S5" value="3.707338938566631" />
+      <entry key="S10" value="4.281231518876086" />
+      <entry key="S30" value="4.744089662756347" />
+      <entry key="S60" value="4.9714042744657085" />
+      <entry key="M2" value="5.754483657987373" />
+      <entry key="M5" value="8.087646971210338" />
+      <entry key="M10" value="9.947645842668889" />
+      <entry key="M15" value="10.800536258491947" />
+      <entry key="M30" value="11.808007632174501" />
+      <entry key="H1" value="12.37884258606149" />
+      <entry key="H2" value="12.682847146112115" />
+      <entry key="H4" value="12.839743091652316" />
+      <entry key="D1" value="12.973053908658345" />
+      <entry key="W1" value="12.99614472163582" />
+    </decayedCancelled>
+    <decayedSelected>
+      <entry key="MS100" value="0.0" />
+      <entry key="MS500" value="0.0" />
+      <entry key="S2" value="0.0" />
+      <entry key="S5" value="0.0" />
+      <entry key="S10" value="0.0" />
+      <entry key="S30" value="0.0" />
+      <entry key="S60" value="0.0" />
+      <entry key="M2" value="0.0" />
+      <entry key="M5" value="0.0" />
+      <entry key="M10" value="0.0" />
+      <entry key="M15" value="0.0" />
+      <entry key="M30" value="0.0" />
+      <entry key="H1" value="0.0" />
+      <entry key="H2" value="0.0" />
+      <entry key="H4" value="0.0" />
+      <entry key="D1" value="0.0" />
+      <entry key="W1" value="0.0" />
+    </decayedSelected>
+    <decayedShown>
+      <entry key="MS100" value="0.8589303904964015" />
+      <entry key="MS500" value="1.2005483311699785" />
+      <entry key="S2" value="2.550404757413961" />
+      <entry key="S5" value="3.687353838067883" />
+      <entry key="S10" value="4.268946638128726" />
+      <entry key="S30" value="4.739319167999467" />
+      <entry key="S60" value="4.9678040280199784" />
+      <entry key="M2" value="5.748653882300199" />
+      <entry key="M5" value="8.080157693796338" />
+      <entry key="M10" value="9.941814223672177" />
+      <entry key="M15" value="10.796007694414053" />
+      <entry key="M30" value="11.805364030248104" />
+      <entry key="H1" value="12.377413151608229" />
+      <entry key="H2" value="12.682103745452087" />
+      <entry key="H4" value="12.839363986677487" />
+      <entry key="D1" value="12.972989675650782" />
+      <entry key="W1" value="12.996135519535592" />
+    </decayedShown>
+  </component>
+  <component name="PhpWorkspaceProjectConfiguration" interpreter_name="php@8.4.11" />
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 0
+}</component>
+  <component name="ProjectId" id="3H4sDVKatv5auWqDnLZXfJozzTh" />
+  <component name="ProjectViewState">
+    <option name="autoscrollToSource" value="true" />
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="openDirectoriesWithSingleClick" value="true" />
+    <option name="showLibraryContents" value="true" />
+    <option name="showMembers" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;CidrDebugProfileConversion&quot;: &quot;true&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/indongkim/libcore&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;
+  },
+  &quot;keyToStringList&quot;: {
+    &quot;stardust.markdown.MarkdownSplitEditorSuppressor:keyList&quot;: []
+  }
+}</component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-jdk-30f59d01ecdd-63390994e64e-intellij.indexing.shared.core-IU-262.8665.337" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="디폴트 작업">
+      <changelist id="6066df65-ef08-4f07-a4e8-385f1c9f9ab8" name="변경" comment="" />
+      <created>1785138556799</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1785138556799</updated>
+      <workItem from="1785138558275" duration="1187000" />
+      <workItem from="1785200714128" duration="678000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="UnknownFeatures">
+    <option featureType="com.intellij.fileTypeFactory" implementationName="*.c" />
+  </component>
+</project>
