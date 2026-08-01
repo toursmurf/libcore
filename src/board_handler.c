@@ -16,6 +16,8 @@
 
 extern Logger* logger;
 
+#define MAX_UPLOAD_SIZE (10 * 1024 * 1024)  /* 10MB */
+
 /* ── mkdir -p 헬퍼 ────────────────────────────────── */
 static int mkdir_p(const char *path, mode_t mode) {
     char tmp[512];
@@ -88,7 +90,7 @@ void board_write_handler(HttpRequest* req, HttpResponse* res, void* user_ctx) {
         res->sendText(res, "Bad Request: Multipart payload expected.");
         return;
     }
-    if (!db || !db->isConnected) {
+    if (!db) {
         res->setStatus(res, 500);
         res->sendText(res, "Internal Server Error: DB Connection unavailable.");
         return;
@@ -130,6 +132,11 @@ void board_write_handler(HttpRequest* req, HttpResponse* res, void* user_ctx) {
 
     /* ── 1. 파일 디스크 기록 ── */
     if (attach && attach->data && attach->size > 0) {
+        if (attach->size > MAX_UPLOAD_SIZE) {
+            res->setStatus(res, 413);
+            res->sendText(res, "Payload Too Large: Max upload size is 10MB.");
+            return;
+        }
         char safe_name[256] = {0};
         sanitize_filename(original_filename, safe_name, sizeof(safe_name));
 
@@ -198,7 +205,7 @@ void board_write_handler(HttpRequest* req, HttpResponse* res, void* user_ctx) {
     long long new_post_id = db->last_insert_id;
     RELEASE(post_data);
 
-    int attach_ok = 1;
+    int attach_ok = 1; /* 파일 없는 게시글은 attach 단계 스킵 — 정상 케이스 */
 
     if (post_ok && file_saved) {
         char pid_buf[32];
