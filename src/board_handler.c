@@ -287,6 +287,7 @@ void board_write_handler(HttpRequest* req, HttpResponse* res, void* user_ctx) {
 static void BoardHandler_modify(BoardHandler* self,
                                  HttpRequest*  req,
                                  HttpResponse* res) {
+					(void) self;
     if (req->method != HTTP_PUT) {
         res->sendStatus(res, 405);
         return;
