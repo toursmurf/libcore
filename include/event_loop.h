@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "object.h"
 #include <stddef.h>
 #include "timer.h"
 #include "socket_base.h"
@@ -21,6 +22,7 @@ struct EventLoopImpl;
 
 /* 외부로 노출되는 EventLoop 구조체 */
 typedef struct EventLoop {
+    Object base;       /* ARC 소유권 — 반드시 첫 번째 필드 */
     int running;       /* 루프 실행 상태 플래그 */
     int thread_id;     /* 루프가 구동 중인 스레드 ID */
 

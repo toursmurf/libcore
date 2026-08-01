@@ -54,30 +54,44 @@ static void flush_defer_queue(EventLoop* loop) {
     loop->impl->defer_count = 0;
 }
 
+/* ── ARC 소멸자 ── */
+static void EventLoop_finalize(Object* obj) {
+    EventLoop* self = (EventLoop*)obj;
+    event_backend_destroy(self);   /* impl->ctx_map + impl 해제 */
+}
+
+static const Class _EventLoop_Class = {
+    .name     = "EventLoop",
+    .size     = sizeof(EventLoop),
+    .finalize = EventLoop_finalize
+};
+
 EventLoop* event_loop_create(void) {
     EventLoop* loop = calloc(1, sizeof(EventLoop));
     if (!loop) return NULL;
 
+    /* ARC 체계 편입 — RELEASE() 로 해제 가능 */
+    Object_Init((Object*)loop, &_EventLoop_Class);
+
     loop->running = 0;
     loop->thread_id = 0;
-		loop->addSocket = _addSocket;
-    loop->delSocket = _delSocket;
-    loop->poll      = _poll;
-    loop->stop      = _stop;
+    loop->addSocket    = _addSocket;
+    loop->delSocket    = _delSocket;
+    loop->poll         = _poll;
+    loop->stop         = _stop;
     loop->addTimer     = NULL;
     loop->removeTimer  = NULL;
     loop->deferRelease = _deferRelease;
     if (event_backend_init(loop) < 0) {
-        free(loop);
+        RELEASE((Object*)loop);   /* finalize → event_backend_destroy */
         return NULL;
     }
     return loop;
 }
 
+/* event_loop_destroy: 하위 호환성 유지 — 내부적으로 RELEASE 위임 */
 void event_loop_destroy(EventLoop* loop) {
-    if (!loop) return;
-    event_backend_destroy(loop);
-    free(loop);
+    if (loop) RELEASE((Object*)loop);
 }
 
 void event_loop_stop(EventLoop* loop) {
