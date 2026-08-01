@@ -30,16 +30,81 @@ static const Class AppContext_Class = {
     .finalize = AppContext_finalize
 };
 
-static bool AppContext_init(AppContext* self, const char* config_file) {
-    if (!self) return false;
-
-    // TODO: config_file을 파싱하여 self->config에 적재 (내일 연차 이후 구현!)
+static bool AppContext_init(AppContext* self,
+                            const char* config_file) {
+    if (!self) {
+        return false;
+    }
 
     self->initialized = true;
-    if (logger && logger->info) {
-        logger->info(logger, "[APP] AppContext initialized successfully with [%s].",
-                     config_file ? config_file : "default");
+    /* ── 1. 설정 파일 파싱 ── */
+    if (config_file) {
+        if (!self->config->load(self->config, config_file)) {
+            if (logger && logger->warn) {
+                logger->warn(logger,
+                    "[APP] Config file not found: %s — using defaults.",
+                    config_file);
+            }
+        }
     }
+
+    /* ── 2. PathValidator 싱글턴 등록 ── */
+    PathValidator* pv = new_PathValidator();
+    if (!pv) {
+        if (logger && logger->error) {
+            logger->error(logger,
+                "[APP] FATAL: PathValidator allocation failed.");
+        }
+				self->initialized = false;
+        return false;
+    }
+    self->registerService(self,
+        &PathValidator_Class, (Object*)pv);
+    RELEASE((Object*)pv);
+
+    /* ── 3. DB 연결 ── */
+    const char* db_host = self->config->getString(
+        self->config, "db_host", "127.0.0.1");
+    const char* db_name = self->config->getString(
+        self->config, "db_name", "toostalk");
+    const char* db_user = self->config->getString(
+        self->config, "db_user", "root");
+    const char* db_pass = self->config->getString(
+        self->config, "db_pass", "");
+    int db_port = self->config->getInt(
+        self->config, "db_port", 3306);
+
+    DBClient* db = new_DBClient(
+        db_host, db_port, db_name, db_user, db_pass);
+    if (!db || db->isConnected == 0) {
+        if (logger && logger->error) {
+            logger->error(logger,
+                "[APP] FATAL: DB connection failed (%s:%d/%s).",
+                db_host, db_port, db_name);
+        }
+        if (db) {
+            RELEASE((Object*)db);
+        }
+				self->initialized = false;
+        return false;
+    }
+    self->registerService(self,
+        &DBClient_Class, (Object*)db);
+    RELEASE((Object*)db);
+
+    /* ── 4. 업로드 디렉토리 초기화 ── */
+    const char* upload_dir = self->config->getString(
+        self->config, "upload_dir",
+        "/var/toostalk/uploads");
+    self->runtime->setString(
+        self->runtime, "upload_dir", upload_dir);
+
+    if (logger && logger->info) {
+        logger->info(logger,
+            "[APP] AppContext initialized. DB: %s:%d/%s",
+            db_host, db_port, db_name);
+    }
+
     return true;
 }
 
