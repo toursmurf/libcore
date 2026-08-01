@@ -151,7 +151,7 @@ endif
 # 🚀 libcore Build Configuration Banner
 # ==========================================
 $(info =========================================)
-$(info  libcore Build Configuration (v1.6.2 Final))
+$(info  libcore Build Configuration (v1.7.0 Final))
 $(info =========================================)
 $(info  Target OS  : $(TARGET_OS))
 $(info  OS Info    : $(OS_INFO))
