@@ -1,8 +1,8 @@
+#include "board_handler.h"
 #include "http_server.h"
 #include "multipart_parser.h"
 #include "json.h"
 #include "logger.h"
-#include "board_handler.h"
 #include "db.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -279,4 +279,162 @@ void board_write_handler(HttpRequest* req, HttpResponse* res, void* user_ctx) {
 
     res->sendJson(res, resp_json);
     RELEASE((Object*)resp_json);
+}
+
+/* =========================================================
+ * modify — PUT /board/:id
+ * ========================================================= */
+static void BoardHandler_modify(BoardHandler* self,
+                                 HttpRequest*  req,
+                                 HttpResponse* res) {
+    if (req->method != HTTP_PUT) {
+        res->sendStatus(res, 405);
+        return;
+    }
+    if (!req->multipart) {
+        res->setStatus(res, 400);
+        res->sendText(res, "Bad Request: Multipart payload expected.");
+        return;
+    }
+    if (!self->db || self->db->isConnected == 0) {
+        res->setStatus(res, 500);
+        res->sendText(res, "Internal Server Error: DB unavailable.");
+        return;
+    }
+
+    /* post_id 추출 */
+    const char* path_str = req->path
+                         ? req->path->c_str(req->path)
+                         : "/";
+    int post_id = 0;
+    sscanf(path_str, "/board/%d", &post_id);
+    if (post_id <= 0) {
+        res->setStatus(res, 400);
+        res->sendText(res, "Bad Request: Invalid post ID.");
+        return;
+    }
+
+    /* 텍스트 필드 추출 */
+    const char* title   = MultipartResult_get_field(req->multipart, "title");
+    const char* content = MultipartResult_get_field(req->multipart, "content");
+
+    if (!title || !content) {
+        res->setStatus(res, 400);
+        res->sendText(res, "Bad Request: Missing 'title' or 'content'.");
+        return;
+    }
+    if (strlen(content) > 65535) {
+        res->setStatus(res, 400);
+        res->sendText(res, "Bad Request: Content too long.");
+        return;
+    }
+
+    /* 새 첨부파일 저장 */
+    HttpMultipartFile* attach      = MultipartResult_get_file(req->multipart, "attach");
+    char               new_path[512] = {0};
+    bool               file_saved  = false;
+
+    if (attach && attach->data && attach->size > 0) {
+        file_saved = self->file_save(self, attach,
+                                     new_path, sizeof(new_path));
+        if (!file_saved) {
+            res->setStatus(res, 500);
+            res->sendText(res, "Internal Server Error: File save failed.");
+            return;
+        }
+    }
+
+    /* DB 트랜잭션 */
+    self->db->beginTransaction(self->db);
+
+    /* board_posts UPDATE */
+    char pid_buf[32];
+    snprintf(pid_buf, sizeof(pid_buf), "%d", post_id);
+
+    String*  s_title   = new_String(title);
+    String*  s_content = new_String(content);
+    String*  s_pid     = new_String(pid_buf);
+    HashMap* upd_data  = new_HashMap(8);
+
+    upd_data->put(upd_data, "title",   (Object*)s_title);
+    upd_data->put(upd_data, "content", (Object*)s_content);
+    upd_data->put(upd_data, "id",      (Object*)s_pid);
+
+    RELEASE((Object*)s_title);
+    RELEASE((Object*)s_content);
+    RELEASE((Object*)s_pid);
+
+    int update_ok = self->db->updateTable(self->db,
+                        "board_posts", upd_data, "id");
+    RELEASE((Object*)upd_data);
+
+    /* 첨부파일 교체 */
+    int attach_ok = 1;
+    if (update_ok && file_saved) {
+        /* 기존 첨부파일 경로 조회 후 삭제 */
+        /* TODO: SELECT storage_path FROM attachments WHERE post_id=? */
+        /* self->file_delete(self, old_path); */
+
+        /* 새 첨부파일 메타 UPDATE */
+        const char* original_filename = "untitled.bin";
+        if (attach->filename && attach->filename->c_str) {
+            original_filename = attach->filename->c_str(attach->filename);
+        }
+
+        char sz_buf[32];
+        snprintf(sz_buf, sizeof(sz_buf), "%zu", attach->size);
+
+        const char* mime_str = "application/octet-stream";
+        if (attach->content_type && attach->content_type->c_str) {
+            mime_str = attach->content_type->c_str(attach->content_type);
+        }
+
+        String*  sa_pid   = new_String(pid_buf);
+        String*  sa_org   = new_String(original_filename);
+        String*  sa_path  = new_String(new_path);
+        String*  sa_size  = new_String(sz_buf);
+        String*  sa_mime  = new_String(mime_str);
+        HashMap* att_data = new_HashMap(8);
+
+        att_data->put(att_data, "post_id",      (Object*)sa_pid);
+        att_data->put(att_data, "original_name", (Object*)sa_org);
+        att_data->put(att_data, "storage_path",  (Object*)sa_path);
+        att_data->put(att_data, "file_size",     (Object*)sa_size);
+        att_data->put(att_data, "mime_type",     (Object*)sa_mime);
+
+        RELEASE((Object*)sa_pid);
+        RELEASE((Object*)sa_org);
+        RELEASE((Object*)sa_path);
+        RELEASE((Object*)sa_size);
+        RELEASE((Object*)sa_mime);
+
+        attach_ok = self->db->updateTable(self->db,
+                        "attachments", att_data, "post_id");
+        RELEASE((Object*)att_data);
+    }
+
+    /* 실패 시 롤백 + 고아 파일 소각 */
+    if (!update_ok || (file_saved && !attach_ok)) {
+        self->db->rollback(self->db);
+        if (file_saved) {
+            self->file_delete(self, new_path);
+        }
+        res->setStatus(res, 500);
+        res->sendText(res, "Internal Server Error: DB transaction failed.");
+        return;
+    }
+
+    self->db->commit(self->db);
+
+    /* 응답 */
+    char buf[64];
+    snprintf(buf, sizeof(buf),
+             "{\"status\":\"ok\",\"post_id\":%d}", post_id);
+    res->setStatus(res, 200);
+    res->sendText(res, buf);
+}
+
+void board_modify_cb(HttpRequest* req, HttpResponse* res, void* ctx) {
+    BoardHandler* bh = (BoardHandler*)ctx;
+    bh->modify(bh, req, res);
 }

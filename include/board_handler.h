@@ -10,9 +10,11 @@
  * 사용법:
  *   BoardHandler* bh = new_BoardHandler(db, pv, upload_dir);
  *
- *   router->POST(router, "/board/write",  board_write_cb,  bh);
- *   router->GET (router, "/board/list",   board_list_cb,   bh);
- *   router->GET (router, "/board/:id",    board_detail_cb, bh);
+ *   router->POST  (router, "/board/write", board_write_cb,  bh);
+ *   router->GET   (router, "/board/list",  board_list_cb,   bh);
+ *   router->GET   (router, "/board/:id",   board_detail_cb, bh);
+ *   router->PUT   (router, "/board/:id",   board_modify_cb, bh);
+ *   router->DELETE(router, "/board/:id",   board_remove_cb, bh);
  *
  *   ...
  *   RELEASE((Object*)bh);
@@ -43,16 +45,19 @@ struct BoardHandler {
     void (*write)  (BoardHandler* self, HttpRequest* req, HttpResponse* res);
     void (*list)   (BoardHandler* self, HttpRequest* req, HttpResponse* res);
     void (*detail) (BoardHandler* self, HttpRequest* req, HttpResponse* res);
+    void (*modify) (BoardHandler* self, HttpRequest* req, HttpResponse* res);
     void (*remove) (BoardHandler* self, HttpRequest* req, HttpResponse* res);
 
     /* ── 파일 유틸 ── */
-    bool (*file_save)    (BoardHandler* self,
+    bool (*file_save)    (BoardHandler*      self,
                           HttpMultipartFile* attach,
-                          char* out_path, size_t out_size);
+                          char*              out_path,
+                          size_t             out_size);
     bool (*file_delete)  (BoardHandler* self, const char* path);
     void (*file_sanitize)(BoardHandler* self,
-                          const char* dirty,
-                          char* clean_out, size_t max_len);
+                          const char*   dirty,
+                          char*         clean_out,
+                          size_t        max_len);
 };
 
 BoardHandler* new_BoardHandler(DBClient*      db,
@@ -63,6 +68,7 @@ BoardHandler* new_BoardHandler(DBClient*      db,
 void board_write_cb  (HttpRequest* req, HttpResponse* res, void* ctx);
 void board_list_cb   (HttpRequest* req, HttpResponse* res, void* ctx);
 void board_detail_cb (HttpRequest* req, HttpResponse* res, void* ctx);
+void board_modify_cb (HttpRequest* req, HttpResponse* res, void* ctx);
 void board_remove_cb (HttpRequest* req, HttpResponse* res, void* ctx);
 
 #endif /* BOARD_HANDLER_H */
