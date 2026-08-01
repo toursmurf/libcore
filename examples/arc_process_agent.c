@@ -35,7 +35,7 @@ typedef struct {
     double mem;
     char status[16];
     char name[256];
-    char cmd[1024];
+    char cmd[2048];
 } ProcInfo;
 
 typedef struct {
