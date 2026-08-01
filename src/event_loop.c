@@ -11,22 +11,6 @@ static uint64_t get_current_ms(void) {
 }
 
 /* =========================================================
- * 🚨 ARC 소멸자(Finalizer) 정의
- * ========================================================= */
-static void EventLoop_finalize(Object* obj) {
-    EventLoop* self = (EventLoop*)obj;
-    if (self) {
-        event_backend_destroy(self); /* 기존 destroy 로직이 이곳으로 흡수 */
-    }
-}
-
-static const Class _EventLoop_Class = {
-    .name = "EventLoop",
-    .size = sizeof(EventLoop),
-    .finalize = EventLoop_finalize
-};
-
-/* =========================================================
  * 공용 외부 API (Front API) 구현부
  * ========================================================= */
  /* 래퍼 함수 */
@@ -48,29 +32,53 @@ static void _stop(EventLoop* self) {
     if (self) self->running = false;
 }
 
+/* ── 지연 해제 — 인스턴스별 격리 (다중 Reactor 스레드 안전) ──
+ * 전역 변수 사용 금지: 각 EventLoop 인스턴스가 자신의 impl->defer_* 큐 소유 */
+
+static void _deferRelease(EventLoop* self, Object* obj) {
+    if (!self || !self->impl || !obj) return;
+    if (self->impl->defer_count < DEFER_CAP) {
+        self->impl->defer_pending[self->impl->defer_count++] = obj;
+    } else {
+        /* 큐 가득 차면 즉시 해제 (Data Race보다 안전) */
+        RELEASE(obj);
+    }
+}
+
+static void flush_defer_queue(EventLoop* loop) {
+    if (!loop || !loop->impl) return;
+    for (int i = 0; i < loop->impl->defer_count; i++) {
+        RELEASE(loop->impl->defer_pending[i]);
+        loop->impl->defer_pending[i] = NULL;
+    }
+    loop->impl->defer_count = 0;
+}
+
 EventLoop* event_loop_create(void) {
     EventLoop* loop = calloc(1, sizeof(EventLoop));
     if (!loop) return NULL;
 
-    /* 🚨 Object_Init을 통해 ARC 체계에 정식 편입 */
-    Object_Init((Object*)loop, &_EventLoop_Class);
-
     loop->running = 0;
     loop->thread_id = 0;
-   loop->addSocket = _addSocket;
+		loop->addSocket = _addSocket;
     loop->delSocket = _delSocket;
     loop->poll      = _poll;
     loop->stop      = _stop;
-    loop->addTimer  = NULL;
+    loop->addTimer     = NULL;
     loop->removeTimer  = NULL;
+    loop->deferRelease = _deferRelease;
     if (event_backend_init(loop) < 0) {
-        RELEASE((Object*)loop); /* 🚨 실패 시에도 ARC 해제 규격 통일 */
+        free(loop);
         return NULL;
     }
     return loop;
 }
 
-/* 🚨 기존 event_loop_destroy 함수는 삭제됨 (RELEASE가 대신함) */
+void event_loop_destroy(EventLoop* loop) {
+    if (!loop) return;
+    event_backend_destroy(loop);
+    free(loop);
+}
 
 void event_loop_stop(EventLoop* loop) {
     if (loop) {
@@ -103,6 +111,8 @@ int event_loop_run(EventLoop* loop) {
             if ((events[i].mask & EVENT_WRITE) && sock->on_writable)
                 sock->on_writable(sock, loop);
         }
+        /* 이벤트 배치 처리 완료 후 지연 해제 큐 플러시 — UAF 방지 */
+        flush_defer_queue(loop);
     }
     return 0;
 }

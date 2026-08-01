@@ -58,6 +58,7 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr);
 
 void HttpConnection_on_writable(Socket* s, void* loop_ptr);
 void HttpConnection_flush(HttpConnection* conn);
+void HttpConnection_append_send(HttpConnection* conn, const uint8_t* data, size_t len);
 
 int HttpConnection_ws_send(HttpConnection* conn, const char* msg);
 void HttpConnection_ws_close(HttpConnection* conn);

@@ -4,7 +4,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
-#include "object.h"   /* 🚨 ARC 기반 상속을 위한 포함 */
 #include "timer.h"
 #include "socket_base.h"
 
@@ -22,25 +21,25 @@ struct EventLoopImpl;
 
 /* 외부로 노출되는 EventLoop 구조체 */
 typedef struct EventLoop {
-    Object base;       /* 🚨 libcore ARC 통일성을 위한 Object 상속 추가 */
     int running;       /* 루프 실행 상태 플래그 */
     int thread_id;     /* 루프가 구동 중인 스레드 ID */
 
     /* OS별 내부 심장(epoll/kqueue/IOCP)과 연결되는 비밀 통로 */
     struct EventLoopImpl* impl;
-   /* 편의 래퍼 API */
-   int  (*addTimer)    (struct EventLoop* self, Timer* timer);
+		/* 편의 래퍼 API */
+		int  (*addTimer)    (struct EventLoop* self, Timer* timer);
     int  (*removeTimer) (struct EventLoop* self, Timer* timer);
     int  (*addSocket)(struct EventLoop* self, Socket* sock, uint32_t mask);
     int  (*delSocket)(struct EventLoop* self, Socket* sock);
     void (*poll)(struct EventLoop* self, int timeout_ms);
     void (*stop)        (struct EventLoop* self);
+    void (*deferRelease)(struct EventLoop* self, Object* obj); /* 순회 문맥 안전 지연 해제 */
 
 } EventLoop;
 
 /* 공용 API 프로토타입 (외부 노출용) */
 EventLoop* event_loop_create(void);
-/* 🚨 event_loop_destroy 함수는 RELEASE 매크로로 대체되므로 원천 삭제됨 */
+void       event_loop_destroy(EventLoop* loop);
 int        event_loop_run(EventLoop* loop);
 void       event_loop_stop(EventLoop* loop);
 

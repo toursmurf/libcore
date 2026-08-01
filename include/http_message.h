@@ -6,6 +6,10 @@
 #include "hashmap.h"
 #include "json.h"
 #include "socket_base.h"
+#include "multipart_parser.h"
+
+/* 순환 include 없이 HttpConnection 포인터 사용을 위한 전방 선언 */
+struct HttpConnection;
 
 /* HTTP 메서드 완벽 분류 */
 typedef enum {
@@ -28,8 +32,9 @@ typedef struct HttpRequest {
     JSONNode* json;
     HashMap* form;
 
-    void* multipart;
-    void* body;
+    MultipartResult* multipart; /* [OWNED] multipart/form-data 파싱 결과 */
+    void*            body;       /* [OWNED] raw body bytes */
+    size_t           body_len;   /* body 실제 바이트 수 */
 } HttpRequest;
 
 HttpRequest* new_HttpRequest(void);
@@ -43,6 +48,7 @@ struct HttpResponse {
 
     /* 🚨 [BORROWED] 절대 RELEASE 금지! HttpConnection이 소유함 */
     Socket* socket;
+    struct HttpConnection* conn; /* [BORROWED] append_out_buf+flush 경로용 */
 
     int status_code;
     HashMap* headers;
@@ -57,7 +63,7 @@ struct HttpResponse {
     void (*redirect)(HttpResponse* self, const char* url);
 };
 
-HttpResponse* new_HttpResponse(Socket* sock);
+HttpResponse* new_HttpResponse(Socket* sock, struct HttpConnection* conn);
 const char* Http_statusMessage(int code);
 
 #endif /* HTTP_MESSAGE_H */

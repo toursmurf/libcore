@@ -4,6 +4,7 @@
 #include "http_server.h"
 #include "tcp_socket.h"
 #include "ws_protocol.h"
+#include "multipart_parser.h"
 #include "string_obj.h"
 #include "logger.h" /* 🚨 로그 추적을 위해 명시적 추가 */
 #include "event_loop_internal.h" /* 🚀 [신규 패치] V1.6.x 3대 OS 통합 API 접근을 위한 핵심 헤더! */
@@ -83,6 +84,13 @@ void HttpConnection_flush(HttpConnection* conn) {
     }
 }
 
+/* append_out_buf 의 공개 래퍼 — http_message.c 등 외부에서 사용 */
+void HttpConnection_append_send(HttpConnection* conn,
+                                const uint8_t* data, size_t len) {
+    if (conn && data && len > 0)
+        append_out_buf(conn, data, len);
+}
+
 void HttpConnection_on_writable(Socket* s, void* loop_ptr) {
     (void)loop_ptr;
     HttpConnection* conn = (HttpConnection*)s->user_data;
@@ -105,10 +113,7 @@ static void HttpConnection_finalize(Object* obj) {
     HttpConnection* self = (HttpConnection*)obj;
     if (self->server) remove_conn_from_server(self);
     if (self->out_buf) { free(self->out_buf); self->out_buf = NULL; }
-    if (self->req) {
-        if (self->req->body) free(self->req->body);
-        RELEASE(self->req);
-    }
+    if (self->req) RELEASE(self->req);  /* body는 HttpRequest_finalize에서 해제 */
     if (self->res) RELEASE(self->res);
     if (self->sock) RELEASE(self->sock);
 }
@@ -161,8 +166,8 @@ static void conn_shutdown(HttpConnection* conn, EventLoop* loop, Socket* s) {
     /* 🚀 [패치] 구형 delSocket -> 신형 event_backend_remove */
     event_backend_remove(loop, s);
 
-    /* 🚀 [패치] 구형 deferRelease -> ARC 표준 RELEASE 통일 */
-    RELEASE((Object*)conn);
+    /* UAF 방지: 순회/콜백 문맥에서 즉시 소멸 금지 → 이벤트 루프 말미 일괄 해제 */
+    loop->deferRelease(loop, (Object*)conn);
 }
 
 static void HttpConnection_parse_headers(HttpConnection* conn, char* header_end) {
@@ -359,7 +364,7 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
             if (!header_end) continue;
 
             conn->req = new_HttpRequest();
-            conn->res = new_HttpResponse(conn->sock);
+            conn->res = new_HttpResponse(conn->sock, conn);
 
             if (!conn->req || !conn->res) {
                 conn_shutdown(conn, loop, s);
@@ -387,26 +392,28 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
             const char* conn_hdr = hashmap_get_str(conn->req->headers, "connection");
             conn->keep_alive = !(conn_hdr && strcasecmp(conn_hdr, "close") == 0);
 
+            /* [필수 2] Content-Length는 headers 맵에서만 읽음
+             * (원시 버퍼 strcasestr은 X-Content-Length 오매칭 위험) */
             long content_length = 0;
-            char* cl_ptr = strcasestr(conn->header_buf, "Content-Length:");
-            if (cl_ptr && cl_ptr < header_end) {
-                char* endptr = NULL;
-                long cl_val = strtol(cl_ptr + 15, &endptr, 10);
-                /* [방어 1] 음수 차단 */
-                if (cl_val < 0) {
-                    const char* err_400 = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-                    s->send(s, err_400, strlen(err_400), NULL, 0);
-                    conn_shutdown(conn, loop, s);
-                    return;
+            {
+                const char* cl_str2 = hashmap_get_str(conn->req->headers, "content-length");
+                if (cl_str2) {
+                    char* endptr = NULL;
+                    long cl_val = strtol(cl_str2, &endptr, 10);
+                    if (endptr == cl_str2 || cl_val < 0) {
+                        const char* err_400 = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                        s->send(s, err_400, strlen(err_400), NULL, 0);
+                        conn_shutdown(conn, loop, s);
+                        return;
+                    }
+                    if (cl_val > MAX_HTTP_BODY_SIZE) {
+                        const char* err_413 = "HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                        s->send(s, err_413, strlen(err_413), NULL, 0);
+                        conn_shutdown(conn, loop, s);
+                        return;
+                    }
+                    content_length = cl_val;
                 }
-                /* [방어 2] 상한(10MB) 초과 차단 */
-                if (cl_val > MAX_HTTP_BODY_SIZE) {
-                    const char* err_413 = "HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-                    s->send(s, err_413, strlen(err_413), NULL, 0);
-                    conn_shutdown(conn, loop, s);
-                    return;
-                }
-                content_length = (endptr != cl_ptr + 15) ? cl_val : 0;
             }
 
             size_t header_block_size = (header_end + 4) - conn->header_buf;
@@ -486,17 +493,54 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
             conn->body_read = 0;
         }
 
+        /* ── body 파싱: Content-Type 판별 후 구조체에 채움 ── */
+        if (conn->req->body) {
+            const char* cl_str = hashmap_get_str(conn->req->headers, "content-length");
+            if (cl_str) {
+                char* endptr = NULL;
+                long cl_val = strtol(cl_str, &endptr, 10);
+                conn->req->body_len = (endptr != cl_str && cl_val > 0)
+                                      ? (size_t)cl_val : 0;
+            }
+
+            const char* ct = hashmap_get_str(conn->req->headers, "content-type");
+            if (ct) {
+                if (strstr(ct, "application/x-www-form-urlencoded")) {
+                    /* form 파싱: key=value&key2=val2 */
+                    char* src_body = (char*)conn->req->body;
+                    char* saveptr = NULL;
+                    char* copy = strdup(src_body);
+                    if (copy) {
+                        char* token = strtok_r(copy, "&", &saveptr);
+                        while (token) {
+                            char* eq = strchr(token, '=');
+                            if (eq) {
+                                *eq = '\0';
+                                hashmap_put_str(conn->req->form, token, eq + 1);
+                            }
+                            token = strtok_r(NULL, "&", &saveptr);
+                        }
+                        free(copy);
+                    }
+                } else if (strstr(ct, "application/json")) {
+                    conn->req->json = new_JSON((char*)conn->req->body);
+                } else if (strstr(ct, "multipart/form-data")) {
+                    char boundary[256] = "";
+                    if (Multipart_extract_boundary(ct, boundary, sizeof(boundary)) > 0) {
+                        conn->req->multipart = Multipart_parse(
+                            conn->req->body, conn->req->body_len, boundary);
+                    }
+                }
+            }
+        }
+
         if (conn->router && conn->router->dispatch) {
             conn->router->dispatch(conn->router, conn->req, conn->res);
         }
 
         bool ws_upgraded = (conn->res->status_code == 101);
 
-        if (conn->req->body) {
-            free(conn->req->body);
-            conn->req->body = NULL;
-        }
-        RELEASE(conn->req);
+        RELEASE(conn->req);  /* body 소유권은 HttpRequest_finalize에 일임 */
         RELEASE(conn->res);
         conn->req = NULL;
         conn->res = NULL;

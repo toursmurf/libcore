@@ -1,4 +1,5 @@
 #include "http_message.h"
+#include "http_server.h"   /* HttpConnection_append_send, HttpConnection_flush */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +9,7 @@
 * ========================================================= */
 const char* Http_statusMessage(int code) {
     switch (code) {
+        case 101: return "Switching Protocols";
         case 200: return "OK";
         case 201: return "Created";
         case 204: return "No Content";
@@ -27,11 +29,13 @@ const char* Http_statusMessage(int code) {
 * ========================================================= */
 static void HttpRequest_finalize(Object* obj) {
     HttpRequest* self = (HttpRequest*)obj;
-    if (self->path)    RELEASE(self->path);
-    if (self->headers) RELEASE(self->headers);
-    if (self->query)   RELEASE(self->query);
-    if (self->json)    RELEASE(self->json);
-    if (self->form)    RELEASE(self->form);
+    if (self->path)      RELEASE(self->path);
+    if (self->headers)   RELEASE(self->headers);
+    if (self->query)     RELEASE(self->query);
+    if (self->json)      RELEASE(self->json);
+    if (self->form)      RELEASE(self->form);
+    if (self->multipart) RELEASE((Object*)self->multipart);
+    if (self->body)      { free(self->body); self->body = NULL; }
 }
 
 static const Class _HttpRequest_Class = {
@@ -112,51 +116,62 @@ static bool write_hdr_cb(const char* k, Object* v, void* ctx_ptr) {
 static void send_internal(HttpResponse* self, const char* ctype, const char* body, size_t body_len) {
     if (!self || !self->socket || !self->socket->is_open) return;
 
+    /* ── 헤더 조립 ── */
     char head_buf[4096];
     int len = snprintf(head_buf, sizeof(head_buf), "HTTP/1.1 %d %s\r\n",
                        self->status_code, Http_statusMessage(self->status_code));
     if (len < 0 || (size_t)len >= sizeof(head_buf)) return;
 
     if (ctype) {
-        int n = snprintf(head_buf + len, sizeof(head_buf) - len, "Content-Type: %s\r\n", ctype);
+        int n = snprintf(head_buf + len, sizeof(head_buf) - len,
+                         "Content-Type: %s\r\n", ctype);
         if (n > 0 && (size_t)n < sizeof(head_buf) - len) len += n;
     }
 
-    int n_len = snprintf(head_buf + len, sizeof(head_buf) - len, "Content-Length: %zu\r\n", body_len);
+    int n_len = snprintf(head_buf + len, sizeof(head_buf) - len,
+                         "Content-Length: %zu\r\n", body_len);
     if (n_len > 0 && (size_t)n_len < sizeof(head_buf) - len) len += n_len;
 
-    /* =========================================================
-     * 🚨 [Rule 6-2 준수] buckets[] 직접 접근 폐기! iterate() 사용!
-     * ========================================================= */
     HdrCtx ctx = {
-        .buf = head_buf,
-        .cap = sizeof(head_buf),
-        .len = len,
+        .buf      = head_buf,
+        .cap      = sizeof(head_buf),
+        .len      = len,
         .overflow = false
     };
-
-    if (self->headers) {
+    if (self->headers)
         self->headers->iterate(self->headers, write_hdr_cb, &ctx);
-    }
 
-    len = ctx.len; /* 업데이트된 길이 동기화 */
-
+    /* 헤더 오버플로 시 500 응답으로 전환 (부분 헤더 무음 발사 차단) */
     if (ctx.overflow) {
-        goto header_full; /* 버퍼 초과 시 헤더 기록 중단 로직 유지 */
+        static const char err500[] =
+            "HTTP/1.1 500 Internal Server Error\r\n"
+            "Content-Length: 0\r\nConnection: close\r\n\r\n";
+        if (self->conn)
+            HttpConnection_append_send(self->conn,
+                                       (const uint8_t*)err500, sizeof(err500)-1);
+        else
+            self->socket->send(self->socket, err500, sizeof(err500)-1, NULL, 0);
+        return;
     }
-    /* ========================================================= */
 
-header_full:
-    ;
-    int n_end = snprintf(head_buf + len, sizeof(head_buf) - len, "\r\n");
-    if (n_end > 0 && (size_t)n_end < sizeof(head_buf) - len) len += n_end;
+    int n_end = snprintf(head_buf + ctx.len, sizeof(head_buf) - ctx.len, "\r\n");
+    if (n_end > 0 && (size_t)n_end < sizeof(head_buf) - ctx.len)
+        ctx.len += n_end;
 
-    /* 1. 헤더 발사 */
-    self->socket->send(self->socket, head_buf, len, NULL, 0);
-
-    /* 2. 바디 발사 */
-    if (body && body_len > 0) {
-        self->socket->send(self->socket, body, body_len, NULL, 0);
+    /* ── flush 체계 경유 송신 ──
+     *   conn 있으면 append_out_buf + HttpConnection_flush (EPOLLOUT 통일)
+     *   conn 없으면 직발사 (WsUpgrade_handler 등 conn 미확보 경로 방어) */
+    if (self->conn) {
+        HttpConnection_append_send(self->conn,
+                                   (const uint8_t*)head_buf, ctx.len);
+        if (body && body_len > 0)
+            HttpConnection_append_send(self->conn,
+                                       (const uint8_t*)body, body_len);
+        HttpConnection_flush(self->conn);
+    } else {
+        self->socket->send(self->socket, head_buf, ctx.len, NULL, 0);
+        if (body && body_len > 0)
+            self->socket->send(self->socket, body, body_len, NULL, 0);
     }
 }
 
@@ -223,15 +238,24 @@ static void impl_sendFile(HttpResponse* self, const char* path) {
         return;
     }
 
-    self->socket->send(self->socket, head_buf, len, NULL, 0);
+    if (self->conn) {
+        HttpConnection_append_send(self->conn, (const uint8_t*)head_buf, len);
+    } else {
+        self->socket->send(self->socket, head_buf, len, NULL, 0);
+    }
 
-    char chunk[65536];
+    char chunk[8192];
     size_t read_bytes;
     while ((read_bytes = fread(chunk, 1, sizeof(chunk), fp)) > 0) {
-        ssize_t sent = self->socket->send(self->socket, chunk, read_bytes, NULL, 0);
-        if (sent < 0) break;
+        if (self->conn) {
+            HttpConnection_append_send(self->conn, (const uint8_t*)chunk, read_bytes);
+        } else {
+            ssize_t sent = self->socket->send(self->socket, chunk, read_bytes, NULL, 0);
+            if (sent < 0) break;
+        }
     }
     fclose(fp);
+    if (self->conn) HttpConnection_flush(self->conn);
 }
 
 /* [BORROWED] 절대 소켓을 닫거나 해제하지 않음 */
@@ -246,13 +270,14 @@ static const Class _HttpResponse_Class = {
     .finalize = HttpResponse_finalize
 };
 
-HttpResponse* new_HttpResponse(Socket* sock) {
+HttpResponse* new_HttpResponse(Socket* sock, struct HttpConnection* conn) {
     HttpResponse* self = (HttpResponse*)calloc(1, sizeof(HttpResponse));
     if (!self) return NULL;
 
     Object_Init((Object*)self, &_HttpResponse_Class);
 
     self->socket = sock;
+    self->conn   = conn;   /* [BORROWED] flush 경로용 */
     self->status_code = 200;
     self->headers = new_HashMap(16);
 

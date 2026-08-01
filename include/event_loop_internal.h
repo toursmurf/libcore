@@ -3,6 +3,7 @@
 
 #include "event_loop.h"
 #include "socket_base.h"
+#include "object.h"   /* Object* — defer_pending 배열 타입 */
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -67,6 +68,8 @@ typedef struct {
 #endif
 
 /* 불투명 포인터용 실제 구현체 (fd 매핑 테이블 내장) */
+#define DEFER_CAP 64
+
 struct EventLoopImpl {
 #if defined(LIBCORE_USE_IOCP)
     HANDLE iocp_handle;
@@ -76,6 +79,10 @@ struct EventLoopImpl {
     int epoll_fd;
 #endif
     SocketContext* ctx_map[65536];
+
+    /* 지연 해제 큐 — 인스턴스별 격리 (다중 Reactor 스레드 안전) */
+    Object* defer_pending[DEFER_CAP];
+    int     defer_count;
 };
 
 /* 5대 공통 백엔드 인터페이스 */
