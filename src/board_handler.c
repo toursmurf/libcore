@@ -16,6 +16,7 @@
 
 extern Logger* logger;
 
+/* ── mkdir -p 헬퍼 ────────────────────────────────── */
 static int mkdir_p(const char *path, mode_t mode) {
     char tmp[512];
     snprintf(tmp, sizeof(tmp), "%s", path);
@@ -41,8 +42,9 @@ static int mkdir_p(const char *path, mode_t mode) {
     return 0;
 }
 
+/* ── Basename 추출 + Path Traversal 차단 ──────────── */
 static void sanitize_filename(const char* dirty, char* clean_out, size_t max_len) {
-    if (max_len == 0) {
+    if (max_len == 0 || !dirty) {
         return;
     }
     const char* base = dirty;
@@ -73,6 +75,7 @@ static void sanitize_filename(const char* dirty, char* clean_out, size_t max_len
     }
 }
 
+/* ── POST /board/write ───────────────────────────── */
 void board_write_handler(HttpRequest* req, HttpResponse* res, void* user_ctx) {
     DBClient* db = (DBClient*)user_ctx;
 
@@ -109,14 +112,26 @@ void board_write_handler(HttpRequest* req, HttpResponse* res, void* user_ctx) {
         return;
     }
 
-    HttpMultipartFile* attach    = MultipartResult_get_file(req->multipart, "attach");
-    char               storage_path[512] = {0};
-    bool               file_saved = false;
+    HttpMultipartFile* attach = MultipartResult_get_file(req->multipart, "attach");
+
+    /* String* → char* 추출 */
+    const char* original_filename = "untitled.bin";
+    if (attach && attach->filename && attach->filename->c_str) {
+        original_filename = attach->filename->c_str(attach->filename);
+    }
+
+    const char* mime_str = "application/octet-stream";
+    if (attach && attach->content_type && attach->content_type->c_str) {
+        mime_str = attach->content_type->c_str(attach->content_type);
+    }
+
+    char storage_path[512] = {0};
+    bool file_saved        = false;
 
     /* ── 1. 파일 디스크 기록 ── */
     if (attach && attach->data && attach->size > 0) {
         char safe_name[256] = {0};
-        sanitize_filename(attach->filename, safe_name, sizeof(safe_name));
+        sanitize_filename(original_filename, safe_name, sizeof(safe_name));
 
         struct timeval tv;
         gettimeofday(&tv, NULL);
@@ -160,7 +175,7 @@ void board_write_handler(HttpRequest* req, HttpResponse* res, void* user_ctx) {
         }
     }
 
-    /* ── 2. 영속화: 트랜잭션 (ACID) ── */
+    /* ── 2. 트랜잭션 (ACID) ── */
     db->beginTransaction(db);
 
     char mid_buf[32];
@@ -192,13 +207,9 @@ void board_write_handler(HttpRequest* req, HttpResponse* res, void* user_ctx) {
         char sz_buf[32];
         snprintf(sz_buf, sizeof(sz_buf), "%zu", attach->size);
 
-        const char* mime_str = attach->mime_type
-                             ? attach->mime_type
-                             : "application/octet-stream";
-
         String* sa_pid  = new_String(pid_buf);
         String* sa_mid  = new_String(mid_buf);
-        String* sa_org  = new_String(attach->filename);
+        String* sa_org  = new_String(original_filename);
         String* sa_path = new_String(storage_path);
         String* sa_size = new_String(sz_buf);
         String* sa_mime = new_String(mime_str);
@@ -239,9 +250,24 @@ void board_write_handler(HttpRequest* req, HttpResponse* res, void* user_ctx) {
 
     /* ── 3. 응답 ── */
     JSONNode* resp_json = new_JSON_Object();
-    JSON_Object_put_string(resp_json, "status",   "success");
-    JSON_Object_put_number(resp_json, "post_id",  (double)new_post_id);
-    JSON_Object_put_string(resp_json, "message",  "게시글 및 첨부파일 영속화 완료!");
+
+    JSONNode* j_status = new_JSON_String("success");
+    if (j_status) {
+        resp_json->put(resp_json, "status", (Object*)j_status);
+        RELEASE((Object*)j_status);
+    }
+
+    JSONNode* j_pid = (JSONNode*)new_json_number((double)new_post_id);
+    if (j_pid) {
+        resp_json->put(resp_json, "post_id", (Object*)j_pid);
+        RELEASE((Object*)j_pid);
+    }
+
+    JSONNode* j_msg = new_JSON_String("게시글 및 첨부파일 영속화 완료!");
+    if (j_msg) {
+        resp_json->put(resp_json, "message", (Object*)j_msg);
+        RELEASE((Object*)j_msg);
+    }
 
     res->sendJson(res, resp_json);
     RELEASE((Object*)resp_json);
