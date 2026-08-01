@@ -8,7 +8,9 @@ static char* trim(char* s) {
     while (*s == ' ' || *s == '\t') s++;
     if (*s == '\0') return s;
     char* end = s + strlen(s) - 1;
-    while (end > s && (*end == ' ' || *end == '\t')) {
+    while (end > s &&
+      (*end == ' ' || *end == '\t'
+        || *end == '\r' || *end == '\n')) {
         *end-- = '\0';
     }
     return s;
@@ -43,7 +45,7 @@ static bool config_load(Config* self, const char* path) {
     FILE* fp = fopen(path, "r");
     if (!fp) return false;
 
-    char line[256];
+    char line[4096];
     while (fgets(line, sizeof(line), fp)) {
         if (line[0] == '#' || line[0] == ';' || line[0] == '\n' || line[0] == '\r') continue;
 
@@ -82,10 +84,14 @@ static const Class configClass = {
 
 Config* new_Config(void) {
     Config* self = (Config*)calloc(1, sizeof(Config));
+    if (!self) return NULL;
     Object_Init(&self->base, &configClass);
 
     self->map = new_HashMap(16); 
-
+		if (!self->map) {
+      RELEASE((Object*)self);
+      return NULL;
+		}
     self->get     = config_get;
     self->getInt  = config_getInt;
     self->getBool = config_getBool;
