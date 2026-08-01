@@ -2,6 +2,7 @@
 #include "multipart_parser.h"
 #include "json.h"
 #include "logger.h"
+#include "board_handler.h"
 #include "db.h"
 #include <stdio.h>
 #include <stdlib.h>
