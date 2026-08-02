@@ -1,6 +1,6 @@
 /*
  * board_handler.c
- * 게시판 핸들러 — libcore OOP 구현체
+ * 게시판 핸들러 — libcore OOP 구현체 (경로 이탈 완전 방어 적용)
  * 🌿 Eye-Care Mode: 1 Line = 1 Statement
  */
 
@@ -19,11 +19,47 @@
 
 extern Logger* logger;
 
-/* ── 내부 유틸 ─────────────────────────────────── */
+/* ── 내부 유틸: 경로 이탈 방어 (Containment Check) ──────── */
+static bool path_is_inside(const char* base,
+                           const char* path) {
+    size_t base_len;
+    size_t path_len;
+
+    if (!base || !path) {
+        return false;
+    }
+
+    base_len = strlen(base);
+    path_len = strlen(path);
+
+    /* 🚨 패치: 후행 슬래시 정규화 (비교 전 제거) */
+    while (base_len > 1 &&
+           base[base_len - 1] == '/') {
+        base_len--;
+    }
+
+    if (path_len < base_len) {
+        return false;
+    }
+
+    if (strncmp(base, path, base_len) != 0) {
+        return false;
+    }
+
+    return path[base_len] == '\0' ||
+           path[base_len] == '/';
+}
+
+/* ── 내부 유틸: 재귀 디렉토리 생성 ─────────────────────── */
 static int mkdir_p(const char* path, mode_t mode) {
     char   tmp[512];
     size_t len;
-    snprintf(tmp, sizeof(tmp), "%s", path);
+
+    int n = snprintf(tmp, sizeof(tmp), "%s", path);
+    if (n < 0 || (size_t)n >= sizeof(tmp)) {
+        return -1;
+    }
+
     len = strlen(tmp);
     if (len == 0) {
         return -1;
@@ -51,7 +87,7 @@ static void BoardHandler_file_sanitize(BoardHandler* self,
                                         const char*   dirty,
                                         char*         clean_out,
                                         size_t        max_len) {
-    if (!self || !dirty || !clean_out || max_len == 0) {
+    if (!self || !self->pv || !dirty || !clean_out || max_len == 0) {
         return;
     }
     const char* base = dirty;
@@ -70,8 +106,7 @@ static void BoardHandler_file_sanitize(BoardHandler* self,
         return;
     }
     char canonical[MAX_PATH_LEN + 1];
-    if (!self->pv->validate(self->pv, test_path,
-                            canonical, sizeof(canonical))) {
+    if (!self->pv->validate(self->pv, test_path, canonical, sizeof(canonical))) {
         strncpy(clean_out, "untitled.bin", max_len - 1);
         clean_out[max_len - 1] = '\0';
         return;
@@ -94,24 +129,39 @@ static bool BoardHandler_file_save(BoardHandler*      self,
                                     HttpMultipartFile* attach,
                                     char*              out_path,
                                     size_t             out_size) {
-    if (!self || !attach || !attach->data || attach->size == 0) {
+    if (!self || !attach || !attach->data || attach->size == 0 ||
+        !out_path || out_size == 0) {
         return false;
     }
     const char* original = "untitled.bin";
     if (attach->filename && attach->filename->c_str) {
         original = attach->filename->c_str(attach->filename);
     }
+
     char safe_name[256] = {0};
     self->file_sanitize(self, original, safe_name, sizeof(safe_name));
+
     struct timeval tv;
     gettimeofday(&tv, NULL);
     static _Atomic unsigned int seq = 0;
     unsigned int s = atomic_fetch_add(&seq, 1);
-    snprintf(out_path, out_size,
-             "%s/%ld_%06ld_%04u_%s",
-             self->upload_dir,
-             (long)tv.tv_sec, (long)tv.tv_usec,
-             s % 10000, safe_name);
+
+    int n = snprintf(out_path, out_size,
+                     "%s/%ld_%06ld_%04u_%s",
+                     self->upload_dir,
+                     (long)tv.tv_sec, (long)tv.tv_usec,
+                     s % 10000, safe_name);
+
+    if (n < 0 || (size_t)n >= out_size) {
+        if (out_size > 0) {
+            out_path[0] = '\0';
+        }
+        if (logger) {
+            LOG_ERROR(logger, "Upload path too long");
+        }
+        return false;
+    }
+
     if (mkdir_p(self->upload_dir, 0700) == -1) {
         if (logger) {
             LOG_ERROR(logger, "mkdir_p failed: %s (errno: %d)",
@@ -119,6 +169,7 @@ static bool BoardHandler_file_save(BoardHandler*      self,
         }
         return false;
     }
+
     FILE* fp = fopen(out_path, "wb");
     if (!fp) {
         if (logger) {
@@ -126,25 +177,51 @@ static bool BoardHandler_file_save(BoardHandler*      self,
         }
         return false;
     }
+
+    bool ok = true;
     size_t written = fwrite(attach->data, 1, attach->size, fp);
-    fflush(fp);
-    fsync(fileno(fp));
-    fclose(fp);
     if (written != attach->size) {
-        remove(out_path);
+        ok = false;
+    }
+    if (ok && fflush(fp) != 0) {
+        ok = false;
+    }
+    if (ok && fsync(fileno(fp)) != 0) {
+        ok = false;
+    }
+    if (fclose(fp) != 0) {
+        ok = false;
+    }
+    if (!ok) {
+        unlink(out_path);
+        out_path[0] = '\0';
         return false;
     }
+
     return true;
 }
 
 /* ── file_delete ────────────────────────────────── */
 static bool BoardHandler_file_delete(BoardHandler* self,
                                       const char*   path) {
-    (void)self;
-    if (!path || path[0] == '\0') {
+    char canonical[MAX_PATH_LEN + 1];
+
+    if (!self || !self->pv || !path || path[0] == '\0') {
         return false;
     }
-    return remove(path) == 0;
+
+    if (!self->pv->validate(self->pv, path, canonical, sizeof(canonical))) {
+        return false;
+    }
+
+    if (!path_is_inside(self->upload_dir, canonical)) {
+        if (logger) {
+            LOG_ERROR(logger, "Delete path escaped upload directory: %s", canonical);
+        }
+        return false;
+    }
+
+    return unlink(canonical) == 0;
 }
 
 /* ── write — POST /board/write ──────────────────── */
@@ -165,9 +242,11 @@ static void BoardHandler_write(BoardHandler* self,
         res->sendText(res, "Internal Server Error: DB unavailable.");
         return;
     }
+
     const char* title     = MultipartResult_get_field(req->multipart, "title");
     const char* content   = MultipartResult_get_field(req->multipart, "content");
     long        member_id = 1;
+
     if (!title || !content) {
         res->setStatus(res, 400);
         res->sendText(res, "Bad Request: Missing 'title' or 'content'.");
@@ -178,10 +257,12 @@ static void BoardHandler_write(BoardHandler* self,
         res->sendText(res, "Bad Request: Content too long.");
         return;
     }
+
     HttpMultipartFile* attach   = MultipartResult_get_file(req->multipart, "attach");
-    char               storage_path[512] = {0};
+    char               storage_path[MAX_PATH_LEN] = {0};
     bool               file_saved = false;
     const char*        original_filename = "untitled.bin";
+
     if (attach && attach->filename && attach->filename->c_str) {
         original_filename = attach->filename->c_str(attach->filename);
     }
@@ -194,6 +275,7 @@ static void BoardHandler_write(BoardHandler* self,
             return;
         }
     }
+
     self->db->beginTransaction(self->db);
     char     mid_buf[32];
     snprintf(mid_buf, sizeof(mid_buf), "%ld", member_id);
@@ -207,9 +289,11 @@ static void BoardHandler_write(BoardHandler* self,
     RELEASE((Object*)s_mid);
     RELEASE((Object*)s_title);
     RELEASE((Object*)s_content);
+
     int       post_ok     = self->db->insertTable(self->db, "board_posts", post_data);
     long long new_post_id = self->db->last_insert_id;
     RELEASE((Object*)post_data);
+
     int attach_ok = 1;
     if (post_ok && file_saved) {
         char pid_buf[32];
@@ -242,6 +326,7 @@ static void BoardHandler_write(BoardHandler* self,
         attach_ok = self->db->insertTable(self->db, "attachments", att_data);
         RELEASE((Object*)att_data);
     }
+
     if (!post_ok || (file_saved && !attach_ok)) {
         self->db->rollback(self->db);
         if (file_saved) {
@@ -251,7 +336,17 @@ static void BoardHandler_write(BoardHandler* self,
         res->sendText(res, "Internal Server Error: DB transaction failed.");
         return;
     }
-    self->db->commit(self->db);
+
+    if (!self->db->commit(self->db)) {
+        self->db->rollback(self->db);
+        if (file_saved) {
+            self->file_delete(self, storage_path);
+        }
+        res->setStatus(res, 500);
+        res->sendText(res, "Internal Server Error: DB commit failed.");
+        return;
+    }
+
     JSONNode* resp     = new_JSON_Object();
     JSONNode* j_status = new_JSON_String("success");
     JSONNode* j_pid    = (JSONNode*)new_json_number((double)new_post_id);
@@ -273,7 +368,6 @@ static void BoardHandler_list(BoardHandler* self,
         res->sendText(res, "Internal Server Error: DB unavailable.");
         return;
     }
-    /* TODO: board_posts SELECT (페이지네이션) */
     res->setStatus(res, 200);
     res->sendText(res, "{\"status\":\"ok\",\"posts\":[]}");
 }
@@ -295,7 +389,6 @@ static void BoardHandler_detail(BoardHandler* self,
         res->sendText(res, "Bad Request: Invalid post ID.");
         return;
     }
-    /* TODO: board_posts + attachments SELECT */
     char buf[64];
     snprintf(buf, sizeof(buf),
              "{\"status\":\"ok\",\"post_id\":%d}", post_id);
@@ -342,8 +435,9 @@ static void BoardHandler_modify(BoardHandler* self,
         return;
     }
     HttpMultipartFile* attach    = MultipartResult_get_file(req->multipart, "attach");
-    char               new_path[512] = {0};
+    char               new_path[MAX_PATH_LEN] = {0};
     bool               file_saved   = false;
+
     if (attach && attach->data && attach->size > 0) {
         file_saved = self->file_save(self, attach,
                                      new_path, sizeof(new_path));
@@ -353,6 +447,7 @@ static void BoardHandler_modify(BoardHandler* self,
             return;
         }
     }
+
     self->db->beginTransaction(self->db);
     char pid_buf[32];
     snprintf(pid_buf, sizeof(pid_buf), "%d", post_id);
@@ -366,12 +461,13 @@ static void BoardHandler_modify(BoardHandler* self,
     RELEASE((Object*)s_title);
     RELEASE((Object*)s_content);
     RELEASE((Object*)s_pid);
+
     int update_ok = self->db->updateTable(self->db,
                         "board_posts", upd_data, "id");
     RELEASE((Object*)upd_data);
+
     int attach_ok = 1;
     if (update_ok && file_saved) {
-        /* TODO: 기존 첨부파일 조회 후 삭제 */
         const char* original_filename = "untitled.bin";
         if (attach->filename && attach->filename->c_str) {
             original_filename = attach->filename->c_str(attach->filename);
@@ -398,10 +494,12 @@ static void BoardHandler_modify(BoardHandler* self,
         RELEASE((Object*)sa_path);
         RELEASE((Object*)sa_size);
         RELEASE((Object*)sa_mime);
+
         attach_ok = self->db->updateTable(self->db,
                         "attachments", att_data, "post_id");
         RELEASE((Object*)att_data);
     }
+
     if (!update_ok || (file_saved && !attach_ok)) {
         self->db->rollback(self->db);
         if (file_saved) {
@@ -411,7 +509,17 @@ static void BoardHandler_modify(BoardHandler* self,
         res->sendText(res, "Internal Server Error: DB transaction failed.");
         return;
     }
-    self->db->commit(self->db);
+
+    if (!self->db->commit(self->db)) {
+        self->db->rollback(self->db);
+        if (file_saved) {
+            self->file_delete(self, new_path);
+        }
+        res->setStatus(res, 500);
+        res->sendText(res, "Internal Server Error: DB commit failed.");
+        return;
+    }
+
     char buf[64];
     snprintf(buf, sizeof(buf),
              "{\"status\":\"ok\",\"post_id\":%d}", post_id);
@@ -436,7 +544,6 @@ static void BoardHandler_remove(BoardHandler* self,
         res->sendText(res, "Bad Request: Invalid post ID.");
         return;
     }
-    /* TODO: soft delete + 첨부파일 file_delete */
     char buf[64];
     snprintf(buf, sizeof(buf),
              "{\"status\":\"ok\",\"deleted\":%d}", post_id);
@@ -447,7 +554,6 @@ static void BoardHandler_remove(BoardHandler* self,
 /* ── ARC ────────────────────────────────────────── */
 static void BoardHandler_finalize(Object* obj) {
     (void)obj;
-    /* db / pv 는 [BORROWED] — RELEASE 하지 않음!! */
 }
 
 static const Class BoardHandler_Class = {
@@ -460,15 +566,39 @@ static const Class BoardHandler_Class = {
 BoardHandler* new_BoardHandler(DBClient*      db,
                                 PathValidator* pv,
                                 const char*    upload_dir) {
+    if (!db || !pv) {
+        return NULL;
+    }
+
     BoardHandler* self = (BoardHandler*)calloc(1, sizeof(BoardHandler));
     if (!self) {
         return NULL;
     }
     Object_Init((Object*)self, &BoardHandler_Class);
+
     self->db = db;
     self->pv = pv;
-    snprintf(self->upload_dir, sizeof(self->upload_dir),
-             "%s", upload_dir ? upload_dir : "/var/toostalk/uploads");
+
+    const char* target_dir = upload_dir ? upload_dir : "/var/toostalk/uploads";
+    char canonical_dir[MAX_PATH_LEN + 1];
+
+    if (!self->pv->validate(self->pv, target_dir, canonical_dir, sizeof(canonical_dir))) {
+        RELEASE((Object*)self);
+        return NULL;
+    }
+
+    /* 🚨 패치: 루트 디렉터리("/") 업로드 영역 지정 원천 금지 */
+    if (strcmp(canonical_dir, "/") == 0) {
+        RELEASE((Object*)self);
+        return NULL;
+    }
+
+    int n = snprintf(self->upload_dir, sizeof(self->upload_dir), "%s", canonical_dir);
+    if (n < 0 || (size_t)n >= sizeof(self->upload_dir)) {
+        RELEASE((Object*)self);
+        return NULL;
+    }
+
     self->write         = BoardHandler_write;
     self->list          = BoardHandler_list;
     self->detail        = BoardHandler_detail;
@@ -477,6 +607,7 @@ BoardHandler* new_BoardHandler(DBClient*      db,
     self->file_save     = BoardHandler_file_save;
     self->file_delete   = BoardHandler_file_delete;
     self->file_sanitize = BoardHandler_file_sanitize;
+
     return self;
 }
 
