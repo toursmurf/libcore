@@ -69,4 +69,4 @@ struct HttpResponse {
 HttpResponse* new_HttpResponse(Socket* sock, struct HttpConnection* conn);
 const char* Http_statusMessage(int code);
 
-#endif /* HTTP_MESSAGE_H *
+#endif /* HTTP_MESSAGE_H */
