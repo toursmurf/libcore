@@ -15,7 +15,6 @@
 #include <assert.h>
 #include <unistd.h>
 
-Logger* logger = NULL;
 
 /* =========================================================
  * 🛠️ 1. Mock DBClient (트랜잭션 껍데기)
