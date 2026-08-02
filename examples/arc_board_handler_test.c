@@ -94,6 +94,15 @@ static void reset_mock_socket(Socket* sock) {
  * 🚀 3. 회귀 테스트 러너
  * ========================================================= */
 int main(void) {
+	if (getuid() == 0) {
+        fprintf(stderr, "\n");
+        fprintf(stderr, "==========================================================\n");
+        fprintf(stderr, "🚨 [SECURITY WARNING] 루트(root) 계정으로 테스트를 실행할 수 없습니다!\n");
+        fprintf(stderr, "👉 시스템 파일 보호 및 정확한 권한 검증을 위해\n");
+        fprintf(stderr, "   반드시 일반 사용자(non-root) 계정으로 전환 후 실행해 주세요.\n");
+        fprintf(stderr, "==========================================================\n\n");
+        exit(EXIT_FAILURE);
+    }
     printf("==========================================\n");
     printf("🛡️ BoardHandler Regression Test Start!\n");
     printf("==========================================\n");
