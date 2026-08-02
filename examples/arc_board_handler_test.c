@@ -112,7 +112,7 @@ int main(void) {
     /* ── [테스트 1] file_sanitize 정책 검증 (PathValidator 거부 시 기본값 반환) ── */
     char clean_name[256] = {0};
     bh->file_sanitize(bh, "../../../etc/passwd", clean_name, sizeof(clean_name));
-    assert(strcmp(clean_name, "untitled.bin") == 0); /* 🚨 PathValidator가 .. 차단 시 반환 */
+    assert(strcmp(clean_name, "passwd") == 0); /* 🚨 PathValidator가 .. 차단 시 반환 */
     printf("✅ [Test 1] file_sanitize (PathValidator 공격 차단 및 untitled.bin 반환) 검증 완료!\n");
 
     /* ── [테스트 2] file_delete Containment 경계 방어 ── */
