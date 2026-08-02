@@ -29,6 +29,9 @@ typedef struct HttpRequest {
     HashMap* headers;
     HashMap* query;
 
+    /* 🚀 [v1.7.1 신규] Express.js 스타일 동적 라우팅 파라미터 (예: /board/:id) */
+    HashMap* params;
+
     JSONNode* json;
     HashMap* form;
 
@@ -66,4 +69,4 @@ struct HttpResponse {
 HttpResponse* new_HttpResponse(Socket* sock, struct HttpConnection* conn);
 const char* Http_statusMessage(int code);
 
-#endif /* HTTP_MESSAGE_H */
+#endif /* HTTP_MESSAGE_H *

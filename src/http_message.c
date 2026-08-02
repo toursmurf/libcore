@@ -32,6 +32,10 @@ static void HttpRequest_finalize(Object* obj) {
     if (self->path)      RELEASE(self->path);
     if (self->headers)   RELEASE(self->headers);
     if (self->query)     RELEASE(self->query);
+
+    /* 🚨 [v1.7.1 ARC 패치] params 메모리 해제 누락 방지! */
+    if (self->params)    RELEASE(self->params);
+
     if (self->json)      RELEASE(self->json);
     if (self->form)      RELEASE(self->form);
     if (self->multipart) RELEASE((Object*)self->multipart);
@@ -55,7 +59,11 @@ HttpRequest* new_HttpRequest(void) {
     self->query   = new_HashMap(16);
     self->form    = new_HashMap(16);
 
-    if (!self->headers || !self->query || !self->form) {
+    /* 🚀 [v1.7.1 신규] 라우터 파라미터를 담을 저장소 초기화 (보통 4개 이하이므로 8 할당) */
+    self->params  = new_HashMap(8);
+
+    /* 🚨 [Fail Fast 패치] 하나라도 OOM 발생 시 싹 다 정리하고 즉각 폭파 */
+    if (!self->headers || !self->query || !self->form || !self->params) {
         RELEASE(self);
         return NULL;
     }
