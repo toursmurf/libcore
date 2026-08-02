@@ -1,11 +1,19 @@
+/*
+ * router.c
+ * 라우터 — libcore OOP 구현체 (v1.7.1 Router params 2-Pass 엔진 + OOM/NPD 완벽 방어)
+ * 🌿 Eye-Care Mode: 1 Line = 1 Statement
+ */
+
 #include "router.h"
+#include "logger.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
+extern Logger* logger;
+
 /* =========================================================
  * ✨ [글로벌 에러 응답기] 모든 요청에서 재사용 가능한 표준 에러 출력 ✨
- * 브라우저의 'Friendly Error Pages' 덮어쓰기를 원천 차단하는 512 Bytes 패딩 포함
  * ========================================================= */
 void Router_sendError(HttpResponse* res, int status, const char* error_code, const char* message) {
     if (!res) return;
@@ -78,6 +86,7 @@ Route* new_Route(HttpMethod method, const char* path, HttpHandler handler) {
     self->method = method;
     self->handler = handler;
     self->path = new_String(path ? path : "/");
+    
     if (!self->path) {
         RELEASE(self);
         return NULL;
@@ -87,7 +96,7 @@ Route* new_Route(HttpMethod method, const char* path, HttpHandler handler) {
 }
 
 /* =========================================================
- * [2] Router VTable 구현부
+ * [2] Router VTable 구현부 (2-Pass 알고리즘)
  * ========================================================= */
 static void impl_addRoute(Router* self, HttpMethod method, const char* path, HttpHandler handler) {
     if (!self || !self->routes || !path || !handler) return;
@@ -102,73 +111,149 @@ static void impl_addRoute(Router* self, HttpMethod method, const char* path, Htt
 static void impl_GET(Router* self, const char* path, HttpHandler handler) {
     impl_addRoute(self, HTTP_GET, path, handler);
 }
-
 static void impl_POST(Router* self, const char* path, HttpHandler handler) {
     impl_addRoute(self, HTTP_POST, path, handler);
 }
-
 static void impl_PUT(Router* self, const char* path, HttpHandler handler) {
     impl_addRoute(self, HTTP_PUT, path, handler);
 }
-
 static void impl_DELETE(Router* self, const char* path, HttpHandler handler) {
     impl_addRoute(self, HTTP_DELETE, path, handler);
 }
 
-/* ✨ [핵심] Express.js 스타일의 동적 라우팅 매칭 알고리즘 ✨ */
-static int match_route(const char* req_path, const char* route_path) {
-    const char *p = req_path;
-    const char *r = route_path;
-
-    while (*p != '\0' && *r != '\0') {
-        if (*r == ':') {
-            while (*r != '\0' && *r != '/') r++;
-
-            int param_len = 0;
-            while (*p != '\0' && *p != '/') {
-                if (!((*p >= 'a' && *p <= 'z') ||
-                      (*p >= 'A' && *p <= 'Z') ||
-                      (*p >= '0' && *p <= '9') ||
-                      *p == '-' || *p == '_')) {
-                    return 0;
-                }
-                p++;
-                param_len++;
-            }
-
-            if (param_len == 0) {
-                return 0;
-            }
+/* ── ① split_segments: "/" 기준 분할 배열 생성 (OOM 방어) ── */
+static int split_segments(const char* path, char* segments[], int max_segs) {
+    if (!path) {
+        return 0;
+    }
+    
+    char* copy = strdup(path);
+    if (!copy) {
+        return 0;
+    }
+    
+    int count = 0;
+    char* saveptr = NULL;
+    char* token = strtok_r(copy, "/", &saveptr);
+    
+    while (token) {
+        if (count >= max_segs) {
+            break;
         }
-        else if (*p == *r) {
-            p++;
-            r++;
+        
+        /* 🚨 [Fail Fast 패치] strdup 실패 시 즉시 분할 중단 */
+        char* dup = strdup(token);
+        if (!dup) {
+            break;
         }
-        else {
-            return 0;
+        
+        segments[count] = dup;
+        count++;
+        token = strtok_r(NULL, "/", &saveptr);
+    }
+    
+    free(copy);
+    return count;
+}
+
+/* ── ② route_match: 세그먼트 비교 및 파라미터 추출 (NPD 원천 차단) ── */
+static bool route_match(const char* route_path,
+                        const char* req_path,
+                        HashMap*    params,
+                        bool        is_param_pass) {
+    char* r_segs[32] = {0};
+    char* q_segs[32] = {0};
+    
+    int r_count = split_segments(route_path, r_segs, 32);
+    int q_count = split_segments(req_path, q_segs, 32);
+
+    bool match = true;
+
+    if (r_count != q_count) {
+        match = false;
+    }
+
+    /* 1패스: 정적 라우트 검사 (완전 일치) */
+    if (match && !is_param_pass) {
+        for (int i = 0; i < r_count; i++) {
+            /* 🚨 [NPD 패치] 포인터가 NULL이면 즉시 매칭 실패 처리 */
+            if (!r_segs[i] || !q_segs[i]) {
+                match = false;
+                break;
+            }
+            if (r_segs[i][0] == ':') {
+                match = false;
+                break;
+            }
+            if (strcmp(r_segs[i], q_segs[i]) != 0) {
+                match = false;
+                break;
+            }
         }
     }
 
-    if (*p == '\0' && *r == '\0') return 1;
-    if (*p == '/' && *(p+1) == '\0' && *r == '\0') return 1;
-    if (*r == '/' && *(r+1) == '\0' && *p == '\0') return 1;
+    /* 2패스: 동적 라우트 검사 (:param 매칭) */
+    if (match && is_param_pass) {
+        for (int i = 0; i < r_count; i++) {
+            /* 🚨 [NPD 패치] 포인터가 NULL이면 즉시 매칭 실패 처리 */
+            if (!r_segs[i] || !q_segs[i]) {
+                match = false;
+                break;
+            }
+            if (r_segs[i][0] != ':') {
+                if (strcmp(r_segs[i], q_segs[i]) != 0) {
+                    match = false;
+                    break;
+                }
+            }
+        }
+    }
 
-    return 0;
+    /* 2패스 매칭 성공 시 파라미터 추출 및 주입 */
+    if (match && is_param_pass && params) {
+        for (int i = 0; i < r_count; i++) {
+            /* 🚨 [NPD 패치] 포인터 유효성 재검증 */
+            if (!r_segs[i] || !q_segs[i]) {
+                continue;
+            }
+            if (r_segs[i][0] == ':') {
+                const char* key = r_segs[i] + 1;
+                String* val = new_String(q_segs[i]);
+                if (val) {
+                    params->put(params, key, (Object*)val);
+                    RELEASE((Object*)val);
+                }
+            }
+        }
+    }
+
+    /* ARC: 임시 할당 메모리 무결점 소각 (NULL 체크 후 free) */
+    for (int i = 0; i < r_count; i++) {
+        if (r_segs[i]) {
+            free(r_segs[i]);
+        }
+    }
+    for (int i = 0; i < q_count; i++) {
+        if (q_segs[i]) {
+            free(q_segs[i]);
+        }
+    }
+
+    return match;
 }
 
-/* 🚀 심장부: 패킷 디스패처 (멤버 변수 pv 재사용 최적화 및 404 정제 완료) */
+/* 🚀 ③ 심장부: 2-Pass 패킷 디스패처 (PathValidator 검증 융합 완료) */
 static void impl_dispatch(Router* self, HttpRequest* req, HttpResponse* res) {
     if (!self || !req || !res) return;
 
     const char* original_path = req->path ? req->path->c_str(req->path) : "/";
-    char safe_path[MAX_PATH_LEN + 1] = {0}; // 정규화된 경로를 담을 버퍼
+    char safe_path[MAX_PATH_LEN + 1] = {0};
 
     // ✨✨ [1단계: Router 소유의 단일 PathValidator로 즉각 검증] ✨✨
     if (self->pv) {
         bool is_safe = self->pv->validate(self->pv, original_path, safe_path, sizeof(safe_path));
 
         if (!is_safe) {
-            // 비정상/공격 경로는 여기서 400으로 조기 차단!
             Router_sendError(res, 400, "Bad_Request", "보안 정책에 의해 차단된 비정상적인 URL 경로입니다.");
             return;
         }
@@ -177,33 +262,47 @@ static void impl_dispatch(Router* self, HttpRequest* req, HttpResponse* res) {
         return;
     }
 
-    // ✨✨ [2단계: 안전이 보장된 정규화 경로(safe_path)로 라우팅 매칭 시작] ✨✨
-    int matched = 0;
+    // ✨✨ [2단계: 안전이 보장된 정규화 경로(safe_path)로 2-Pass 라우팅 시작] ✨✨
     int route_count = self->routes->getSize(self->routes);
+    HttpMethod req_method = req->method;
 
+    /* 1패스: 정적 라우트 우선 매칭 (예: /board/list) */
     for (int i = 0; i < route_count; i++) {
         Route* r = (Route*)self->routes->get(self->routes, i);
         if (!r) continue;
 
-        if (r->method != req->method && r->method != HTTP_UNKNOWN) {
-            continue;
-        }
-
-        const char* route_path_str = r->path ? r->path->c_str(r->path) : "/";
-
-        if (match_route(safe_path, route_path_str)) {
-            if (r->handler) {
-                r->handler(req, res, self->user_ctx);
+        if (r->method == req_method || r->method == HTTP_UNKNOWN) {
+            const char* route_path_str = r->path ? r->path->c_str(r->path) : "/";
+            if (route_match(route_path_str, safe_path, NULL, false)) {
+                if (r->handler) {
+                    r->handler(req, res, self->user_ctx);
+                }
+                return;
             }
-            matched = 1;
-            break;
         }
     }
 
-    /* 🚨 라우터를 통과하지 못한 요청에 대해 전역 에러 응답기 호출! (의미 정제 완료) */
-    if (!matched) {
-        Router_sendError(res, 404, "Route_Not_Found", "요청하신 URL 경로와 일치하는 라우트를 찾을 수 없습니다.");
+    /* 2패스: 파라미터 동적 라우트 매칭 (예: /board/:id) */
+    for (int i = 0; i < route_count; i++) {
+        Route* r = (Route*)self->routes->get(self->routes, i);
+        if (!r) continue;
+
+        if (r->method == req_method || r->method == HTTP_UNKNOWN) {
+            const char* route_path_str = r->path ? r->path->c_str(r->path) : "/";
+            if (route_match(route_path_str, safe_path, req->params, true)) {
+                if (r->handler) {
+                    r->handler(req, res, self->user_ctx);
+                }
+                return;
+            }
+        }
     }
+
+    /* 3패스: 매칭 실패 시 전역 에러 응답기(404) 호출 */
+    if (logger) {
+        LOG_WARN(logger, "[Router] 404 Not Found: %s", safe_path);
+    }
+    Router_sendError(res, 404, "Route_Not_Found", "요청하신 URL 경로와 일치하는 라우트를 찾을 수 없습니다.");
 }
 
 /* =========================================================
@@ -212,13 +311,11 @@ static void impl_dispatch(Router* self, HttpRequest* req, HttpResponse* res) {
 static void Router_finalize(Object* obj) {
     Router* self = (Router*)obj;
 
-    /* 🚨 [안전 처리] 해제 후 NULL 포인터 초기화로 Dangling Pointer 원천 차단 */
     if (self->routes) {
         RELEASE(self->routes);
         self->routes = NULL;
     }
     
-    /* ✨ Router 소멸 시 수문장(pv)도 동반 퇴근 (OWNED 해제) ✨ */
     if (self->pv) {
         RELEASE(self->pv);
         self->pv = NULL;
@@ -237,14 +334,12 @@ Router* new_Router(void* user_ctx) {
 
     Object_Init((Object*)self, &_Router_Class);
 
-    /* ✨ [ARC 최적화] 실패 시 직접 해제 금지! RELEASE(self)에게 위임 ✨ */
     self->routes = new_ArrayList(32);
     if (!self->routes) {
         RELEASE(self);
         return NULL;
     }
 
-    /* ✨ Router 생성 시 단 한 번만 PathValidator 고용 ✨ */
     self->pv = new_PathValidator();
     if (!self->pv) {
         RELEASE(self);
