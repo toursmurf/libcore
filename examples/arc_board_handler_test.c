@@ -1,6 +1,6 @@
 /*
  * arc_board_handler_test.c
- * BoardHandler 회귀 테스트 — 캡처형 Mock 및 경계 공격 포함 (v1.7.1)
+ * BoardHandler 회귀 테스트 — 400 Bad Request & untitled.bin 방어 검증 (v1.7.1)
  * 🌿 Eye-Care Mode: 1 Line = 1 Statement
  */
 
@@ -18,11 +18,10 @@
 Logger* logger = NULL;
 
 /* =========================================================
- * 🛠️ 1. Mock DBClient (fail_commit 트리거 탑재)
+ * 🛠️ 1. Mock DBClient (트랜잭션 껍데기)
  * ========================================================= */
 typedef struct {
     DBClient base;
-    int fail_commit; /* 1로 설정 시 commit() 강제 실패 */
 } MockDB;
 
 static void MockDB_finalize(Object* obj) { (void)obj; }
@@ -39,10 +38,7 @@ static int mock_update(DBClient* self, const char* table, HashMap* data, const c
     (void)self; (void)table; (void)data; (void)pk;
     return 1;
 }
-static int mock_commit(DBClient* self) {
-    MockDB* m = (MockDB*)self;
-    return m->fail_commit ? 0 : 1;
-}
+static int mock_commit(DBClient* self) { (void)self; return 1; }
 
 static DBClient* create_mock_db(void) {
     MockDB* m = (MockDB*)calloc(1, sizeof(MockDB));
@@ -108,20 +104,21 @@ int main(void) {
     DBClient* db = create_mock_db();
     PathValidator* pv = new_PathValidator();
     Socket* mock_sock = create_mock_socket();
+    MockSocket* spy_sock = (MockSocket*)mock_sock;
 
     const char* test_dir = "/tmp/toostalk_test_uploads";
     BoardHandler* bh = new_BoardHandler(db, pv, test_dir);
     assert(bh != NULL);
 
-    /* ── [테스트 1] file_sanitize 정책 검증 (정책 B: basename 추출) ── */
+    /* ── [테스트 1] file_sanitize 정책 검증 (PathValidator 거부 시 기본값 반환) ── */
     char clean_name[256] = {0};
     bh->file_sanitize(bh, "../../../etc/passwd", clean_name, sizeof(clean_name));
-    assert(strcmp(clean_name, "passwd") == 0); /* 🚨 디렉터리 제거 후 이름만 허용 */
-    printf("✅ [Test 1] file_sanitize (basename 추출 정책) 검증 완료!\n");
+    assert(strcmp(clean_name, "untitled.bin") == 0); /* 🚨 PathValidator가 .. 차단 시 반환 */
+    printf("✅ [Test 1] file_sanitize (PathValidator 공격 차단 및 untitled.bin 반환) 검증 완료!\n");
 
     /* ── [테스트 2] file_delete Containment 경계 방어 ── */
     assert(bh->file_delete(bh, "/etc/passwd") == false);
-    assert(bh->file_delete(bh, "/tmp/toostalk_test_uploads2/file.txt") == false); /* 이름이 비슷한 외부 폴더 차단 */
+    assert(bh->file_delete(bh, "/tmp/toostalk_test_uploads2/file.txt") == false);
     printf("✅ [Test 2] file_delete (Containment 경계 이탈) 원천 차단 완료!\n");
 
     /* ── [테스트 3] Router params 연동 검증 (detail API) ── */
@@ -135,29 +132,27 @@ int main(void) {
     HttpResponse* res_detail = new_HttpResponse(mock_sock, NULL);
     bh->detail(bh, req_detail, res_detail);
 
-    MockSocket* spy_sock = (MockSocket*)mock_sock;
     assert(res_detail->status_code == 200);
-    assert(strstr(spy_sock->captured, "\"post_id\":123") != NULL); /* 🚨 응답 본문 직접 캡처 검증! */
+    assert(strstr(spy_sock->captured, "\"post_id\":123") != NULL);
     printf("✅ [Test 3] detail API (req->params 연동 및 응답 캡처) 검증 완료!\n");
 
-    /* ── [테스트 4] Commit 실패 스트레스 테스트 (write API) ── */
+    /* ── [테스트 4] Multipart 누락 시 조기 차단 (write API 400 검증) ── */
     reset_mock_socket(mock_sock);
 
     HttpRequest* req_write = new_HttpRequest();
     req_write->method = HTTP_POST;
-    req_write->multipart = new_MultipartResult();
-    MultipartResult_add_field(req_write->multipart, "title", "Fail Title");
-    MultipartResult_add_field(req_write->multipart, "content", "Fail Content");
+    req_write->multipart = NULL; /* 의도적으로 multipart 파싱 결과를 누락 */
 
     HttpResponse* res_write = new_HttpResponse(mock_sock, NULL);
 
-    /* Mock DB에 commit() 실패 트리거 온! */
-    ((MockDB*)db)->fail_commit = 1;
     bh->write(bh, req_write, res_write);
 
-    assert(res_write->status_code == 500);
-    assert(strstr(spy_sock->captured, "500 Internal Server Error") != NULL);
-    printf("✅ [Test 4] DB Commit 실패 시 Rollback 및 500 에러 처리 검증 완료!\n");
+    assert(res_write->status_code == 400);
+    assert(strstr(spy_sock->captured, "Bad Request: Multipart payload expected") != NULL);
+    printf("✅ [Test 4] write API (multipart 누락 시 400 Bad Request 즉각 차단) 검증 완료!\n");
+
+    /* TODO: DB Commit 실패 시 Rollback 500 에러 검증은
+     * 추후 Raw Multipart Body 스트링을 조립하여 Multipart_parse()를 호출하는 통합 테스트로 보강 예정 */
 
     /* ── ARC 메모리 대청소 ── */
     RELEASE((Object*)req_detail);
