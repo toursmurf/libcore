@@ -47,7 +47,7 @@ static void DBClient_Finalize(Object *obj) {
     if (!obj) return;
     DBClient *self = (DBClient*)obj;
     if (self->isConnected && self->disconnect) self->disconnect(self);
-    /* v1.7.2: disconnect 가 안 불린 경로(접속 실패 후 소멸 등)에서도
+    /* v1.7.1: disconnect 가 안 불린 경로(접속 실패 후 소멸 등)에서도
      * 스키마 캐시가 남지 않게 여기서 최종 회수 — Valgrind 0 bytes 유지 */
     if (self->schema_cache) {
         RELEASE(self->schema_cache);
@@ -69,9 +69,9 @@ static void _init_base_methods(DBClient *db) {
     db->save_log = 0;
     db->last_insert_id = 0;
     db->last_idx = 0;
-    db->affected_rows = -1;   /* v1.7.2 */
-    db->in_transaction = 0;   /* v1.7.2 */
-    db->schema_cache = NULL;  /* v1.7.2 */
+    db->affected_rows = -1;   /* v1.7.1 */
+    db->in_transaction = 0;   /* v1.7.1 */
+    db->schema_cache = NULL;  /* v1.7.1 */
     //db->unused_ptr = NULL; //미사용 폐기
     db->option_count = 0;
     pthread_mutex_init(&db->lock, NULL);

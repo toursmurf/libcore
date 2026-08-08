@@ -12,7 +12,7 @@
 #include <time.h>
 
 /* =========================================================
- * [v1.7.2 패치 A] 접속 클라이언트 플래그
+ * [v1.7.1 패치 A] 접속 클라이언트 플래그
  *
  *   CLIENT_FOUND_ROWS 를 켜야 mysql_affected_rows() 가
  *   "실제로 값이 바뀐 행 수"가 아니라 "WHERE 에 매칭된 행 수"를
@@ -25,7 +25,7 @@
 #endif
 
 /* =========================================================
- * [v1.7.2 패치 B] cond 인자 방어
+ * [v1.7.1 패치 B] cond 인자 방어
  *
  *   updateTable() / deleteTable() 의 cond 인자는
  *   "컬럼명"이 아니라 "WHERE 절 원문"이다.
@@ -89,7 +89,7 @@ static void DB_apply_saved_options(DBClient *self) {
     }
 }
 
-/* [v1.7.2 패치 C] 스키마 캐시 무효화 — 호출자가 lock 을 잡은 상태에서만 호출 */
+/* [v1.7.1 패치 C] 스키마 캐시 무효화 — 호출자가 lock 을 잡은 상태에서만 호출 */
 static void DB_schema_cache_clear_locked(DBClient *self) {
     if (!self || !self->schema_cache) return;
     RELEASE(self->schema_cache);
@@ -218,7 +218,7 @@ static int DB_sqlQuery_my(DBClient *self, const char* sql) {
         unsigned int en = mysql_errno((MYSQL*)self->conn);
         if (en == 2006 || en == 2013) {
             /* =========================================================
-             * [v1.7.2 패치 D] 트랜잭션 중에는 자동 재접속 금지
+             * [v1.7.1 패치 D] 트랜잭션 중에는 자동 재접속 금지
              *
              *   재접속하면 진행 중이던 트랜잭션은 서버에서 소리 없이
              *   사라진다. 그 상태로 나머지 쿼리를 재시도하면
@@ -268,7 +268,7 @@ static char* DB_escape_string_my(DBClient *self, const char* str) {
     return out;
 }
 
-/* [v1.7.2 패치 D] in_transaction 플래그 관리 */
+/* [v1.7.1 패치 D] in_transaction 플래그 관리 */
 static int DB_beginTransaction_my(DBClient *self) {
     if (!self) return 0;
     int ok = self->sqlQuery(self, "START TRANSACTION");
@@ -296,7 +296,7 @@ static int DB_rollback_my(DBClient *self) {
 }
 
 /* =========================================================
- * [v1.7.2 패치 E] 컬럼 목록 캐시
+ * [v1.7.1 패치 E] 컬럼 목록 캐시
  *
  *   기존에는 insert/update/replace 한 번마다 DESC 를 한 번씩
  *   더 던졌다. 글 하나 쓰면 왕복이 2배가 된다.
@@ -495,7 +495,7 @@ static ArrayList* DB_getRecordsFromQuery_my(DBClient *self, const char* sql) {
     if (self->conn) res = mysql_query((MYSQL*)self->conn, sql);
     if (res!= 0 && self->conn) {
         unsigned int en = mysql_errno((MYSQL*)self->conn);
-        /* [v1.7.2 패치 D] SELECT 경로도 트랜잭션 중이면 재접속 금지 */
+        /* [v1.7.1 패치 D] SELECT 경로도 트랜잭션 중이면 재접속 금지 */
         if (en == 2006 && self->in_transaction) {
             self->in_transaction = 0;
             self->isConnected = 0;
