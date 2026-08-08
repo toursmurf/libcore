@@ -92,6 +92,27 @@ struct _DBClient {
     long long (*getTableSize)(DBClient *self, const char* table);
     int (*dropTable)(DBClient *self, const char *table_name);
     int (*initTable)(DBClient *self, const char *table_name);
+
+    /* =====================================================
+     * v1.7.2 추가 필드 — 구조체 끝에 붙여 기존 오프셋 보존
+     * ===================================================== */
+
+    /* 마지막 쿼리의 영향 행 수.
+     *   성공 시 >= 0, 실패/미측정 시 -1.
+     *   접속 시 CLIENT_FOUND_ROWS 를 켜므로 UPDATE 에서도
+     *   "값이 바뀐 행"이 아니라 "WHERE 에 매칭된 행" 수다.
+     *   -> 0 이면 대상 행이 정말 없다는 뜻이므로 404 판정에 쓸 수 있다.
+     *   SELECT 계열에서는 조회된 행 수. */
+    long long affected_rows;
+
+    /* 트랜잭션 진행 중 플래그.
+     *   1 인 동안은 접속이 끊겨도 자동 재접속하지 않는다
+     *   (부분 커밋 방지). begin 에서 1, commit/rollback 에서 0. */
+    int in_transaction;
+
+    /* 테이블별 컬럼 목록 캐시 (mysql.c 소유, HashMap<table, ArrayList<String>>).
+     *   재접속 / disconnect / 스키마 변경 DDL 에서 무효화된다. */
+    HashMap* schema_cache;
 };
 
 void safe_append(char *dest, size_t dest_size, const char *src);
