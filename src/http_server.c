@@ -375,16 +375,41 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
             char path_str[256] = {0};
 
             if (sscanf(conn->header_buf, "%15s %255s", method_str, path_str) == 2) {
-                if (strcmp(method_str, "GET") == 0) conn->req->method = HTTP_GET;
-                else if (strcmp(method_str, "POST") == 0) conn->req->method = HTTP_POST;
-                else if (strcmp(method_str, "PUT") == 0) conn->req->method = HTTP_PUT;
-                else if (strcmp(method_str, "DELETE") == 0) conn->req->method = HTTP_DELETE;
-                else conn->req->method = HTTP_UNKNOWN;
+              if (strcmp(method_str, "GET") == 0) conn->req->method = HTTP_GET;
+              else if (strcmp(method_str, "POST") == 0) conn->req->method = HTTP_POST;
+              else if (strcmp(method_str, "PUT") == 0) conn->req->method = HTTP_PUT;
+              else if (strcmp(method_str, "DELETE") == 0) conn->req->method = HTTP_DELETE;
+              else conn->req->method = HTTP_UNKNOWN;
 
-                conn->req->path = new_String(path_str);
+              /* =================================================== */
+              /* 🚨 [추가 패치] 여기서 쿼리 스트링을 잘라냅니다!! 🚨 */
+              /* =================================================== */
+              char* qmark = strchr(path_str, '?');
+              if (qmark) {
+                *qmark = '\0'; /* 여기서 싹둑! path_str은 '/api/board'만 남습니다. */
+                char* query_str = qmark + 1;
+
+                if (!conn->req->query) {
+                  conn->req->query = new_HashMap(8);
+                }
+
+                char* saveptr = NULL;
+                char* token = strtok_r(query_str, "&", &saveptr);
+                while (token) {
+                  char* eq = strchr(token, '=');
+                  if (eq) {
+                    *eq = '\0';
+                    hashmap_put_str(conn->req->query, token, eq + 1);
+                  }
+                  token = strtok_r(NULL, "&", &saveptr);
+                }
+              }
+              /* =================================================== */
+              /* 이제 깨끗해진 path_str('/api/board')만 들어갑니다! */
+              conn->req->path = new_String(path_str);
             } else {
-                conn->req->method = HTTP_GET;
-                conn->req->path = new_String("/");
+              conn->req->method = HTTP_GET;
+              conn->req->path = new_String("/");
             }
 
             HttpConnection_parse_headers(conn, header_end);
