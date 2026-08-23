@@ -62,7 +62,7 @@ int main() {
         }
     }
 
-    // [W1 제국 표준]: 자원 소각 및 소켓 폐쇄
+    //자원 소각 및 소켓 폐쇄
     RELEASE(server);
     
     printf("🧹 [UDP Server] 요새 자원 소각 완료 및 상황 종료.\n");

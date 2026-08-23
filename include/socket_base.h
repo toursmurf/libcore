@@ -16,7 +16,7 @@
 #define SOCKET_WOULD_BLOCK  -2
 
 /**
- * [의장님 제안]: 소켓 프로토콜 타입 정의
+ * 소켓 프로토콜 타입 정의
  */
 typedef enum {
     SOCKET_TCP,

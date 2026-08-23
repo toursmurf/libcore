@@ -7,7 +7,7 @@
 #include "hashmap.h"
 #include "snmp_state.h"
 
-/* 🚨 [제국 표준: Outstanding 패킷 구조체] */
+/* [Outstanding 패킷 구조체] */
 typedef struct {
     Object base;         // [ARC] 참조 카운트 기반 메모리 자동 관리용 베이스
 

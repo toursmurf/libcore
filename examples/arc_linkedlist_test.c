@@ -10,7 +10,7 @@
 #include <string.h>
 #include "libcore.h"
 
-// 🚀 [의장님 명품 로직 1] String 객체 비교용 딜리게이트 함수
+// String 객체 비교용 딜리게이트 함수
 int compare_strings(Object* a, Object* b) {
     String* sa = (String*)a;
     String* sb = (String*)b;
@@ -20,7 +20,7 @@ int compare_strings(Object* a, Object* b) {
     return -1;
 }
 
-// 🚀 [의장님 명품 로직 2] String 객체 출력용 딜리게이트 함수
+//String 객체 출력용 딜리게이트 함수
 void display_string(Object* obj) {
     if (obj) {
         char buf[128];
@@ -57,7 +57,7 @@ int main() {
     // 삭제할 대상을 찾기 위한 임시 비교용 객체 생성
     String* target = new_String("Node_Bravo");
 
-    // 의장님의 명품 delete_node 호출! (내부에서 찾아서 제거하고 RELEASE 처리됨)
+    // (내부에서 찾아서 제거하고 RELEASE 처리됨)
     list->delete_node(list, (void*)target, compare_strings);
 
     // 임시 비교용 객체는 임무를 다했으니 해제

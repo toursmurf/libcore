@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <pthread.h>
 
-// [FIX] 제국 표준 로거 인스턴스 참조
+// [FIX] 로거 인스턴스 참조
 extern Logger *logger; 
 
 #undef LOG_D

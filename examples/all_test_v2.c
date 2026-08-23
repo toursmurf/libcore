@@ -60,7 +60,7 @@ static IntObj* new_IntObj(int v) {
 }
 
 // ============================================================================
-// 2. 11대 핵심 테스트 유닛 (의장님 오리지널 38개 체크 복원)
+// 2. 11대 핵심 테스트 유닛
 // ============================================================================
 
 /* [1] String (7 checks) */
@@ -255,7 +255,7 @@ void test_json_creation() {
     char *json_str = root->toString(root);
     printf("[Result] Created JSON:\n%s\n", json_str);
 
-    // 의장님 로그에 있는 출력 그대로 매칭시킵니다!
+    //로그에 있는 출력 그대로 매칭
     CHECK(json_str != NULL, "{\"skills\":[\"C\",\"Java\",\"ARC\"],\"version\":0.5,\"company\":\"Toos IT Holdings\",\"architect\":\"InDong KIM\"}");
     free(json_str);
     RELEASE(root);

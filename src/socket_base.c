@@ -11,7 +11,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-// [제국 표준 Class 명함]
 static const Class _Socket_Class = {
     .name     = "Socket",
     .size     = sizeof(Socket),
@@ -115,7 +114,7 @@ void Socket_finalize(Object* obj) {
 void Socket_init_base(Socket* self, int fd, SocketProtocol protocol) {
     if (!self) return;
 
-    // [W1 제국 표준]: 객체 메타데이터 초기화
+    // 객체 메타데이터 초기화
     Object_Init((Object*)self, &_Socket_Class);
 
     self->fd       = fd;
@@ -312,7 +311,7 @@ Socket* createServer(const char* url, Exception** out_err) {
         }
     }
 
-    // 🧹 [제국 ARC 율법] 파싱에 쓰인 임시 HashMap 자원 즉시 소각!
+    // 🧹 파싱에 쓰인 임시 HashMap 자원 즉시 소각!
     RELEASE((Object*)info);
 
     return sock;
@@ -407,7 +406,7 @@ Socket* createClient(const char* url, Exception** out_err) {
         }
     }
 
-    // 🧹 [제국 ARC 율법] 합법 패턴 확인 완료된 HashMap 강제 소각 (메모리 누수 원천 차단)
+    // 🧹 합법 패턴 확인 완료된 HashMap 강제 소각 (메모리 누수 원천 차단)
     RELEASE((Object*)info);
 
     return sock;

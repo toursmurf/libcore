@@ -12,7 +12,7 @@
 
 int main() {
     printf("==================================================\n");
-    printf(" 🛡️ [투스 제국] ByteBuffer S-Tier 최종 파괴 검증 (교정판)\n");
+    printf(" ByteBuffer S-Tier 최종 파괴 검증 (교정판)\n");
     printf("==================================================\n\n");
 
     ByteBuffer* buf = new_ByteBuffer(16);

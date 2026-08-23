@@ -103,7 +103,7 @@ static ByteBuffer* MappedFile_asByteBuffer(MappedFile* self) {
 // ============================================================================
 const Class MappedFile_Class = {
     .name = "MappedFile",
-    .size = sizeof(MappedFile), // 💡 의장님 지시사항 완벽 반영!!!!
+    .size = sizeof(MappedFile),
     .finalize = MappedFile_finalize
 };
 

@@ -13,12 +13,12 @@
 #include "arraylist.h"
 #include "string.h" // 🚀 파일명 변경 반영!
 
-// 의장님 오리지널 RTTI 매크로
+//오리지널 RTTI 매크로
 #define GET_CLASS(obj) ( *( (const Class**) (obj) ) )
 
 int main() {
     printf("==================================================\n");
-    printf("  🚀 투스(Toos) IT 홀딩스 - DB 엔진 [17연성 테스트] 🚀\n");
+    printf("  DB 엔진 [17연성 테스트] 🚀\n");
     printf("==================================================\n\n");
 
     // 🚀 코딩표준 8호 적용 생성자

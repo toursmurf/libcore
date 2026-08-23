@@ -34,7 +34,7 @@ int main() {
     vec->push_back(vec, (Object*)s4); RELEASE_NULL(s4);
     printf("  > 총 push_back 완료. 최종 사이즈: %d\n", vec->get_size(vec));
 
-    // 3. VECTOR_FOREACH 매크로 테스트 (의장님의 걸작!)
+    // 3. VECTOR_FOREACH 매크로 테스트
     printf("\n[3] VECTOR_FOREACH 매크로 순회 테스트\n");
     int index = 0;
     // 매크로가 내부적으로 begin, end, it_next를 광속으로 처리함!

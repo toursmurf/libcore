@@ -10,7 +10,7 @@ typedef void (*TimerCallback)(void* user_data);
 typedef struct Timer Timer;
 
 struct Timer {
-    Object      base;           // 제국 표준 ARC 객체
+    Object      base;           // ARC 객체
     int         tfd;            // Linux 커널 timerfd
     bool        repeating;      // 반복 여부
     long        interval_ms;    // 실행 간격 (ms)

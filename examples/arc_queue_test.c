@@ -34,7 +34,7 @@ int main() {
 
     printf(" - 현재 Queue 사이즈: %d (예상: 3)\n", queue->size(queue));
 
-    // 3. Iterator 테스트 (의장님께서 복구하신 핵심 기능!)
+    // 3. Iterator 테스트
     printf("\n[3] Iterator를 통한 전체 순회 테스트\n");
     ArrayListIterator* it = queue->iterator(queue);
     while (it->hasNext(it)) {

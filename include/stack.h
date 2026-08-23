@@ -19,7 +19,7 @@ struct Stack {
     void* (*peek)(Stack* self);
 
     bool (*isEmpty)(Stack* self);
-    bool (*isFull)(Stack* self); // 🚀 [의장님 하명] 추가 완료
+    bool (*isFull)(Stack* self);
     int (*size)(Stack* self);
 };
 

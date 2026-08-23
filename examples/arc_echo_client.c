@@ -15,7 +15,7 @@
 
 int main() {
     printf("🚀 [Client] 1MB 융단 폭격 준비...\n");
-    // [제국 표준]: Non-blocking 클라이언트 생성
+    //Non-blocking 클라이언트 생성
     TcpSocket* client = new_TcpClient("127.0.0.1", 8080);
     if (!client) return 1;
 
@@ -25,14 +25,14 @@ int main() {
     for (int i = 0; i < TEST_SIZE; i++) send_buf[i] = (char)(i % 256);
 
     // 2. 1MB 전송 
-    // [🚨 통합]: send_all 대신 send() 사용. 내부에서 끝까지 밀어넣음!
-    printf("🔥 [Client] 1MB 데이터 발사!\n");
+    // [통합]: send_all 대신 send() 사용. 내부에서 끝까지 밀어넣음!
+    printf("[Client] 1MB 데이터 발사!\n");
     client->base.send(&client->base, send_buf, TEST_SIZE, NULL, 0);
 
     // 3. 1MB 수신 대기
     size_t total_recv = 0;
     while (total_recv < TEST_SIZE) {
-        // [🚨 통합]: recv() 호출 시 주소 인자 NULL 처리
+        // [통합]: recv() 호출 시 주소 인자 NULL 처리
         ssize_t n = client->base.recv(&client->base, recv_buf + total_recv, TEST_SIZE - total_recv, NULL, NULL);
         
         if (n > 0) {

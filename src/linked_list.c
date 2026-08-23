@@ -40,7 +40,7 @@ const Class linkedListClass = {
  * [Methods] Implementation
  * ========================================= */
 
-// 노드 추가 (의장님 로직 + ARC + Mutex)
+// 노드 추가 (로직 + ARC + Mutex)
 static void impl_add_node(LinkedList* self, void* data) {
     pthread_mutex_lock(&self->lock);
 
@@ -63,7 +63,7 @@ static void impl_add_node(LinkedList* self, void* data) {
     pthread_mutex_unlock(&self->lock);
 }
 
-// 노드 삭제 (의장님 로직 + ARC 소유권 반납)
+// 노드 삭제 (로직 + ARC 소유권 반납)
 static void impl_delete_node(LinkedList* self, void* data, int (*compare)(Object*, Object*)) {
     pthread_mutex_lock(&self->lock);
 
@@ -123,7 +123,7 @@ LinkedList* new_LinkedList(void) {
     list->size = 0;
     pthread_mutex_init(&list->lock, NULL);
 
-    // 메서드 바인딩 (의장님 인터페이스 보존)
+    // 메서드 바인딩 (인터페이스 보존)
     list->add_node = impl_add_node;
     list->delete_node = impl_delete_node;
     list->print_list = impl_print_list;

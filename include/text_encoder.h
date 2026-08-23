@@ -11,7 +11,7 @@
 typedef struct TextEncoder TextEncoder;
 
 /* =========================================================
- * 🛡️ TextEncoder : 제국 웹 생태계의 데이터 변환 및 XSS 방어 수문장
+ * 🛡️ TextEncoder :웹 생태계의 데이터 변환 및 XSS 방어 수문장
  * ========================================================= */
 struct TextEncoder {
     Object base;
@@ -28,8 +28,7 @@ struct TextEncoder {
     ByteBuffer* (*base64Decode)(TextEncoder* self, const char* input);
 
     /* ---------------------------------------------------------
-     * [2] 🚀 성능 극대화 API (Zero-Allocation API) 🚀
-     * - 의장님 특별 지시 사항! 
+     * [2] 성능 극대화 API (Zero-Allocation API) 🚀
      * - 외부에서 주입된 StringBuilder나 ByteBuffer에 결과만 덧붙임(Append).
      * - 힙 할당(malloc) 오버헤드 0! 게시판 렌더링 속도의 핵심!
      * --------------------------------------------------------- */

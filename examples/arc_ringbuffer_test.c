@@ -13,7 +13,7 @@
 #include <string.h>
 
 #include "ring_buffer.h"
-#include "object.h" // 의장님의 ARC 시스템
+#include "object.h"
 
 // 스레드 제어용 전역 플래그
 static volatile bool g_running = true;
@@ -40,7 +40,7 @@ void* consumer_thread(void* arg) {
             printf("  [👉 POP] 워커가 패킷을 처리했습니다: ID=%d, Data='%s'\n", 
                    pkt->packet_id, pkt->data);
             
-            // 🔥 의장님 수칙: 큐에서 빼낸 데이터는 소비자가 반드시 free! (Valgrind 0 bytes)
+            // 큐에서 빼낸 데이터는 소비자가 반드시 free! (Valgrind 0 bytes)
             free(pkt);
         }
     }
@@ -85,7 +85,7 @@ void* producer_thread(void* arg) {
 int main() {
     printf("=== RingBuffer 무결점 테스트 시작 ===\n");
 
-    // 1. RingBuffer 생성 (의장님의 ARC Object_Init 탑재)
+    // 1. RingBuffer 생성
     // 용량을 10으로 작게 잡아 FULL/DROP 방어 로직을 테스트합니다.
     RingBuffer* rb = new_RingBuffer(10); 
 

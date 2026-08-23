@@ -23,7 +23,7 @@ static void run_test_group(PathValidator* pv, const char* group_name, TestCase c
         char out[MAX_PATH_LEN + 1];
         bool res = pv->validate(pv, cases[i].raw_path, out, sizeof(out));
 
-        /* 의장님 지시: strncmp로 시큐어 코딩 적용 */
+        /* strncmp로 시큐어 코딩 적용 */
         assert(res == cases[i].expected_valid);
         if (res) {
             assert(strncmp(out, cases[i].expected_canon, sizeof(out)) == 0);

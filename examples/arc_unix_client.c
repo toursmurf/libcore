@@ -52,7 +52,7 @@ int main() {
 
     if (retry >= 5000) printf("⏱️ [UNIX Client] 타임아웃 발생!\n");
 
-    // [W1 제국 표준]: 자원 소각
+    //자원 소각
     RELEASE(client);
     return 0;
 }

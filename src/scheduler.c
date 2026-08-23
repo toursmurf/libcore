@@ -1,6 +1,6 @@
 /*
  * ────────────────────────────────────────────────────────────────────────
- * [scheduler.c] 투스it홀딩스 제국 - 고정밀 타이머 스케줄러 엔진
+ * [scheduler.c] 고정밀 타이머 스케줄러 엔진
  * ────────────────────────────────────────────────────────────────────────
  * 1. 암시적 선언 경고 소각 : event_loop_add_timer 등 글로벌 함수 호출 제거 ✅
  * 2. VTable 다형성 맵핑    : 구형 EventLoop 종속성(addTimer/removeTimer) 완전 철거 ✅
@@ -88,7 +88,6 @@ static void Scheduler_finalize(Object* obj) {
         self->jobs = NULL; // 안전을 위한 널링
     }
 
-    // 🚨 [의장님! 이 두 줄이 제국 메모리 해방의 마법입니다] ✅
     // 생성자에서 RETAIN 했던 녀석들을 이제 완전히 놓아줍니다.
     if (self->pool) { RELEASE((Object*)self->pool); self->pool = NULL; }
     if (self->loop) { RELEASE((Object*)self->loop); self->loop = NULL; }

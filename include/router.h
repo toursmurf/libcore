@@ -8,7 +8,7 @@
 #include "path_validator.h" /* 🚀 [v1.6.0] PathValidator 방어 모듈 임포트 */
 
 /* =========================================================
- * [1] 제국 표준 HTTP 핸들러 시그니처 (함수 포인터)
+ * [1]  HTTP 핸들러 시그니처 (함수 포인터)
  * 🚨 특징: 전역 변수 철폐! user_ctx를 통해 DB/Config 무한 주입 가능!
  * ========================================================= */
 typedef void (*HttpHandler)(HttpRequest* req, HttpResponse* res, void* user_ctx);
@@ -27,7 +27,7 @@ typedef struct Route {
 Route* new_Route(HttpMethod method, const char* path, HttpHandler handler);
 
 /* =========================================================
- * [3] Router : Express.js를 능가할 제국의 중앙 관제탑
+ * [3] Router : Express.js를 능가할 중앙 관제탑
  * ========================================================= */
 typedef struct Router Router;
 struct Router {

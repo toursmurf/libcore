@@ -49,7 +49,7 @@ static void* impl_pop(Stack *self) {
         return NULL;
     }
 
-    // [의장님 명품 로직] 마지막 요소를 detach하여 소유권 이전
+    //마지막 요소를 detach하여 소유권 이전
     void *item = self->container->detach(self->container, current_size - 1);
 
     pthread_mutex_unlock(&self->lock);

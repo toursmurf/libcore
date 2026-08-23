@@ -70,7 +70,7 @@ void task_critical_health_check(void* ud) {
  * ============================================================ */
 
 int main() {
-    // 1. 제국 표준 sigaction 장착 (SA_RESTART 무효화)
+    // 1. sigaction 장착 (SA_RESTART 무효화)
     struct sigaction sa;
     sa.sa_handler = handle_sigint;
     sigemptyset(&sa.sa_mask);

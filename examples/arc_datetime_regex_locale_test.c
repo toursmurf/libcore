@@ -132,7 +132,7 @@ void test_locale_module() {
 // ==========================================
 int main() {
     printf("==========================================\n");
-    printf("🚀 투스 IT 제국 libcore v1.x Datetime, Regex, Locale 통합 QA 시작\n");
+    printf("🚀 libcore v1.x Datetime, Regex, Locale 통합 QA 시작\n");
     printf("==========================================\n\n");
 
     test_datetime_module();

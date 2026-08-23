@@ -28,7 +28,7 @@ struct Vector {
     Object* (*pop_back)(Vector *self); // 🚀 반환형 변경 (소유권 이전)
     int (*get_size)(Vector *self);
     
-    // Thread 수동 잠금 제어 (의장님 명품 철학 보존)
+    // Thread 수동 잠금 제어
     void (*lock)(Vector *self);
     void (*unlock)(Vector *self);
 

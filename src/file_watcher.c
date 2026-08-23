@@ -25,7 +25,7 @@ static void FileWatcher_finalize(Object* obj) {
         inotify_rm_watch(self->inotifyFd, self->watchFd);
     }
 
-    // 💡 의장님 지적 사항: close 후 fd 초기화 확실하고 명확하게!!
+    // close 후 fd 초기화 확실하고 명확하게!!
     if (self->inotifyFd >= 0) {
         close(self->inotifyFd);
         self->inotifyFd = -1;
@@ -88,7 +88,7 @@ static void FileWatcher_stop(FileWatcher* self) {
 // ============================================================================
 const Class FileWatcher_Class = {
     .name = "FileWatcher",
-    .size = sizeof(FileWatcher), // 💡 의장님 지시사항 완벽 반영!!!!
+    .size = sizeof(FileWatcher),
     .finalize = FileWatcher_finalize
 };
 
