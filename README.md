@@ -4,9 +4,9 @@
 > **Build a C server in 100 lines with EventLoop + ThreadPool.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Valgrind](https://img.shields.io/badge/Valgrind-0%20bytes-brightgreen)](/)
+[![Valgrind](https://img.shields.io/badge/Valgrind-clean-brightgreen)](/)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey)](/)
-[![Version](https://img.shields.io/badge/Version-v1.7.0-orange)](/)
+[![Version](https://img.shields.io/badge/Version-v1.7.2-orange)](/)
 
 ---
 
@@ -108,7 +108,7 @@ libcore solves these problems.
 │  ┌──────────────┐    ┌──────────────────────────┐   │
 │  │  ThreadPool  │    │  ARC Memory              │   │
 │  │  Thread      │    │  RETAIN / RELEASE        │   │
-│  │  Semaphore   │    │  Valgrind 0 bytes        │   │
+│  │  Semaphore   │    │  Valgrind-clean        │   │
 │  └──────────────┘    └──────────────────────────┘   │
 │                                                     │
 │  ┌──────────────────────────────────────────────┐   │
@@ -136,7 +136,6 @@ libcore solves these problems.
 | **PathValidator**       | Rule 16 기반 경로 보안 검증 / Rule 16 path security validation           |
 | **StringBuilder**       | ByteBuffer 기반 ARC 호환 문자열 빌더 / ARC-compatible string builder     |
 | **TextEncoder**         | escapeHtml/urlEncode/base64/Zero-Alloc API                               |
-| **Valgrind 0 bytes**    | 메모리 누수 없음 보장 / Zero memory leaks guaranteed                     |
 | **47개 모듈**           | 컬렉션/파일/암호화/JSON/SNMP 등 / Collections/File/Crypto/JSON/SNMP etc. |
 
 ---
@@ -243,7 +242,7 @@ SQLite
  * 1. new_xxx() 생성 시 ref_count = 1 자동
  *    new_xxx() sets ref_count = 1 automatically
  *
- * 2. 컨테이너에 넣기 전 RETAIN, 다 쓰면 RELEASE
+ * 2. 컨테이너가 저장시 RETAIN하며, 호출자는 자신의 소유권을 다 쓰면 RELEASE
  *    RETAIN before storing, RELEASE when done
  *
  * 3. [OWNED] 반환값은 RELEASE 필수
@@ -375,14 +374,11 @@ skin: dark
 | [docs/coding_guide_en.md](docs/coding_guide_en.md)                   | English Coding Guide                     |
 | [docs/CODING_CONTRACT_KO.md](docs/CODING_CONTRACT_KO.md)             | 코딩규약 한글 / Korean Coding Contract   |
 | [docs/CODING_CONTRACT_EN.md](docs/CODING_CONTRACT_EN.md)             | English Coding Contract                  |
-| [docs/libcore_api_ko.md](docs/libcore_api_ko.md)                     | API 레퍼런스 한글 / Korean API reference |
-| [docs/libcore_api_en.md](docs/libcore_api_en.md)                     | API Reference English                    |
+| [docs/libcore_v1.7.2_API_Reference.md](docs/libcore_v1.7.2_API_Reference.md)          | 1.7.2 api reference     |
 | [docs/libcore_v1_class_diagram.md](docs/libcore_v1_class_diagram.md) | 클래스 다이어그램 / Class diagram        |
 | [docs/mysql_setup.md](docs/mysql_setup.md)                           | MySQL 연동 / MySQL setup                 |
 | [docs/examples.ko.md](docs/examples.ko.md)                           | 예제 가이드 한글                         |
 | [docs/examples.en.md](docs/examples.en.md)                           | Examples guide english                   |
-| [docs/libcore_v1.7.2_API_Reference.md](docs/libcore_v1.7.2_API_Reference.md)          | 1.7.2 api reference                      |
-
 ---
 
 ## 요구사항 / Requirements
