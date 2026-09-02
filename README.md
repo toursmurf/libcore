@@ -126,19 +126,18 @@ libcore solves these problems.
 
 ## 주요 특징 / Key Features
 
-| 특징 / Feature | 설명 / Description |
-|---|---|
-| **EventLoop** | Linux: epoll / macOS: kqueue — OS 자동 감지 |
-| **ARC 메모리** | RETAIN/RELEASE 기반 자동 메모리 관리 / Auto memory via RETAIN/RELEASE |
-| **Socket 추상화** | TCP/UDP/Unix/SSL 통일 인터페이스 / Unified TCP/UDP/Unix/SSL interface |
-| **ThreadPool** | 작업 큐 기반 스레드 풀 / Task queue-based thread pool |
-| **HTTP 스택** | HttpServer/HttpClient/Router/:id/WebSocket/Cookie/Multipart |
-| **PathValidator** | Rule 16 기반 경로 보안 검증 / Rule 16 path security validation |
-| **StringBuilder** | ByteBuffer 기반 ARC 호환 문자열 빌더 / ARC-compatible string builder |
-| **TextEncoder** | escapeHtml/urlEncode/base64/Zero-Alloc API |
-| **Valgrind 0 bytes** | 메모리 누수 없음 보장 / Zero memory leaks guaranteed |
-| **67개 모듈** | 컬렉션/파일/암호화/JSON/SNMP 등 / Collections/File/Crypto/JSON/SNMP etc. |
-| **C99 순수 C** | 외부 의존성 없음 (MySQL 선택적) / No external deps (MySQL optional) |
+| 특징 / Feature          | 설명 / Description                                                       |
+|-------------------------|--------------------------------------------------------------------------|
+| **EventLoop**           | Linux: epoll / macOS: kqueue — OS 자동 감지                              |
+| **ARC 메모리**          | RETAIN/RELEASE 기반 자동 메모리 관리 / Auto memory via RETAIN/RELEASE    |
+| **Socket 추상화**       | TCP/UDP/Unix/SSL 통일 인터페이스 / Unified TCP/UDP/Unix/SSL interface    |
+| **ThreadPool**          | 작업 큐 기반 스레드 풀 / Task queue-based thread pool                    |
+| **HTTP 스택**           | HttpServer/HttpClient/Router/:id/WebSocket/Cookie/Multipart              |
+| **PathValidator**       | Rule 16 기반 경로 보안 검증 / Rule 16 path security validation           |
+| **StringBuilder**       | ByteBuffer 기반 ARC 호환 문자열 빌더 / ARC-compatible string builder     |
+| **TextEncoder**         | escapeHtml/urlEncode/base64/Zero-Alloc API                               |
+| **Valgrind 0 bytes**    | 메모리 누수 없음 보장 / Zero memory leaks guaranteed                     |
+| **47개 모듈**           | 컬렉션/파일/암호화/JSON/SNMP 등 / Collections/File/Crypto/JSON/SNMP etc. |
 
 ---
 
@@ -196,12 +195,12 @@ make examples
 ./examples/arc_process_agent
 ```
 
-### 3. MySQL 연동 (선택) / MySQL Integration (optional)
+### 3. RDB 연동 / RDB Integration
 
 ```bash
-make WITH_MYSQL=1 \
-  MYSQL_INC=$(mysql_config --variable=pkgincludedir) \
-  MYSQL_LIB=$(mysql_config --variable=pkglibdir)
+MySQL / MariaDB
+PostgreSQL
+SQLite 
 ```
 
 → 자세한 내용: [docs/mysql_setup.md](docs/mysql_setup.md)
@@ -335,6 +334,7 @@ skin: dark
 
 ![WebBoard SQLite](docs/images/webboard_sqlite.png)
 
+
 > Same BoardHandler / Router / TemplateEngine SSR,
 > different DBClient adapters.
 
@@ -345,7 +345,7 @@ skin: dark
 | 버전 / Version | 주요 내용 / Highlights                                            |
 |----------------|-------------------------------------------------------------------|
 | **v1.7.2**     | 3 RDB 지원용 웹게시판 (MySQL / PostgreSQL / SQLITE)               |
-| **v1.7.1**     | Router params 2-Pass engine, OOM/NPD defense, and cro             |
+| **v1.7.1**     | Router params 2-Pass engine, OOM/NPD defense                      |
 | **v1.7.0**     | macOS (kqueue) 정식 지원 — Linux + macOS 멀티플랫폼               |
 | **v1.6.2**     | Content-Length 바운드 검증, WS 프레임 상한, EventLoop Object 상속 |
 | **v1.6.1**     | arc_process_agent Health Score, CPU/메모리/디스크/load_avg        |
@@ -392,7 +392,10 @@ OS       : Linux 64-bit (Ubuntu / Rocky / Debian)
 Compiler : GCC 9+ / Clang 10+
 Make     : GNU Make
 OpenSSL  : 3.x (HTTPS/SSL 지원 / for HTTPS/SSL)
-Optional : libmysqlclient (MySQL 연동 시 / for MySQL)
+Optional : 
+        MariaDB / MySQL client library
+        PostgreSQL libpq
+        SQLite3 
 ```
 
 ---
@@ -415,6 +418,6 @@ MIT License — Free to use, modify, and distribute.
 
 *libcore is a high-performance, event-driven server runtime in pure C.*
 *Java-like API / Python-like usability / C-level performance / ARC memory safety.*
-*Valgrind clean / Zero-Malloc / Graceful shutdown / MIT License.*
+*Valgrind clean /  Graceful shutdown / MIT License.*
 
 **Toos IT Holdings | Iron Fortress v1.7.2**
