@@ -316,6 +316,28 @@ Web Board    board_handler /  board_template_engine
 
 → 전체 목록: [docs/examples.ko.md](docs/examples.ko.md)
 
+## 🚀 WebBoard Demo — Multi-RDB Support
+
+libcore v1.7.2 WebBoard runs on the same application code
+with MySQL/MariaDB, PostgreSQL, and SQLite backends.
+
+### MySQL / MariaDB
+skin: white
+![WebBoard MySQL](docs/images/webboard_mysql_white.png)
+
+skin: dark
+![WebBoard MySQL](docs/images/webboard_mysql_dark.png)
+### PostgreSQL
+
+![WebBoard PostgreSQL](docs/images/webboard_pgsql.png)
+
+### SQLite
+
+![WebBoard SQLite](docs/images/webboard_sqlite.png)
+
+> Same BoardHandler / Router / TemplateEngine SSR,
+> different DBClient adapters.
+
 ---
 
 ## 버전 히스토리 / Version History
