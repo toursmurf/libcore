@@ -400,7 +400,7 @@ skin: dark
 
 ```
 OS       : Rocky Linux (9.8 / 8.10)  (64-bit) - Tested
-           macOS - (Apple Silicon, M2 Max) — Tested
+           macOS  (Apple Silicon, M2 Max) — Tested
 
 Compiler : GCC 9+ / Clang 10+
 Make     : GNU Make
