@@ -91,7 +91,7 @@ libcore solves these problems.
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                   libcore v1.7.0                    │
+│                   libcore v1.7.2                    │
 ├─────────────────────────────────────────────────────┤
 │                                                     │
 │  ┌──────────────┐    ┌──────────────────────────┐   │
@@ -157,7 +157,7 @@ make examples
 ```
 # Linux (epoll)
 =========================================
- libcore Build Configuration (v1.7.0)
+ libcore Build Configuration (v1.7.2)
 =========================================
  Target OS  : Linux
  Backend    : epoll
@@ -166,7 +166,7 @@ make examples
 
 # macOS (kqueue)
 =========================================
- libcore Build Configuration (v1.7.0)
+ libcore Build Configuration (v1.7.2)
 =========================================
  Target OS  : macOS
  Backend    : kqueue
@@ -331,16 +331,18 @@ Utilities     Logger / AsyncLogger / Exception
 
 ## 버전 히스토리 / Version History
 
-| 버전 / Version | 주요 내용 / Highlights |
-|---|---|
-| **v1.7.0** | macOS (kqueue) 정식 지원 — Linux + macOS 멀티플랫폼 |
-| **v1.6.2** | Content-Length 바운드 검증, WS 프레임 상한, EventLoop Object 상속 |
-| **v1.6.1** | arc_process_agent Health Score, CPU/메모리/디스크/load_avg |
-| **v1.6.0** | PathValidator / StringBuilder / TextEncoder / Router :id |
-| **v1.5.2** | arc_process_agent 기반 구축 |
-| **v1.5.1** | WebSocket 업그레이드, ToosTalk TT-1 가동 |
-| **v1.5.0** | WebCore 완성 — HttpServer/HttpClient/SSL/Router/Cookie |
-| **v1.0** | Iron Fortress — 67모듈, Valgrind 0 bytes, CI 5관왕 |
+| 버전 / Version | 주요 내용 / Highlights                                            |
+|----------------|-------------------------------------------------------------------|
+| **v1.7.2**     | 3 RDB 지원용 웹게시판 (MySQL / PostgreSQL / SQLITE)               |
+| **v1.7.1**     | Router params 2-Pass engine, OOM/NPD defense, and cro             |
+| **v1.7.0**     | macOS (kqueue) 정식 지원 — Linux + macOS 멀티플랫폼               |
+| **v1.6.2**     | Content-Length 바운드 검증, WS 프레임 상한, EventLoop Object 상속 |
+| **v1.6.1**     | arc_process_agent Health Score, CPU/메모리/디스크/load_avg        |
+| **v1.6.0**     | PathValidator / StringBuilder / TextEncoder / Router :id          |
+| **v1.5.2**     | arc_process_agent 기반 구축                                       |
+| **v1.5.1**     | WebSocket 업그레이드, ToosTalk TT-1 가동                          |
+| **v1.5.0**     | WebCore 완성 — HttpServer/HttpClient/SSL/Router/Cookie            |
+| **v1.0**       | Iron Fortress — 67모듈, Valgrind 0 bytes, CI 5관왕                |
 
 ---
 
@@ -404,4 +406,4 @@ MIT License — Free to use, modify, and distribute.
 *Java-like API / Python-like usability / C-level performance / ARC memory safety.*
 *Valgrind clean / Zero-Malloc / Graceful shutdown / MIT License.*
 
-**Toos IT Holdings | Iron Fortress v1.7.0**
+**Toos IT Holdings | Iron Fortress v1.7.2**
