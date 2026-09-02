@@ -301,7 +301,6 @@ Web Board    board_handler /  board_template_engine
 | `all_test_v2.c`                  | 전체 통합 테스트 37개 / 37 integration tests          |
 | `arc_echo_server.c`              | TCP 에코 서버 / TCP Echo Server                       |
 | `arc_reactor_multi_server.c`     | TCP+UDP+Unix 멀티플렉싱 / Multiplexing                |
-| `arc_toostalk_server.c`          | WebSocket 채팅 서버 / WebSocket Chat                  |
 | `arc_http_client_test.c`         | HTTPS 클라이언트 / HTTPS Client                       |
 | `arc_naver_news.c`               | 병렬 뉴스 크롤러 90건 / Parallel news crawler         |
 | `arc_news_crawler.c`             | 다국어 뉴스 크롤러 / Multi-source news crawler        |
