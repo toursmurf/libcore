@@ -5,7 +5,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Valgrind](https://img.shields.io/badge/Valgrind-clean-brightgreen)](/)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey)](/)
+[![Platform](https://img.shields.io/badge/Platform-Rocky%20Linux%20%7C%20macOS-lightgrey)](/)
 [![Version](https://img.shields.io/badge/Version-v1.7.2-orange)](/)
 
 ---
@@ -153,7 +153,7 @@ make examples
 빌드 시 OS가 자동으로 감지됩니다 / OS is auto-detected at build time:
 
 ```
-# Linux (epoll)
+# Rocky Linux 9.x (epoll)
 =========================================
  libcore Build Configuration (v1.7.2)
 =========================================
@@ -162,7 +162,7 @@ make examples
  OpenSSL    : 3.5.1
 =========================================
 
-# macOS (kqueue)
+# macOS Apple Silicon (kqueue)
 =========================================
  libcore Build Configuration (v1.7.2)
 =========================================
@@ -190,7 +190,7 @@ make examples
 # 네이버 뉴스 병렬 크롤러 / Naver news parallel crawler
 ./examples/arc_naver_news
 
-# 프로세스 모니터링 에이전트 / Process monitoring agent
+# 프로세스 모니터링 에이전트 / Process monitoring agent (RockyLinux8.10/9.8)
 ./examples/arc_process_agent
 ```
 
@@ -295,25 +295,32 @@ WebBoard      BoardHandler / BoardTemplateEngine
 
 ## 예제 목록 / Examples
 
-| 파일 / File | 설명 / Description |
-|---|---|
-| `all_test_v2.c` | 전체 통합 테스트 37개 / 37 integration tests |
-| `arc_echo_server.c` | TCP 에코 서버 / TCP Echo Server |
-| `arc_reactor_multi_server.c` | TCP+UDP+Unix 멀티플렉싱 / Multiplexing |
-| `arc_http_client_test.c` | HTTPS 클라이언트 / HTTPS Client |
-| `arc_naver_news.c` | 병렬 뉴스 크롤러 90건 / Parallel news crawler |
-| `arc_news_crawler.c` | 다국어 뉴스 크롤러 / Multi-source news crawler |
-| `arc_process_agent.c` | 프로세스 모니터링 에이전트 / Process monitoring agent |
-| `arc_thread_test.c` | ThreadPool 동작 검증 / ThreadPool test |
-| `arc_scheduler_system_monitor.c` | 주기 모니터링 / Periodic monitoring |
-| `arc_json_test.c` | JSON 파서 / JSON parser |
-| `arc_crypto_integration_test.c` | SHA/AES 암호화 / SHA/AES crypto |
-| `arc_snmp_parallel_walk.c` | SNMP 병렬 수집 / SNMP parallel walk |
-| `arc_mysql_test.c` | MySQL 연동 / MySQL integration |
-| `compare_raw_vs_libcore.c` | RAW epoll vs libcore 벤치마크 / Benchmark |
-| `arc_board_server.c` | 웹게시판 서버 프로그램 (MySQL / PostgreSQL / SQLite) |
+| 파일 / File                      | 설명 / Description                                              |
+|----------------------------------|-----------------------------------------------------------------|
+| `all_test_v2.c`                  | 전체 통합 테스트 37개 / 37 integration tests                    |
+| `arc_echo_server.c`              | TCP 에코 서버 / TCP Echo Server                                 |
+| `arc_reactor_multi_server.c`     | TCP+UDP+Unix 멀티플렉싱 / Multiplexing                          |
+| `arc_http_client_test.c`         | HTTPS 클라이언트 / HTTPS Client                                 |
+| `arc_naver_news.c`               | 병렬 뉴스 크롤러 90건 / Parallel news crawler                   |
+| `arc_news_crawler.c`             | 다국어 뉴스 크롤러 / Multi-source news crawler                  |
+| `arc_process_agent.c`            | 프로세스 모니터링 에이전트 / Process monitoring agent           |
+| `arc_thread_test.c`              | ThreadPool 동작 검증 / ThreadPool test                          |
+| `arc_scheduler_system_monitor.c` | 주기 모니터링 / Periodic monitoring                             |
+| `arc_json_test.c`                | JSON 파서 / JSON parser                                         |
+| `arc_crypto_integration_test.c`  | SHA/AES 암호화 / SHA/AES crypto                                 |
+| `arc_snmp_parallel_walk.c`       | SNMP 병렬 수집 / SNMP parallel walk                             |
+| `arc_mysql_test.c`               | MySQL 연동 / MySQL integration                                  |
+| `compare_raw_vs_libcore.c`       | RAW epoll vs libcore 벤치마크 / Benchmark (RockyLinux서 테스트) |
+| `arc_chat_server.c`              | chatting server (icq, kakaotalk)                                |
+| `arc_board_server.c`             | 웹게시판 서버 프로그램 (MySQL / PostgreSQL / SQLite)            |
 
 → 전체 목록: [docs/examples.ko.md](docs/examples.ko.md)
+
+---
+
+## 🚀 Chat Demo support (RockyLinux-8.10/9.8 ,  macbook m2 pro max  tested)
+
+![WebBoard MySQL](docs/images/chat.png)
 
 ## 🚀 WebBoard Demo — Multi-RDB Support
 
@@ -345,52 +352,56 @@ skin: dark
 
 ## 버전 히스토리 / Version History
 
-| 버전 / Version | 주요 내용 / Highlights |
-|---|---|
-| **v1.7.2** | 3 RDB 지원용 웹게시판 (MySQL / PostgreSQL / SQLite) |
-| **v1.7.1** | Router params 2-Pass engine, OOM/NPD defense |
-| **v1.7.0** | macOS (kqueue) 정식 지원 — Linux + macOS 멀티플랫폼 |
+| 버전 / Version | 주요 내용 / Highlights                                            |
+|---|-------------------------------------------------------------------|
+| **v1.7.2** | 3 RDB 지원용 웹게시판 (MySQL / PostgreSQL / SQLite)               |
+| **v1.7.1** | Router params 2-Pass engine, OOM/NPD defense                      |
+| **v1.7.0** | macOS (kqueue) 정식 지원 — Linux + macOS 멀티플랫폼               |
 | **v1.6.2** | Content-Length 바운드 검증, WS 프레임 상한, EventLoop Object 상속 |
-| **v1.6.1** | arc_process_agent Health Score, CPU/메모리/디스크/load_avg |
-| **v1.6.0** | PathValidator / StringBuilder / TextEncoder / Router :id |
-| **v1.5.2** | arc_process_agent 기반 구축 |
-| **v1.5.1** | WebSocket 업그레이드, ToosTalk TT-1 가동 |
-| **v1.5.0** | WebCore 완성 — HttpServer/HttpClient/SSL/Router/Cookie |
-| **v1.0** | Iron Fortress — 67모듈, Valgrind 0 bytes, CI 5관왕 |
+| **v1.6.1** | CSS filter, HTML entity decoding 안정화                           |
+| **v1.6.0** | PathValidator / StringBuilder / TextEncoder / Router :id          |
+| **v1.5.2** | webcore: Router parameter validation & Global Error Handling      |
+| **v1.5.1** | json, event loop 수정                                             |
+| **v1.5.0** | WebCore 완성 — HttpServer/HttpClient/SSL/Router/Cookie            |
+| **v1.0** | Iron Fortress — 67모듈, Valgrind 0 bytes, CI 5관왕                |
 
 ---
 
 ## 플랫폼 지원 / Platform Support
 
-| OS | 백엔드 / Backend | 상태 / Status |
-|---|---|---|
-| Linux (Ubuntu / Rocky / Debian) | epoll | ✅ 완전 지원 |
-| macOS (Apple Silicon / Intel) | kqueue | ✅ v1.7.0 정식 지원 |
-| Windows | IOCP | 🔜 예정 |
+| OS                              | 백엔드 / Backend | 상태 / Status           |
+|---------------------------------|------------------|-------------------------|
+| Rocky Linux 8.10 / 9.x (64-bit) | epoll            | ✅ 테스트 완료 / Tested |
+| macOS (Apple Silicon)           | kqueue           | ✅ 테스트 완료 / Tested |
+| Windows                         | IOCP             | 🔜 예정                 |
+
+> Ubuntu, Debian, macOS Intel 등 기타 환경은 현재 v1.7.2에서 별도 검증되지 않았습니다.  
+> Other environments have not been independently verified for v1.7.2.
 
 ---
 
 ## 문서 / Documentation
 
-| 문서 / Document | 내용 / Content |
-|---|---|
-| [docs/coding_guide_ko.md](docs/coding_guide_ko.md) | 코딩가이드 한글 / Korean Coding Guide |
-| [docs/coding_guide_en.md](docs/coding_guide_en.md) | English Coding Guide |
-| [docs/CODING_CONTRACT_KO.md](docs/CODING_CONTRACT_KO.md) | 코딩규약 한글 / Korean Coding Contract |
-| [docs/CODING_CONTRACT_EN.md](docs/CODING_CONTRACT_EN.md) | English Coding Contract |
-| [docs/libcore_v1.7.2_API_Reference.md](docs/libcore_v1.7.2_API_Reference.md) | v1.7.2 API Reference |
-| [docs/libcore_v1_class_diagram.md](docs/libcore_v1_class_diagram.md) | 클래스 다이어그램 / Class diagram |
-| [docs/mysql_setup.md](docs/mysql_setup.md) | MySQL 연동 / MySQL setup |
-| [docs/examples.ko.md](docs/examples.ko.md) | 예제 가이드 한글 / Korean examples guide |
-| [docs/examples.en.md](docs/examples.en.md) | 예제 가이드 영문 / English examples guide |
+| 문서 / Document                                                              | 내용 / Content                            |
+|------------------------------------------------------------------------------|-------------------------------------------|
+| [docs/coding_guide_ko.md](docs/coding_guide_ko.md)                           | 코딩가이드 한글 / Korean Coding Guide     |
+| [docs/coding_guide_en.md](docs/coding_guide_en.md)                           | English Coding Guide                      |
+| [docs/CODING_CONTRACT_KO.md](docs/CODING_CONTRACT_KO.md)                     | 코딩규약 한글 / Korean Coding Contract    |
+| [docs/CODING_CONTRACT_EN.md](docs/CODING_CONTRACT_EN.md)                     | English Coding Guide                      |
+| [docs/libcore_v1.7.2_API_Reference.md](docs/libcore_v1.7.2_API_Reference.md) | v1.7.2 API Reference                      |
+| [docs/libcore_v1_class_diagram.md](docs/libcore_v1_class_diagram.md)         | 클래스 다이어그램 / Class diagram         |
+| [docs/mysql_setup.md](docs/mysql_setup.md)                                   | MySQL 연동 / MySQL setup                  |
+| [docs/examples.ko.md](docs/examples.ko.md)                                   | 예제 가이드 한글 / Korean examples guide  |
+| [docs/examples.en.md](docs/examples.en.md)                                   | 예제 가이드 영문 / English examples guide |
 
 ---
 
 ## 요구사항 / Requirements
 
 ```
-OS       : Linux 64-bit (Ubuntu / Rocky / Debian)
-           macOS (Apple Silicon M1/M2/M3, Intel)
+OS       : Rocky Linux (9.8 / 8.10)  (64-bit)
+           macOS - macbook m2 pro max (Apple Silicon)
+
 Compiler : GCC 9+ / Clang 10+
 Make     : GNU Make
 OpenSSL  : 3.x (HTTPS/SSL 지원 / for HTTPS/SSL)
@@ -405,7 +416,7 @@ Optional :
 
 ## 라이선스 / License
 
-MIT License — 자유롭게 사용, 수정, 배포 가능.
+MIT License — 자유롭게 사용, 수정, 배포 가능.  
 MIT License — Free to use, modify, and distribute.
 
 ---
@@ -416,8 +427,6 @@ MIT License — Free to use, modify, and distribute.
 - **GitHub**: https://github.com/toursmurf/libcore
 - **Homepage**: https://toos.it
 - **Issues**: https://github.com/toursmurf/libcore/issues
-
----
 
 ---
 
