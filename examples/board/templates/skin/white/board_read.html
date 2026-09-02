@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{title}} - 투스IT 제국 공식 게시판</title>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+            max-width: 1000px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { color: #2c3e50; margin-bottom: 5px; }
+        .header p { color: #7f8c8d; font-size: 0.95em; }
+
+        .post-container {
+            background: #fff; border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            border: 1px solid #eee; padding: 30px; margin-bottom: 20px;
+        }
+
+        .mode-read .modify-only { display: none !important; }
+        .mode-modify .read-only { display: none !important; }
+
+        input.title-input {
+            width: 100%; box-sizing: border-box; font-size: 1.4em; font-weight: bold;
+            background: transparent; color: #2c3e50; border: 1px solid transparent; outline: none;
+            margin-bottom: 15px; padding: 5px 0;
+        }
+        .mode-modify input.title-input { background: #fff; border: 1px solid #ccc; padding: 10px; border-radius: 5px; }
+        .mode-modify input.title-input:focus { border-color: #3498db; }
+
+        .post-meta {
+            display: flex; justify-content: space-between; padding-bottom: 15px; border-bottom: 1px solid #eee;
+            color: #7f8c8d; font-size: 0.9em; margin-bottom: 20px;
+        }
+
+        textarea.content-input {
+            width: 100%; box-sizing: border-box; min-height: 280px; font-family: 'Segoe UI', sans-serif;
+            font-size: 1em; line-height: 1.8; background: transparent; color: #333;
+            border: 1px solid transparent; outline: none; resize: none;
+        }
+        .mode-modify textarea.content-input { background: #fff; border: 1px solid #ccc; padding: 15px; border-radius: 5px; resize: vertical; }
+        .mode-modify textarea.content-input:focus { border-color: #3498db; }
+
+        .btn-container { display: flex; justify-content: space-between; margin-top: 20px; }
+        .btn {
+            padding: 9px 20px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; color: #fff;
+            transition: background-color 0.2s ease; text-decoration: none; display: inline-block;
+        }
+        .btn-list { background-color: #7f8c8d; } .btn-list:hover { background-color: #626e70; }
+        .btn-edit { background-color: #f39c12; } .btn-edit:hover { background-color: #e67e22; }
+        .btn-save { background-color: #27ae60; } .btn-save:hover { background-color: #2ecc71; }
+        .btn-delete { background-color: #e74c3c; } .btn-delete:hover { background-color: #c0392b; }
+
+        .comment-section { margin-top: 40px; }
+        .comment-form {
+            background: #fff; padding: 20px; border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; border: 1px solid #eee;
+        }
+        .comment-form textarea {
+            width: 100%; box-sizing: border-box; min-height: 80px; background: #fff; color: #333;
+            border: 1px solid #ccc; border-radius: 5px; padding: 12px; margin-bottom: 10px;
+            resize: vertical; outline: none; font-family: 'Segoe UI', sans-serif;
+        }
+        .comment-form textarea:focus { border-color: #3498db; }
+
+        .comment-item { background: #fff; padding: 18px; border-bottom: 1px solid #eee; }
+        .comment-item:first-of-type { border-radius: 8px 8px 0 0; border-top: 1px solid #eee; }
+        .comment-item:last-of-type { border-radius: 0 0 8px 8px; border-bottom: 1px solid #eee; }
+
+        .comment-item.reply { margin-left: 45px; background: #fafafa; border-left: 3px solid #3498db; }
+        .comment-item.reply .btn-reply { display: none !important; }
+
+        .comment-meta { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .comment-writer { color: #2c3e50; font-weight: bold; }
+        .comment-date { color: #95a5a6; font-size: 0.85em; }
+        .comment-content { line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+
+        .comment-actions { text-align: right; margin-top: 10px; }
+        .comment-actions button {
+            background: transparent; border: none; color: #95a5a6; cursor: pointer;
+            font-size: 0.85em; font-weight: bold; margin-left: 12px;
+        }
+        .comment-actions button:hover { color: #3498db; }
+    </style>
+</head>
+
+<body class="{{mode_class}}">
+
+<div class="header">
+    <h1>Libcore 게시판 데모 🚀</h1>
+    <p>Native libcore TemplateEngine SSR (White Skin - Read & Modify)</p>
+    <h1>현재 선택 DB : {{db_type}} </h1>
+</div>
+
+<form id="post-form" onsubmit="submitModify(event, '{{id}}')">
+    <div class="post-container">
+        <input type="text" name="title" class="title-input" value="{{title}}" {{readonly_attr}} required>
+
+        <div class="post-meta">
+            <span>작성자: {{nickname}}</span>
+            <span>조회수: {{view_count}} | {{created_at}}</span>
+        </div>
+
+        <textarea name="content" class="content-input" {{readonly_attr}} required>{{content}}</textarea>
+
+        {{#attachments}}
+        <div class="read-only" style="margin-top: 30px; padding: 12px 20px; background: #f8f9fa; border-radius: 6px; border: 1px solid #e9ecef;">
+            <span style="font-size: 1.2em; vertical-align: middle;">💾</span>
+            <strong style="margin-left: 5px; vertical-align: middle; color: #495057;">첨부파일:</strong>
+            <a href="/board/attach/{{id}}" style="margin-left: 10px; color: #0d6efd; text-decoration: none; font-weight: bold; vertical-align: middle;">
+                {{file_name}}
+            </a>
+            <span style="margin-left: 5px; color: #6c757d; font-size: 0.9em; vertical-align: middle;">({{size}} bytes)</span>
+        </div>
+        {{/attachments}}
+
+        <div class="modify-only" style="margin-top: 20px; padding: 15px; border: 1px solid #e9ecef; background: #fafafa; border-radius: 6px;">
+            <label style="font-weight: bold; color: #2c3e50; display: block; margin-bottom: 10px;">첨부파일 관리</label>
+            {{#attachments}}
+            <div style="margin-bottom: 12px; padding: 10px; background: #e2e3e5; border-radius: 4px; font-size: 0.9em; color: #383d41;">
+                <span style="margin-right: 5px;">📎</span> <b>현재 업로드된 파일:</b> {{file_name}} ({{size}} bytes)
+            </div>
+            {{/attachments}}
+            <input type="file" name="attach" id="attach" style="padding: 8px; background: #fff; border: 1px solid #ccc; border-radius: 4px; width: 100%; box-sizing: border-box;">
+            <p style="font-size: 0.85em; color: #e74c3c; margin-top: 8px; margin-bottom: 0;">* 새 파일을 첨부하면 기존 파일은 삭제됩니다. 기존 파일을 유지하려면 비워두세요.</p>
+            <div class="file-upload-guide">
+                <i class="icon-info"></i> 최대 첨부 용량: <strong>{{max_upload_size_str}}</strong>
+            </div>
+        </div>
+
+        <div class="btn-container">
+            <div><a href="/board/list" class="btn btn-list">← 목록</a></div>
+            <div>
+                <button type="button" class="btn btn-edit read-only" onclick="location.href='/board/{{id}}?mode=modify'">수정</button>
+                <button type="button" class="btn btn-delete read-only" onclick="deletePost('{{id}}')">삭제</button>
+                <button type="button" class="btn btn-list modify-only" onclick="location.href='/board/{{id}}'">취소</button>
+                <button type="submit" class="btn btn-save modify-only">💾 저장</button>
+            </div>
+        </div>
+    </div>
+</form>
+
+<div class="comment-section read-only">
+    <h3 style="color: #2c3e50; margin-bottom: 15px;">💬 코멘트 {{comment_count}}</h3>
+    <div class="comment-form">
+        <input type="hidden" id="target-comment-id" value="">
+        <input type="hidden" id="target-parent-id" value="">
+        <textarea id="comment-content" placeholder="새 코멘트를 입력하세요..."></textarea>
+        <div style="text-align: right;">
+            <button type="button" class="btn btn-list" id="btn-cancel-comment" style="display:none; padding:8px 15px; margin-right:10px;" onclick="resetCommentForm()">취소</button>
+            <button type="button" class="btn btn-save" onclick="submitComment('{{id}}')">💾 코멘트 저장</button>
+        </div>
+    </div>
+    <div class="comment-list">
+        {{#comments}}
+        <div class="comment-item {{comment_class}}">
+            <div class="comment-meta">
+                <span class="comment-writer">{{reply_prefix}}{{nickname}}</span>
+                <span class="comment-date">{{created_at}}</span>
+            </div>
+            <div class="comment-content">{{content}}</div>
+            <div class="comment-actions">
+                <button type="button" class="btn-reply" onclick="prepareReply('{{id}}', '{{nickname}}')">[답글]</button>
+                <button type="button" onclick="prepareEdit('{{id}}', this.closest('.comment-item').querySelector('.comment-content').innerText)">[수정]</button>
+                <button type="button" onclick="deleteComment('{{id}}')">[삭제]</button>
+            </div>
+        </div>
+        {{/comments}}
+    </div>
+</div>
+
+<script>
+    // 1. 서버에서 주입해 준 정확한 Byte 용량을 JS 변수로 할당!
+    const MAX_UPLOAD_BYTES = {{max_upload_size_bytes}};
+
+    // 2. 파일 선택(change) 시 즉시 용량 검사!
+    document.getElementById('attach').addEventListener('change', function(e) {
+        const file = this.files[0];
+        if (file) {
+            if (file.size > MAX_UPLOAD_BYTES) {
+                // 초과 시 경고창 띄우고
+                const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+                const maxMB = (MAX_UPLOAD_BYTES / (1024 * 1024)).toFixed(1);
+                alert(`첨부파일 용량이 초과되었습니다!\n\n선택된 파일: ${fileSizeMB} MB\n최대 허용 용량: ${maxMB} MB`);
+
+                // 폼에 올라간 파일을 즉시 비워버림 (초기화)
+                this.value = '';
+            }
+        }
+    });
+    async function submitModify(event, postId) {
+        event.preventDefault();
+        const formData = new FormData(event.target);
+        const res = await fetch('/board/' + postId, { method: 'PUT', body: formData });
+        if (res.ok) location.href = '/board/' + postId;
+        else alert('수정 실패: ' + await res.text());
+    }
+
+    async function deletePost(postId) {
+        if (!confirm('게시글을 정말 삭제하시겠습니까?')) return;
+        const res = await fetch('/board/' + postId, { method: 'DELETE' });
+        if (res.ok) { location.href = '/board/list'; }
+        else alert('삭제 실패: ' + await res.text());
+    }
+
+    async function submitComment(postId) {
+        const contentBox = document.getElementById('comment-content');
+        const content = contentBox.value.trim();
+        if (!content) return alert('코멘트를 입력하세요.');
+
+        const commentId = document.getElementById('target-comment-id').value;
+        const parentId = document.getElementById('target-parent-id').value;
+
+        let url = (commentId) ? '/board/comment/' + commentId : '/board/' + postId + '/comment';
+        let method = (commentId) ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                content: content, parent_id: parentId
+                    ? parseInt(parentId) : 0})
+        });
+
+        if (res.ok) location.reload();
+        else alert('코멘트 처리 실패: ' + await res.text());
+    }
+
+    async function deleteComment(commentId) {
+        if (!confirm('이 코멘트를 삭제하시겠습니까?')) return;
+        const res = await fetch('/board/comment/' + commentId, { method: 'DELETE' });
+        if (res.ok) location.reload();
+        else alert('삭제 실패: ' + await res.text());
+    }
+
+    function prepareReply(parentId, writerName) {
+        document.getElementById('target-comment-id').value = "";
+        document.getElementById('target-parent-id').value = parentId;
+        const box = document.getElementById('comment-content');
+        box.value = ""; box.placeholder = writerName + " 님에게 대코멘트 작성 중...";
+        document.getElementById('btn-cancel-comment').style.display = 'inline-block';
+        box.focus();
+    }
+
+    function prepareEdit(commentId, currentContent) {
+        document.getElementById('target-comment-id').value = commentId;
+        document.getElementById('target-parent-id').value = "";
+        const box = document.getElementById('comment-content');
+        box.value = currentContent.trim();
+        box.placeholder = "코멘트 수정 중...";
+        document.getElementById('btn-cancel-comment').style.display = 'inline-block';
+        box.focus();
+    }
+
+    function resetCommentForm() {
+        document.getElementById('target-comment-id').value = "";
+        document.getElementById('target-parent-id').value = "";
+        const box = document.getElementById('comment-content');
+        box.value = "";
+        box.placeholder = "새 코멘트를 입력하세요...";
+        document.getElementById('btn-cancel-comment').style.display = 'none';
+    }
+</script>
+</body>
+</html>

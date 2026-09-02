@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>글쓰기 - Libcore 게시판 데모</title>
+    <style>
+        /* 🌙 다크 스킨 (Dark Mode / 시력보호모드) 베이스 */
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #121212; /* 리얼 다크 바탕 */
+            color: #e0e0e0; /* 소프트 화이트 텍스트 */
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #ffffff; /* 헤더 강조 */
+            margin-bottom: 5px;
+        }
+        .header p {
+            color: #a0a0a0;
+            font-size: 0.95em;
+        }
+
+        .write-form {
+            background: #1e1e1e; /* 폼 배경색 단차 */
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3); /* 다크모드용 그림자 */
+            border: 1px solid #333;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #e0e0e0;
+        }
+
+        /* ✨ 입력창 다크 테마 적용 ✨ */
+        .form-group input[type="text"],
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            background-color: #2d2d2d; /* 입력창 배경 */
+            color: #e0e0e0; /* 입력창 글자색 */
+            border: 1px solid #555; /* 어두운 테두리 */
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-family: inherit;
+            font-size: 1em;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+        .form-group input[type="text"]:focus,
+        .form-group textarea:focus {
+            border-color: #3498db; /* 포커스 시 제국 블루 포인트 */
+        }
+
+        .form-group textarea {
+            height: 300px;
+            resize: vertical;
+        }
+        .form-group input[type="file"] {
+            padding: 10px 0;
+            color: #a0a0a0; /* 파일 선택 텍스트도 어둡게 */
+        }
+
+        .btn-container {
+            text-align: center;
+            margin-top: 30px;
+        }
+        .btn {
+            background-color: #3498db;
+            color: #fff;
+            padding: 12px 35px;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 1.05em;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background-color 0.2s ease;
+        }
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        .btn-cancel {
+            background-color: #555; /* 다크모드 취소 버튼 */
+            margin-left: 10px;
+        }
+        .btn-cancel:hover {
+            background-color: #666;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Libcore 게시판 데모 - 글쓰기 ✏️</h1>
+    <p>Native libcore TemplateEngine SSR (Dark Skin)</p>
+</div>
+
+<div class="write-form">
+    <!-- 🚨 일반적인 form submit(새로고침)을 막고 JS로 제어합니다 -->
+    <form id="writeForm">
+
+        <div class="form-group">
+            <label for="title">제목</label>
+            <input type="text" id="title" name="title" required placeholder="제목을 입력하세요 (최대 100자)">
+        </div>
+
+        <div class="form-group">
+            <label for="content">내용</label>
+            <textarea id="content" name="content" required placeholder="내용을 입력하세요"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="attach">첨부파일 (선택)</label>
+            <input type="file" id="attach" name="attach">
+            <div class="file-upload-guide">
+                <i class="icon-info"></i> 최대 첨부 용량: <strong>{{max_upload_size_str}}</strong>
+            </div>
+        </div>
+
+        <div class="btn-container">
+            <button type="submit" class="btn">🚀 등록</button>
+            <a href="/board/list" class="btn btn-cancel">취소</a>
+        </div>
+
+    </form>
+</div>
+
+<script>
+    // 1. 서버에서 주입해 준 정확한 Byte 용량을 JS 변수로 할당!
+    const MAX_UPLOAD_BYTES = {{max_upload_size_bytes}};
+
+    // 2. 파일 선택(change) 시 즉시 용량 검사!
+    document.getElementById('attach').addEventListener('change', function(e) {
+        const file = this.files[0];
+        if (file) {
+            if (file.size > MAX_UPLOAD_BYTES) {
+                // 초과 시 경고창 띄우고
+                const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+                const maxMB = (MAX_UPLOAD_BYTES / (1024 * 1024)).toFixed(1);
+                alert(`첨부파일 용량이 초과되었습니다!\n\n선택된 파일: ${fileSizeMB} MB\n최대 허용 용량: ${maxMB} MB`);
+
+                // 폼에 올라간 파일을 즉시 비워버림 (초기화)
+                this.value = '';
+            }
+        }
+    });
+
+    document.getElementById('writeForm').addEventListener('submit', function(e) {
+        e.preventDefault(); // 브라우저 기본 폼 전송 방지
+
+        // 1. FormData 객체에 데이터 담기 (Multipart/form-data 자동 처리)
+        const formData = new FormData();
+        formData.append('title', document.getElementById('title').value);
+        formData.append('content', document.getElementById('content').value);
+
+        const attachFile = document.getElementById('attach').files[0];
+        if (attachFile) {
+            formData.append('attach', attachFile);
+        }
+
+        // 등록 버튼 비활성화 (중복 클릭 방지)
+        const submitBtn = this.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.innerText = "⏳ 등록 중...";
+
+        // 2. Fetch API로 백엔드에 쏘기!
+        fetch('/board/write', {
+            method: 'POST',
+            body: formData
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success' || data.status === 'ok') {
+                    // 3. 백엔드가 준 post_id를 읽어 상세 페이지로 리다이렉트!
+                    window.location.href = '/board/' + data.post_id;
+                } else {
+                    alert('오류 발생: ' + (data.message || '알 수 없는 오류'));
+                    submitBtn.disabled = false;
+                    submitBtn.innerText = "🚀 등록";
+                }
+            })
+            .catch(error => {
+                cownsole.error('Error:', error);
+                alert('서버 통신 중 오류가 발생했습니다.');
+                submitBtn.disabled = false;
+                submitBtn.innerText = "🚀 등록";
+            });
+    });
+</script>
+
+</body>
+</html>

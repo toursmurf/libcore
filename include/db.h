@@ -94,7 +94,7 @@ struct _DBClient {
     int (*initTable)(DBClient *self, const char *table_name);
 
     /* =====================================================
-     * v1.7.1 추가 필드 — 구조체 끝에 붙여 기존 오프셋 보존
+     * v1.7.2 추가 필드 — 구조체 끝에 붙여 기존 오프셋 보존
      * ===================================================== */
 
     /* 마지막 쿼리의 영향 행 수.
@@ -115,9 +115,20 @@ struct _DBClient {
     HashMap* schema_cache;
 };
 
-void safe_append(char *dest, size_t dest_size, const char *src);
+    int safe_append(char *dest, size_t dest_size, const char *src);
 DBClient* new_DBClient(void);
 DBClient* new_DBClientDirect(const char* host, const char* dbname, const char* id, const char* pw, int port, const char* cs, const char* type);
-void bind_mysql(DBClient *db);
+
+#if defined(HAVE_MYSQL)
+    void bind_mysql(DBClient *db);
+#endif
+
+#if defined(HAVE_PGSQL)
+    void bind_pgsql(DBClient *db);
+#endif
+
+#if defined(HAVE_SQLITE)
+    void bind_sqlite(DBClient *db);
+#endif
 
 #endif

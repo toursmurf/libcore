@@ -54,7 +54,6 @@ static bool config_load(Config* self, const char* path) {
 
             /* 1. 엔터(\r, \n)부터 완벽하게 제거 (가장 끝부분 파괴) */
             raw_val[strcspn(raw_val, "\r\n")] = '\0';
-printf("raw_val: %s\n", raw_val);
             char* key_trimmed = trim(line);
             char* val_trimmed = trim(raw_val);
             //val_trimmed[strcspn(val_trimmed, "\r\n")] = '\0';

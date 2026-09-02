@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>단톡방얘재</title>
+    <title>🟡 Iron Fortress | 제국 단톡방</title>
     <style>
         :root { --kakao-blue: #bacee0; --kakao-yellow: #ffeb33; --kakao-white: #ffffff; --kakao-system: rgba(0, 0, 0, 0.1); }
         body { background-color: var(--kakao-blue); margin: 0; font-family: sans-serif; display: flex; justify-content: center; }
@@ -31,14 +31,14 @@
     </div>
 </div>
 <script>
-    // ✅ 접속 주소 자동 감지
+    // ✅ 접속 주소 자동 감지 (또는 의장님 IP)
     const host = window.location.hostname || "127.0.0.1";
-    const myName = "test_" + Math.floor(Math.random() * 1000);
+    const myName = "의장님_" + Math.floor(Math.random() * 1000);
     const ws = new WebSocket(`ws://${host}:8080`);
     const chatLog = document.getElementById("chat-log");
     const input = document.getElementById("msg-input");
 
-    ws.onopen = () => renderSystem("🟡 단톡방 접속 성공!");
+    ws.onopen = () => renderSystem("🟡 제국 통신망 접속 성공!");
     ws.onclose = () => renderSystem("❌ 서버와 연결이 끊어졌습니다.");
 
     ws.onmessage = (event) => {
@@ -85,7 +85,7 @@
     input.addEventListener("keypress", (e) => { if (e.key === "Enter") sendMsg(); });
 
     // ==========================================
-    // 🛡️ 강제 새로고침(F5) 및 이탈 방어
+    // 🛡️ [제국 보안망] 강제 새로고침(F5) 및 이탈 방어
     // ==========================================
 
     // 1. 키보드 F5 및 Ctrl+R 차단

@@ -1,37 +1,74 @@
 # ==========================================
 # [1] 시스템 의존성 및 버전 자동 감지
 # ==========================================
-# 🛡️ 기본 OS 환경 변수 획득
-UNAME_S := $(shell uname -s 2>/dev/null || echo Windows_NT)
+UNAME_S		:= $(shell uname -s 2>/dev/null || echo Windows_NT)
+OS_INFO		:= $(shell if [ -f /etc/os-release ]; then grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d '"' -f 2; else uname -srm; fi)
+KERNEL_INFO	:= $(shell uname -r 2>/dev/null || echo "Unknown")
+HAS_URING	:= $(shell pkg-config --exists liburing 2>/dev/null && echo 1 || echo 0)
+OPENSSL_VER	:= $(shell pkg-config --modversion openssl 2>/dev/null || echo "Unknown")
+# v1.7.2 policy: Linux backend is epoll only
+HAS_URING	:= 0
 
-# 🛡️ OS 및 커널 정보 자동 감지 (macOS 빈칸 출력 에러 완벽 해결!)
-OS_INFO := $(shell if [ -f /etc/os-release ]; then grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d '"' -f 2; else uname -srm; fi)
-KERNEL_INFO := $(shell uname -r 2>/dev/null || echo "Unknown")
-
-HAS_URING := $(shell pkg-config --exists liburing 2>/dev/null && echo 1 || echo 0)
-OPENSSL_VER := $(shell pkg-config --modversion openssl 2>/dev/null || echo "Unknown")
-HAS_URING := 0
-# 🚨 MariaDB 동적 판별 로직
-MARIADB_VER_RAW := $(shell pkg-config --modversion libmariadb 2>/dev/null)
+# ==========================================
+# MariaDB / MySQL 동적 판별
+# ==========================================
+MARIADB_VER_RAW	:= $(shell pkg-config --modversion libmariadb 2>/dev/null)
 ifeq ($(MARIADB_VER_RAW),)
-    MARIADB_STR = not found
+    MARIADB_STR	= not found
+    HAVE_MYSQL	:= 0
 else
-    MARIADB_STR = $(MARIADB_VER_RAW)
+    MARIADB_STR	= $(MARIADB_VER_RAW)
+    HAVE_MYSQL	:= 1
 endif
 
-CC = gcc
-SRC_DIR = src
-INC_DIR = include
-LIB_DIR = lib
-TEST_DIR = tests
-EXAMPLE_DIR = examples
-BIN_DIR = bin
+# ==========================================
+# PostgreSQL 동적 판별 (Rocky Linux / PGDG 대응)
+# ==========================================
+POSTGRES_VER_RAW := $(shell pkg-config --modversion libpq 2>/dev/null)
+ifeq ($(POSTGRES_VER_RAW),)
+    # pkg-config 실패 시 pg_config 직접 찾기 (/usr/pgsql-* 경로 포함)
+    PG_CONFIG_EXE := $(shell command -v pg_config 2>/dev/null || ls /usr/pgsql-*/bin/pg_config 2>/dev/null | tail -n 1)
+    ifneq ($(PG_CONFIG_EXE),)
+        POSTGRES_STR := $(shell $(PG_CONFIG_EXE) --version | sed 's/PostgreSQL //')
+        HAVE_PGSQL	:= 1
+        PG_INC_DIR	:= $(shell $(PG_CONFIG_EXE) --includedir)
+        PG_LIB_DIR	:= $(shell $(PG_CONFIG_EXE) --libdir)
+    else
+        POSTGRES_STR = not found
+        HAVE_PGSQL	:= 0
+    endif
+else
+    POSTGRES_STR = $(POSTGRES_VER_RAW)
+    HAVE_PGSQL	:= 1
+endif
 
 # ==========================================
-# 🎯 [2] CI 검증 대상 단위 테스트 명시 (분리 설계)
+# SQLite 동적 판별
 # ==========================================
-# 🛡️ [2-A] Valgrind + ASan 모두 검증할 순수 코어 로직
-CORE_TESTS = \
+SQLITE_VER_RAW	:= $(shell pkg-config --modversion sqlite3 2>/dev/null)
+ifeq ($(SQLITE_VER_RAW),)
+    SQLITE_STR	= not found
+    HAVE_SQLITE	:= 0
+else
+    SQLITE_STR	= $(SQLITE_VER_RAW)
+    HAVE_SQLITE	:= 1
+endif
+
+# ==========================================
+# 디렉토리 및 컴파일러 설정
+# ==========================================
+CC		= gcc
+SRC_DIR		= src
+INC_DIR		= include
+LIB_DIR		= lib
+TEST_DIR	= tests
+EXAMPLE_DIR	= examples
+BIN_DIR		= bin
+
+# ==========================================
+# [2] CI 검증 대상 단위 테스트 명시
+# ==========================================
+CORE_TESTS	= \
   arc_file_system_test \
   arc_ringbuffer_test \
   arc_tree_test \
@@ -56,102 +93,137 @@ CORE_TESTS = \
   arc_btree_test \
   all_test_v2
 
-# 🚧 [2-B] 너무 무거워서 ASan으로만 검증할 녀석들 (네트워크, 벤치마크)
-HEAVY_TESTS = \
+HEAVY_TESTS	= \
   arc_news_crawler \
   compare_raw_vs_libcore
 
-# ASan은 가벼우니까 전체 다 돌림
-CI_TESTS = $(CORE_TESTS) $(HEAVY_TESTS)
+CI_TESTS	= $(CORE_TESTS) $(HEAVY_TESTS)
 
 # ==========================================
-# [3] 공통 CFLAGS 및 LIBS (크로스 플랫폼 스마트 링킹!)
+# [3] 공통 CFLAGS 및 LIBS
 # ==========================================
-CFLAGS = -Wall -Wextra -Wunused-value -pthread -I$(INC_DIR)
-LIBS = -lcurl -lssl -lcrypto
+CFLAGS		= -Wall -Wextra -Wunused-value -pthread -I$(INC_DIR)
+LIBS		= -lcurl -lssl -lcrypto
 
-# 🚀 리눅스 전용 라이브러리 및 기본 DB 경로 추가
-ifeq ($(UNAME_S), Linux)
-    LIBS += -lrt
-    CFLAGS += -I/usr/include/mysql -I/usr/include/mysql/mysql
-    LIBS += -L/usr/lib64/
+# ==========================================
+# DB backend 컴파일 플래그 주입
+# ==========================================
+ifeq ($(HAVE_MYSQL),1)
+    CFLAGS	+= -DHAVE_MYSQL
+endif
+ifeq ($(HAVE_PGSQL),1)
+    CFLAGS	+= -DHAVE_PGSQL
+endif
+ifeq ($(HAVE_SQLITE),1)
+    CFLAGS	+= -DHAVE_SQLITE
 endif
 
-# 🚀 MariaDB가 감지된 경우에만 기본 DB 라이브러리 링킹
-ifneq ($(MARIADB_VER_RAW),)
-    LIBS += -lmariadb
+ifeq ($(UNAME_S), Linux)
+    LIBS	+= -lrt
+    ifeq ($(HAVE_MYSQL),1)
+        CFLAGS	+= -I/usr/include/mysql -I/usr/include/mysql/mysql
+    endif
+    ifeq ($(HAVE_PGSQL),1)
+        ifdef PG_INC_DIR
+            CFLAGS	+= -I$(PG_INC_DIR)
+            LIBS	+= -L$(PG_LIB_DIR)
+        else
+            CFLAGS	+= $(shell pkg-config --cflags libpq 2>/dev/null || echo "-I/usr/include/postgresql")
+            LIBS	+= $(shell pkg-config --libs-only-L libpq 2>/dev/null)
+        endif
+    endif
+    LIBS	+= -L/usr/lib64/
+endif
+
+ifeq ($(HAVE_MYSQL),1)
+    LIBS	+= -lmariadb
+endif
+ifeq ($(HAVE_PGSQL),1)
+    LIBS	+= -lpq
+endif
+ifeq ($(HAVE_SQLITE),1)
+    LIBS	+= -lsqlite3
 endif
 
 # ==========================================
-# [4] 환경별 컴파일 옵션 동적 할당
+# [4] 환경별 컴파일 옵션
 # ==========================================
-# 🚀 4-A. IO 백엔드 및 OS 분기 자동 감지
 ifeq ($(UNAME_S), Linux)
-    TARGET_OS = Linux
+    TARGET_OS	= Linux
     ifeq ($(HAS_URING),1)
-        CFLAGS += -DHAS_LIBURING
-        LIBS += -luring
+        CFLAGS	+= -DHAS_LIBURING
+        LIBS	+= -luring
         BACKEND_STR = io_uring
     else
         BACKEND_STR = epoll
     endif
 else ifeq ($(UNAME_S), Darwin)
-    TARGET_OS = macOS
-    BACKEND_STR = kqueue
-    CFLAGS += -DLIBCORE_USE_KQUEUE
-
-    # 🚀 Homebrew로 설치된 OpenSSL 경로 자동 주입
+    TARGET_OS	= macOS
+    BACKEND_STR	= kqueue
+    CFLAGS	+= -DLIBCORE_USE_KQUEUE
     BREW_OPENSSL := $(shell brew --prefix openssl 2>/dev/null)
     ifneq ($(BREW_OPENSSL),)
-        CFLAGS += -I$(BREW_OPENSSL)/include
-        LIBS += -L$(BREW_OPENSSL)/lib
+        CFLAGS	+= -I$(BREW_OPENSSL)/include
+        LIBS	+= -L$(BREW_OPENSSL)/lib
     endif
-
-    # 🚀 Homebrew로 설치된 MariaDB 경로 자동 주입 (하드코딩 영구 박멸!)
-    BREW_MARIADB := $(shell brew --prefix mariadb-connector-c 2>/dev/null)
-    ifneq ($(BREW_MARIADB),)
-        CFLAGS += -I$(BREW_MARIADB)/include/mariadb
-        LIBS += -L$(BREW_MARIADB)/lib/mariadb -L$(BREW_MARIADB)/lib
+    ifeq ($(HAVE_MYSQL),1)
+        BREW_MARIADB := $(shell brew --prefix mariadb-connector-c 2>/dev/null)
+        ifneq ($(BREW_MARIADB),)
+            CFLAGS	+= -I$(BREW_MARIADB)/include/mariadb
+            LIBS	+= -L$(BREW_MARIADB)/lib/mariadb -L$(BREW_MARIADB)/lib
+        endif
+    endif
+    ifeq ($(HAVE_PGSQL),1)
+        BREW_POSTGRES := $(shell brew --prefix libpq 2>/dev/null)
+        ifneq ($(BREW_POSTGRES),)
+            CFLAGS	+= -I$(BREW_POSTGRES)/include
+            LIBS	+= -L$(BREW_POSTGRES)/lib
+        endif
+    endif
+    ifeq ($(HAVE_SQLITE),1)
+        BREW_SQLITE := $(shell brew --prefix sqlite 2>/dev/null)
+        ifneq ($(BREW_SQLITE),)
+            CFLAGS	+= -I$(BREW_SQLITE)/include
+            LIBS	+= -L$(BREW_SQLITE)/lib
+        endif
     endif
 else ifneq (,$(findstring MINGW,$(UNAME_S))$(findstring MSYS,$(UNAME_S))$(findstring CYGWIN,$(UNAME_S)))
-    TARGET_OS = Windows
-    BACKEND_STR = IOCP
-    CFLAGS += -DLIBCORE_USE_IOCP
-    LIBS += -lws2_32 -lmswsock
+    TARGET_OS	= Windows
+    BACKEND_STR	= IOCP
+    CFLAGS	+= -DLIBCORE_USE_IOCP
+    LIBS	+= -lws2_32 -lmswsock
 else ifeq ($(OS), Windows_NT)
-    TARGET_OS = Windows
-    BACKEND_STR = IOCP
-    CFLAGS += -DLIBCORE_USE_IOCP
-    LIBS += -lws2_32 -lmswsock
+    TARGET_OS	= Windows
+    BACKEND_STR	= IOCP
+    CFLAGS	+= -DLIBCORE_USE_IOCP
+    LIBS	+= -lws2_32 -lmswsock
 else
-    TARGET_OS = $(UNAME_S)
-    BACKEND_STR = Unknown
+    TARGET_OS	= $(UNAME_S)
+    BACKEND_STR	= Unknown
 endif
 
-# 🛠️ 4-B. 빌드 모드 및 Sanitizer 동기화 (투트랙 분리 적용!)
-DEBUG ?= 0
-USE_ASAN ?= 0
-
+DEBUG		?= 0
+USE_ASAN	?= 0
 ifeq ($(DEBUG),1)
-    MODE_STR = Debug (-O0 -g)
+    MODE_STR	= Debug (-O0 -g)
     ifeq ($(USE_ASAN),1)
         SANITIZER_STR = ON (ASan, UBSan)
-        CFLAGS += -O0 -g -fsanitize=address,undefined
+        CFLAGS	+= -O0 -g -fsanitize=address,undefined
     else
         SANITIZER_STR = OFF (Valgrind Ready)
-        CFLAGS += -O0 -g
+        CFLAGS	+= -O0 -g
     endif
 else
-    MODE_STR = Release (-O2)
+    MODE_STR	= Release (-O2)
     SANITIZER_STR = OFF
-    CFLAGS += -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong
+    CFLAGS	+= -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong
 endif
 
 # ==========================================
-# 🚀 libcore Build Configuration Banner
+# Banner
 # ==========================================
 $(info =========================================)
-$(info  libcore Build Configuration (v1.7.1 Final))
+$(info  libcore Build Configuration (v1.7.2))
 $(info =========================================)
 $(info  Target OS  : $(TARGET_OS))
 $(info  OS Info    : $(OS_INFO))
@@ -160,19 +232,22 @@ $(info  Compiler   : $(CC))
 $(info  Backend    : $(BACKEND_STR))
 $(info  OpenSSL    : $(OPENSSL_VER))
 $(info  MariaDB    : $(MARIADB_STR))
+$(info  PostgreSQL : $(POSTGRES_STR))
+$(info  SQLite     : $(SQLITE_STR))
+$(info  HAVE_MYSQL : $(HAVE_MYSQL))
+$(info  HAVE_PGSQL : $(HAVE_PGSQL))
+$(info  HAVE_SQLITE: $(HAVE_SQLITE))
 $(info  Sanitizer  : $(SANITIZER_STR))
 $(info  Mode       : $(MODE_STR))
 $(info =========================================)
 $(info )
 
-# 파일 수집 및 카운팅
-SRCS = $(wildcard $(SRC_DIR)/*.c)
-OBJS = $(SRCS:.c=.o)
-OBJ_COUNT = $(words $(OBJS))
-
-EXAMPLE_SRCS = $(wildcard $(EXAMPLE_DIR)/*.c)
-EXAMPLE_BINS = $(EXAMPLE_SRCS:.c=)
-EX_COUNT = $(words $(EXAMPLE_BINS))
+SRCS		= $(wildcard $(SRC_DIR)/*.c)
+OBJS		= $(SRCS:.c=.o)
+OBJ_COUNT	= $(words $(OBJS))
+EXAMPLE_SRCS	= $(wildcard $(EXAMPLE_DIR)/*.c)
+EXAMPLE_BINS	= $(EXAMPLE_SRCS:.c=)
+EX_COUNT	= $(words $(EXAMPLE_BINS))
 
 .PHONY: all clean clean_bin clean_soft test examples ci check_asan check_valgrind ci-asan ci-valgrind
 
@@ -188,7 +263,7 @@ $(LIB_DIR)/libcore.a: $(OBJS)
 	@echo "✅ libcore.a 빌드 완료!"
 
 $(SRC_DIR)/%.o: $(SRC_DIR)/%.c
-	@$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 test: $(LIB_DIR)/libcore.a
 	@mkdir -p $(TEST_DIR)
@@ -196,7 +271,6 @@ test: $(LIB_DIR)/libcore.a
 	@echo "🔥 테스트 실행!"
 	@./$(TEST_DIR)/run_test
 
-# ----- 🚀 예제 컴파일 타겟 -----
 examples: $(EXAMPLE_BINS)
 	@echo "-----------------------------------------"
 	@echo " Examples: $(EX_COUNT) 개 빌드 완료"
@@ -205,9 +279,8 @@ examples: $(EXAMPLE_BINS)
 
 $(EXAMPLE_DIR)/%: $(EXAMPLE_DIR)/%.c $(LIB_DIR)/libcore.a
 	@echo "🛠️  Building 예제: $@"
-	@$(CC) $(CFLAGS) $< $(LIB_DIR)/libcore.a $(LIBS) -o $@ -lm
+	$(CC) $(CFLAGS) $< $(LIB_DIR)/libcore.a $(LIBS) -o $@ -lm
 
-# ----- 🛡️ [신규] CI 실행 전 의존성 검열관 -----
 check_asan:
 	@echo "🔍 ASan/UBSan 설치 여부 확인..."
 	@echo "int main(){return 0;}" | $(CC) -fsanitize=address,undefined -x c - -o /dev/null 2>/dev/null; \
@@ -223,7 +296,6 @@ check_valgrind:
 	   exit 1; \
 	fi
 
-# ----- ⚡ [타겟 1] 쾌속 사냥 (ASan/UBSan 전용 - 전체 테스트 25개) -----
 ci-asan: check_asan clean_soft
 	@date +%s > .ci_asan_timer
 	@echo "=========================================================="
@@ -245,12 +317,13 @@ ci-asan: check_asan clean_soft
 	   fi; \
 	done; \
 	echo "✅ ASan 결과 | PASS: $$ASAN_PASS  ❌ FAIL: $$ASAN_FAIL"; \
-	START=$$(cat .ci_asan_timer); END=$$(date +%s); ELAPSED=$$((END - START)); \
+	START=$$(cat .ci_asan_timer); \
+	END=$$(date +%s); \
+	ELAPSED=$$((END - START)); \
 	echo "⏱️ ASan 소요 시간: $$ELAPSED초"; \
 	rm -f .ci_asan_timer; \
 	if [ $$ASAN_FAIL -ne 0 ]; then exit 1; fi
 
-# ----- 🛡️ [타겟 2] 정밀 수색 (Valgrind 전용 - 무거운 놈들 제외 코어만) -----
 ci-valgrind: check_valgrind clean_soft
 	@date +%s > .ci_val_timer
 	@echo "=========================================================="
@@ -272,27 +345,31 @@ ci-valgrind: check_valgrind clean_soft
 	   fi; \
 	done; \
 	echo "✅ Valgrind 결과 | PASS: $$VAL_PASS  ❌ FAIL: $$VAL_FAIL"; \
-	START=$$(cat .ci_val_timer); END=$$(date +%s); ELAPSED=$$((END - START)); \
-	MIN=$$((ELAPSED / 60)); SEC=$$((ELAPSED % 60)); \
+	START=$$(cat .ci_val_timer); \
+	END=$$(date +%s); \
+	ELAPSED=$$((END - START)); \
+	MIN=$$((ELAPSED / 60)); \
+	SEC=$$((ELAPSED % 60)); \
 	echo "⏱️ Valgrind 소요 시간: $$MIN분 $$SEC초"; \
 	rm -f .ci_val_timer; \
 	if [ $$VAL_FAIL -ne 0 ]; then exit 1; fi
 
-# ----- 👑 [타겟 3] 풀코스 (전체 검증) -----
 ci:
 	@date +%s > .ci_total_timer
 	@echo "=========================================================="
-	@echo " 👑 [Iron Fortress] 전체 통합 CI 파이프라인 가동"
+	@echo " 👑 전체 통합 CI 파이프라인 가동"
 	@echo "=========================================================="
 	@$(MAKE) ci-asan
 	@$(MAKE) ci-valgrind
-	@START=$$(cat .ci_total_timer); END=$$(date +%s); ELAPSED=$$((END - START)); \
-	MIN=$$((ELAPSED / 60)); SEC=$$((ELAPSED % 60)); \
+	@START=$$(cat .ci_total_timer); \
+	END=$$(date +%s); \
+	ELAPSED=$$((END - START)); \
+	MIN=$$((ELAPSED / 60)); \
+	SEC=$$((ELAPSED % 60)); \
 	echo ""; \
 	echo "🎉 [Iron Fortress CI 전체 통합 검증 완벽 통과] 총 소요 시간: $$MIN분 $$SEC초 BAAAAAAM!!!!"; \
 	rm -f .ci_total_timer
 
-# ----- 🧹 클린 타겟 -----
 clean_bin:
 	@rm -rf $(BIN_DIR)
 	@echo "🧹 bin 폴더(격리 구역) 삭제 완료!"

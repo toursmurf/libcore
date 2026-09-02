@@ -57,7 +57,10 @@ char* url_encode(const char* str) {
     while (*str) {
         if ((*str >= 'a' && *str <= 'z') || (*str >= 'A' && *str <= 'Z') ||
             (*str >= '0' && *str <= '9') || strchr("-_.~", *str)) *p++ = *str;
-        else { sprintf(p, "%%%02X", (unsigned char)*str); p += 3; }
+        else {
+            snprintf(p, 4, "%%%02X", (unsigned char)*str);
+            p += 3;
+        }
         str++;
     }
     *p = '\0';
@@ -81,8 +84,11 @@ char* json_escape(const char* str) {
             case '\t': *p++ = '\\'; *p++ = 't'; break;
             default:
                 if ((unsigned char)*str < 0x20) {
-                    sprintf(p, "\\u%04x", (unsigned char)*str); p += 6;
-                } else { *p++ = *str; }
+                    snprintf(p, 7, "\\u%04x", (unsigned char)*str);
+                    p += 6;
+                } else {
+                    *p++ = *str;
+                }
                 break;
         }
         str++;

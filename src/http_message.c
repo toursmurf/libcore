@@ -1,45 +1,74 @@
+/*[cite: 1] */
 #include "http_message.h"
-#include "http_server.h"   /* HttpConnection_append_send, HttpConnection_flush */
+#include "http_server.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* =========================================================
-* [0] 유틸리티: O(1) 정적 상태 메시지 테이블
-* ========================================================= */
 const char* Http_statusMessage(int code) {
     switch (code) {
-        case 101: return "Switching Protocols";
-        case 200: return "OK";
-        case 201: return "Created";
-        case 204: return "No Content";
-        case 301: return "Moved Permanently";
-        case 302: return "Found";
-        case 400: return "Bad Request";
-        case 401: return "Unauthorized";
-        case 403: return "Forbidden";
-        case 404: return "Not Found";
-        case 500: return "Internal Server Error";
-        default:  return "Unknown";
+        case 101:
+            return "Switching Protocols";
+        case 200:
+            return "OK";
+        case 201:
+            return "Created";
+        case 204:
+            return "No Content";
+        case 301:
+            return "Moved Permanently";
+        case 302:
+            return "Found";
+        case 400:
+            return "Bad Request";
+        case 401:
+            return "Unauthorized";
+        case 403:
+            return "Forbidden";
+        case 404:
+            return "Not Found";
+        case 500:
+            return "Internal Server Error";
+        default:
+            return "Unknown";
     }
 }
 
-/* =========================================================
-* [1] HttpRequest 구현부
-* ========================================================= */
 static void HttpRequest_finalize(Object* obj) {
     HttpRequest* self = (HttpRequest*)obj;
-    if (self->path)      RELEASE(self->path);
-    if (self->headers)   RELEASE(self->headers);
-    if (self->query)     RELEASE(self->query);
 
-    /* 🚨 [v1.7.1 ARC 패치] params 메모리 해제 누락 방지! */
-    if (self->params)    RELEASE(self->params);
+    if (self->path) {
+        RELEASE(self->path);
+    }
 
-    if (self->json)      RELEASE(self->json);
-    if (self->form)      RELEASE(self->form);
-    if (self->multipart) RELEASE((Object*)self->multipart);
-    if (self->body)      { free(self->body); self->body = NULL; }
+    if (self->headers) {
+        RELEASE(self->headers);
+    }
+
+    if (self->query) {
+        RELEASE(self->query);
+    }
+
+    if (self->params) {
+        RELEASE(self->params);
+    }
+
+    if (self->json) {
+        RELEASE(self->json);
+    }
+
+    if (self->form) {
+        RELEASE(self->form);
+    }
+
+    if (self->multipart) {
+        RELEASE((Object*)self->multipart);
+    }
+
+    if (self->body) {
+        free(self->body);
+        self->body = NULL;
+    }
 }
 
 static const Class _HttpRequest_Class = {
@@ -50,47 +79,48 @@ static const Class _HttpRequest_Class = {
 
 HttpRequest* new_HttpRequest(void) {
     HttpRequest* self = (HttpRequest*)calloc(1, sizeof(HttpRequest));
-    if (!self) return NULL;
+
+    if (!self) {
+        return NULL;
+    }
 
     Object_Init((Object*)self, &_HttpRequest_Class);
 
-    self->method  = HTTP_UNKNOWN;
+    self->method = HTTP_UNKNOWN;
     self->headers = new_HashMap(32);
-    self->query   = new_HashMap(16);
-    self->form    = new_HashMap(16);
+    self->query = new_HashMap(16);
+    self->form = new_HashMap(16);
+    self->params = new_HashMap(8);
 
-    /* 🚀 [v1.7.1 신규] 라우터 파라미터를 담을 저장소 초기화 (보통 4개 이하이므로 8 할당) */
-    self->params  = new_HashMap(8);
-
-    /* 🚨 [Fail Fast 패치] 하나라도 OOM 발생 시 싹 다 정리하고 즉각 폭파 */
     if (!self->headers || !self->query || !self->form || !self->params) {
         RELEASE(self);
         return NULL;
     }
+
     return self;
 }
 
-/* =========================================================
-* [2] HttpResponse 구현부
-* ========================================================= */
 static void impl_setStatus(HttpResponse* self, int code) {
-    if (self) self->status_code = code;
+    if (self) {
+        self->status_code = code;
+    }
 }
 
-/* 🚨 [클순 마님(🔫) 패치] NULL 방어 및 ARC 최적화 */
 static void impl_setHeader(HttpResponse* self, const char* key, const char* value) {
-    if (!self || !self->headers || !key || !value) return;
+    if (!self || !self->headers || !key || !value) {
+        return;
+    }
 
     String* v = new_String(value);
-    if (!v) return; /* OOM 즉시 탈출 */
+
+    if (!v) {
+        return;
+    }
 
     self->headers->put(self->headers, key, (Object*)v);
     RELEASE(v);
 }
 
-/* =========================================================
- * 🚨 [클순 마님(🔫) 패치] Rule 6-2 준수: 헤더 순회용 컨텍스트
- * ========================================================= */
 typedef struct {
     char* buf;
     size_t cap;
@@ -98,178 +128,348 @@ typedef struct {
     bool overflow;
 } HdrCtx;
 
-/* 안전한 Mutex 보호망 안에서 실행되는 콜백 함수 */
 static bool write_hdr_cb(const char* k, Object* v, void* ctx_ptr) {
     HdrCtx* ctx = (HdrCtx*)ctx_ptr;
 
-    /* 이미 버퍼가 꽉 찼다면 순회 중단 */
-    if (ctx->overflow) return false;
+    if (ctx->overflow) {
+        return false;
+    }
 
     String* val_str = (String*)v;
-    if (val_str && val_str->c_str) {
-        int n = snprintf(ctx->buf + ctx->len, ctx->cap - ctx->len, "%s: %s\r\n",
-                         k, val_str->c_str(val_str));
 
-        /* 버퍼 오버플로우 감지 시 플래그 켜고 순회 강제 종료 */
+    if (val_str && val_str->c_str) {
+        int n = snprintf(ctx->buf + ctx->len, ctx->cap - ctx->len, "%s: %s\r\n", k, val_str->c_str(val_str));
+
         if (n < 0 || (size_t)n >= ctx->cap - ctx->len) {
             ctx->overflow = true;
             return false;
         }
+
         ctx->len += n;
     }
-    return true; /* 다음 노드로 계속 진행 */
+
+    return true;
 }
 
-/* 🚨 [클순 마님(🔫) 패치] snprintf 오버플로우 방어막 및 iterate 적용 */
 static void send_internal(HttpResponse* self, const char* ctype, const char* body, size_t body_len) {
-    if (!self || !self->socket || !self->socket->is_open) return;
-
-    /* ── 헤더 조립 ── */
-    char head_buf[4096];
-    int len = snprintf(head_buf, sizeof(head_buf), "HTTP/1.1 %d %s\r\n",
-                       self->status_code, Http_statusMessage(self->status_code));
-    if (len < 0 || (size_t)len >= sizeof(head_buf)) return;
-
-    if (ctype) {
-        int n = snprintf(head_buf + len, sizeof(head_buf) - len,
-                         "Content-Type: %s\r\n", ctype);
-        if (n > 0 && (size_t)n < sizeof(head_buf) - len) len += n;
+    if (!self || !self->socket || !self->socket->is_open) {
+        return;
     }
 
-    int n_len = snprintf(head_buf + len, sizeof(head_buf) - len,
-                         "Content-Length: %zu\r\n", body_len);
-    if (n_len > 0 && (size_t)n_len < sizeof(head_buf) - len) len += n_len;
+    char head_buf[4096];
+    int len = snprintf(head_buf, sizeof(head_buf), "HTTP/1.1 %d %s\r\n", self->status_code, Http_statusMessage(self->status_code));
 
+    if (len < 0 || (size_t)len >= sizeof(head_buf)) {
+        return;
+    }
+
+    const char* custom_ctype = NULL;
+
+    if (self->headers) {
+        custom_ctype = hashmap_get_str(self->headers, "Content-Type");
+
+        if (!custom_ctype) {
+            custom_ctype = hashmap_get_str(self->headers, "content-type");
+        }
+    }
+
+    if (ctype && !custom_ctype) {
+        int n = snprintf(head_buf + len, sizeof(head_buf) - len, "Content-Type: %s\r\n", ctype);
+
+        if (n < 0 || (size_t)n >= sizeof(head_buf) - len) {
+            return;
+        }
+
+        len += n;
+    }
+
+    int n_len = snprintf(head_buf + len, sizeof(head_buf) - len, "Content-Length: %zu\r\n", body_len);
+
+    if (n_len > 0 && (size_t)n_len < sizeof(head_buf) - len) {
+        len += n_len;
+    }
+
+    HdrCtx ctx = {
+        .buf = head_buf,
+        .cap = sizeof(head_buf),
+        .len = len,
+        .overflow = false
+    };
+
+    if (self->headers) {
+        self->headers->iterate(self->headers, write_hdr_cb, &ctx);
+    }
+
+    if (ctx.overflow) {
+        static const char err500[] =
+            "HTTP/1.1 500 Internal Server Error\r\n"
+            "Content-Length: 0\r\n"
+            "Connection: close\r\n"
+            "\r\n";
+
+        if (self->conn) {
+            HttpConnection_append_send(self->conn, (const uint8_t*)err500, sizeof(err500) - 1);
+        } else {
+            self->socket->send(self->socket, err500, sizeof(err500) - 1, NULL, 0);
+        }
+
+        return;
+    }
+
+    int n_end = snprintf(head_buf + ctx.len, sizeof(head_buf) - ctx.len, "\r\n");
+
+    if (n_end > 0 && (size_t)n_end < sizeof(head_buf) - ctx.len) {
+        ctx.len += n_end;
+    }
+
+    if (self->conn) {
+        HttpConnection_append_send(self->conn, (const uint8_t*)head_buf, ctx.len);
+
+        if (body && body_len > 0) {
+            HttpConnection_append_send(self->conn, (const uint8_t*)body, body_len);
+        }
+
+        HttpConnection_flush(self->conn);
+    } else {
+        self->socket->send(self->socket, head_buf, ctx.len, NULL, 0);
+
+        if (body && body_len > 0) {
+            self->socket->send(self->socket, body, body_len, NULL, 0);
+        }
+    }
+}
+
+static void impl_sendText(HttpResponse* self, const char* text) {
+    if (!self) {
+        return;
+    }
+
+    if (!text) {
+        text = "";
+    }
+
+    send_internal(self, "text/plain; charset=utf-8", text, strlen(text));
+}
+
+static void impl_sendJson(HttpResponse* self, JSONNode* json) {
+    if (!self || !json) {
+        return;
+    }
+
+    char* json_str = json->toString(json);
+
+    if (!json_str) {
+        impl_setStatus(self, 500);
+        impl_sendText(self, "Internal Server Error: JSON Stringify failed");
+        return;
+    }
+
+    send_internal(self, "application/json", json_str, strlen(json_str));
+
+    free(json_str);
+}
+
+static void impl_sendStatus(HttpResponse* self, int code) {
+    if (!self) {
+        return;
+    }
+
+    self->status_code = code;
+
+    send_internal(self, NULL, "", 0);
+}
+
+static void impl_redirect(HttpResponse* self, const char* url) {
+    if (!self || !url) {
+        return;
+    }
+
+    self->status_code = 302;
+
+    impl_setHeader(self, "Location", url);
+    send_internal(self, NULL, "", 0);
+}
+
+static void impl_sendFile(HttpResponse* self, const char* path) {
+    if (!self || !path) {
+        return;
+    }
+
+    FILE* fp = fopen(path, "rb");
+
+    if (!fp) {
+        impl_sendStatus(self, 404);
+        return;
+    }
+
+    if (fseek(fp, 0, SEEK_END) != 0) {
+        fclose(fp);
+        return;
+    }
+
+    long size = ftell(fp);
+
+    if (size < 0) {
+        fclose(fp);
+        return;
+    }
+
+    if (fseek(fp, 0, SEEK_SET) != 0) {
+        fclose(fp);
+        return;
+    }
+
+    char head_buf[4096];
+    int len = snprintf(head_buf, sizeof(head_buf),
+        "HTTP/1.1 200 OK\r\n");
+
+    if (len < 0 || (size_t)len >= sizeof(head_buf)) {
+        fclose(fp);
+        return;
+    }
+
+    /* Content-Type — explicit 없으면 path 기반 기본값 */
+    const char* custom_ctype = NULL;
+
+    if (self->headers) {
+        custom_ctype = hashmap_get_str(self->headers, "Content-Type");
+
+        if (!custom_ctype) {
+            custom_ctype = hashmap_get_str(self->headers, "content-type");
+        }
+    }
+
+    if (!custom_ctype) {
+        const char* ctype = "application/octet-stream";
+
+        if (strstr(path, ".html")) {
+            ctype = "text/html; charset=utf-8";
+        } else if (strstr(path, ".json")) {
+            ctype = "application/json";
+        } else if (strstr(path, ".png")) {
+            ctype = "image/png";
+        } else if (strstr(path, ".jpg")) {
+            ctype = "image/jpeg";
+        }
+
+        int n = snprintf(head_buf + len,
+            sizeof(head_buf) - len,
+            "Content-Type: %s\r\n", ctype);
+
+        if (n > 0 && (size_t)n < sizeof(head_buf) - len) {
+            len += n;
+        }
+    }
+
+    /* Content-Length — explicit 없으면 파일 사이즈 */
+    const char* custom_clen = NULL;
+
+    if (self->headers) {
+        custom_clen = hashmap_get_str(self->headers, "Content-Length");
+    }
+
+    if (!custom_clen) {
+        int n = snprintf(head_buf + len,
+            sizeof(head_buf) - len,
+            "Content-Length: %ld\r\n", size);
+
+        if (n > 0 && (size_t)n < sizeof(head_buf) - len) {
+            len += n;
+        }
+    }
+
+    /* self->headers 순회 — Content-Disposition 등!! */
     HdrCtx ctx = {
         .buf      = head_buf,
         .cap      = sizeof(head_buf),
         .len      = len,
         .overflow = false
     };
-    if (self->headers)
-        self->headers->iterate(self->headers, write_hdr_cb, &ctx);
 
-    /* 헤더 오버플로 시 500 응답으로 전환 (부분 헤더 무음 발사 차단) */
+    if (self->headers) {
+        self->headers->iterate(self->headers, write_hdr_cb, &ctx);
+    }
+
     if (ctx.overflow) {
         static const char err500[] =
             "HTTP/1.1 500 Internal Server Error\r\n"
-            "Content-Length: 0\r\nConnection: close\r\n\r\n";
-        if (self->conn)
+            "Content-Length: 0\r\n"
+            "Connection: close\r\n\r\n";
+
+        if (self->conn) {
             HttpConnection_append_send(self->conn,
-                                       (const uint8_t*)err500, sizeof(err500)-1);
-        else
-            self->socket->send(self->socket, err500, sizeof(err500)-1, NULL, 0);
-        return;
-    }
+                (const uint8_t*)err500, sizeof(err500) - 1);
+        } else {
+            self->socket->send(self->socket,
+                err500, sizeof(err500) - 1, NULL, 0);
+        }
 
-    int n_end = snprintf(head_buf + ctx.len, sizeof(head_buf) - ctx.len, "\r\n");
-    if (n_end > 0 && (size_t)n_end < sizeof(head_buf) - ctx.len)
-        ctx.len += n_end;
-
-    /* ── flush 체계 경유 송신 ──
-     *   conn 있으면 append_out_buf + HttpConnection_flush (EPOLLOUT 통일)
-     *   conn 없으면 직발사 (WsUpgrade_handler 등 conn 미확보 경로 방어) */
-    if (self->conn) {
-        HttpConnection_append_send(self->conn,
-                                   (const uint8_t*)head_buf, ctx.len);
-        if (body && body_len > 0)
-            HttpConnection_append_send(self->conn,
-                                       (const uint8_t*)body, body_len);
-        HttpConnection_flush(self->conn);
-    } else {
-        self->socket->send(self->socket, head_buf, ctx.len, NULL, 0);
-        if (body && body_len > 0)
-            self->socket->send(self->socket, body, body_len, NULL, 0);
-    }
-}
-
-static void impl_sendText(HttpResponse* self, const char* text) {
-    if (!self) return;
-    if (!text) text = "";
-    send_internal(self, "text/plain; charset=utf-8", text, strlen(text));
-}
-
-static void impl_sendJson(HttpResponse* self, JSONNode* json) {
-    if (!self || !json) return;
-
-    char* json_str = json->toString(json);
-    if (!json_str) {
-        impl_setStatus(self, 500);
-        impl_sendText(self, "Internal Server Error: JSON Stringify failed");
-        return;
-    }
-    send_internal(self, "application/json", json_str, strlen(json_str));
-    free(json_str);
-}
-
-static void impl_sendStatus(HttpResponse* self, int code) {
-    if (!self) return;
-    self->status_code = code;
-    send_internal(self, NULL, "", 0);
-}
-
-static void impl_redirect(HttpResponse* self, const char* url) {
-    if (!self || !url) return;
-    self->status_code = 302;
-    impl_setHeader(self, "Location", url);
-    send_internal(self, NULL, "", 0);
-}
-
-static void impl_sendFile(HttpResponse* self, const char* path) {
-    if (!self || !path) return;
-
-    FILE* fp = fopen(path, "rb");
-    if (!fp) {
-        impl_sendStatus(self, 404);
-        return;
-    }
-
-    fseek(fp, 0, SEEK_END);
-    long size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-
-    const char* ctype = "application/octet-stream";
-    if (strstr(path, ".html")) ctype = "text/html; charset=utf-8";
-    else if (strstr(path, ".json")) ctype = "application/json";
-    else if (strstr(path, ".png"))  ctype = "image/png";
-    else if (strstr(path, ".jpg"))  ctype = "image/jpeg";
-
-    char head_buf[1024];
-    int len = snprintf(head_buf, sizeof(head_buf),
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: %s\r\n"
-        "Content-Length: %ld\r\n\r\n", ctype, size);
-
-    /* 🚨 [나초안(🪲) 패치] sendFile 버퍼 오버플로우 방어 및 fd 누수 방지 */
-    if (len < 0 || (size_t)len >= sizeof(head_buf)) {
         fclose(fp);
         return;
     }
 
-    if (self->conn) {
-        HttpConnection_append_send(self->conn, (const uint8_t*)head_buf, len);
-    } else {
-        self->socket->send(self->socket, head_buf, len, NULL, 0);
+    /* \r\n 실패 시 종료!! */
+    int n_end = snprintf(head_buf + ctx.len,
+        sizeof(head_buf) - ctx.len, "\r\n");
+
+    if (n_end < 0 || (size_t)n_end >= sizeof(head_buf) - ctx.len) {
+        fclose(fp);
+        return;
     }
 
-    char chunk[8192];
-    size_t read_bytes;
-    while ((read_bytes = fread(chunk, 1, sizeof(chunk), fp)) > 0) {
-        if (self->conn) {
-            HttpConnection_append_send(self->conn, (const uint8_t*)chunk, read_bytes);
-        } else {
-            ssize_t sent = self->socket->send(self->socket, chunk, read_bytes, NULL, 0);
-            if (sent < 0) break;
-        }
+    ctx.len += n_end;
+
+    if (self->conn) {
+        HttpConnection_append_send(self->conn,
+            (const uint8_t*)head_buf, ctx.len);
+    } else {
+        self->socket->send(self->socket,
+            head_buf, ctx.len, NULL, 0);
     }
+
+    /* size까지만 전송!! */
+    char chunk[8192];
+    long remaining = size;
+
+    while (remaining > 0) {
+        size_t want = remaining > (long)sizeof(chunk)
+            ? sizeof(chunk)
+            : (size_t)remaining;
+
+        size_t read_bytes = fread(chunk, 1, want, fp);
+
+        if (read_bytes == 0) {
+            break;
+        }
+
+        if (self->conn) {
+            HttpConnection_append_send(self->conn,
+                (const uint8_t*)chunk, read_bytes);
+        } else {
+            ssize_t sent = self->socket->send(self->socket,
+                chunk, read_bytes, NULL, 0);
+
+            if (sent < 0) {
+                break;
+            }
+        }
+
+        remaining -= (long)read_bytes;
+    }
+
     fclose(fp);
-    if (self->conn) HttpConnection_flush(self->conn);
+
+    if (self->conn) {
+        HttpConnection_flush(self->conn);
+    }
 }
 
-/* [BORROWED] 절대 소켓을 닫거나 해제하지 않음 */
 static void HttpResponse_finalize(Object* obj) {
     HttpResponse* self = (HttpResponse*)obj;
-    if (self->headers) RELEASE(self->headers);
+
+    if (self->headers) {
+        RELEASE(self->headers);
+    }
 }
 
 static const Class _HttpResponse_Class = {
@@ -280,12 +480,15 @@ static const Class _HttpResponse_Class = {
 
 HttpResponse* new_HttpResponse(Socket* sock, struct HttpConnection* conn) {
     HttpResponse* self = (HttpResponse*)calloc(1, sizeof(HttpResponse));
-    if (!self) return NULL;
+
+    if (!self) {
+        return NULL;
+    }
 
     Object_Init((Object*)self, &_HttpResponse_Class);
 
     self->socket = sock;
-    self->conn   = conn;   /* [BORROWED] flush 경로용 */
+    self->conn = conn;
     self->status_code = 200;
     self->headers = new_HashMap(16);
 
@@ -294,13 +497,13 @@ HttpResponse* new_HttpResponse(Socket* sock, struct HttpConnection* conn) {
         return NULL;
     }
 
-    self->setStatus  = impl_setStatus;
+    self->setStatus = impl_setStatus;
     self->sendStatus = impl_sendStatus;
-    self->sendText   = impl_sendText;
-    self->sendJson   = impl_sendJson;
-    self->sendFile   = impl_sendFile;
-    self->setHeader  = impl_setHeader;
-    self->redirect   = impl_redirect;
+    self->sendText = impl_sendText;
+    self->sendJson = impl_sendJson;
+    self->sendFile = impl_sendFile;
+    self->setHeader = impl_setHeader;
+    self->redirect = impl_redirect;
 
     return self;
 }

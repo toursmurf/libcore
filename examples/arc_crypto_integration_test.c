@@ -43,6 +43,7 @@ int main() {
       const char* msg = "Imperial_Top_Secret_Data_512";
       String* res = sha512->hash(sha512, msg);
       if (res) {
+        printf("  [+] 원본: %s\n", msg); // 256보다 훨씬 깁니다!
         printf("  [+] SHA-512 결과: %s\n", res->value); // 256보다 훨씬 깁니다!
         printf("  [+] 해시 길이: %zu 글자\n", strlen(res->value));
         bool ok = sha512->verify(sha512, msg, res->value);

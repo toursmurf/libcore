@@ -21,7 +21,7 @@
 
 static EventLoop* g_loop = NULL;
 
-// ClientSession용 libcore Class 정의
+// 🏛️ [의장님 검수 1] ClientSession용 libcore Class 정의
 typedef struct {
     Object base;      // libcore 객체 지향의 심장
     TcpSocket* sock;  // 실제 소켓
@@ -213,8 +213,8 @@ static void on_handshake_pending(Socket* self, void* loop_ptr) {
         free(accept_key);
         client->base.on_readable = on_client_readable;
     } else if (received > 0) {
-        //핸드셰이크 실패 시 좀비 세션 방지
-        /*[패치] 구형 delSocket -> 신형 event_backend_remove */
+        // ✅ [의장님 검수 3] 핸드셰이크 실패 시 좀비 세션 방지
+        /* 🚀 [패치] 구형 delSocket -> 신형 event_backend_remove */
         event_backend_remove(loop, self);
         ClientManager_Remove(client);
     }
@@ -249,20 +249,20 @@ int main() {
     g_loop = event_loop_create();
     server->base.on_readable = on_client_accept;
 
-    /*[패치] 구형 addSocket -> 신형 event_backend_add */
+    /* 🚀 [패치] 구형 addSocket -> 신형 event_backend_add */
     event_backend_add(g_loop, (Socket*)server, EVENT_READ);
 
     LOG_INFO(logger, "[P3] Fixed Iron Fortress Engine Ready!! (Port 8080)");
 
-    /*[패치] 구형 run -> 신형 event_loop_run */
+    /* 🚀 [패치] 구형 run -> 신형 event_loop_run */
     event_loop_run(g_loop);
 
     ClientManager_Destroy();
 
-    /*[패치] 구형 delSocket -> 신형 event_backend_remove */
+    /* 🚀 [패치] 구형 delSocket -> 신형 event_backend_remove */
     event_backend_remove(g_loop, (Socket*)server);
 
-    /* 구시대 유물 삭제 및 ARC 규격 통일! */
+    /* 🚨 [의장님/클순 패치] 구시대 유물 삭제 및 ARC 규격 통일! */
     RELEASE((Object*)g_loop);
 
     RELEASE((Object*)server);

@@ -1134,6 +1134,16 @@ JSONNode* new_JSON_String(const char* s) {
     return (JSONNode*)new_json_string(s);
 }
 
+JsonValue* json_as_value(Object* obj) {
+    if (!is_json_value(obj)) return NULL;
+    return (JsonValue*)obj;
+}
+
+JSONNode* json_as_node(Object* obj) {
+    if (!is_json_node(obj)) return NULL;
+    return (JSONNode*)obj;
+}
+
 ParseResult parse_JSON(const char *json_str) {
     ParseResult res;
     res.root = NULL;

@@ -71,7 +71,8 @@ struct JSONNode {
 
 JSONNode* new_JSON_Object(void);
 JSONNode* new_JSON_Array(void);
-
+JsonValue* json_as_value(Object* obj);
+JSONNode*  json_as_node (Object* obj);
 /* 🚀 [추가] ToosTalk(TT-1) 호환용 문자열 노드 래퍼
  * 🚨 주의: 내부적으로 JsonValue를 반환하므로 HashMap put/ArrayList add 인자로만 사용!!
  * 절대 반환값에 대해 JSONNode 메서드(getString 등) 호출 금지 (쓰레기 포인터 점프 위험) */
