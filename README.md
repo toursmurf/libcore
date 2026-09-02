@@ -357,7 +357,7 @@ using libcore CoreSNMP / ASN.1 components.
 - Parallel target processing
 - OID / VarBind decoding
 - CoreSNMP integration
-- Tested on macOS Apple Silicon
+- Tested on macOS Apple Silicon M2 Max
 
 ![libcore Parallel SNMP Walk](docs/images/snmp_parallel_walk.png)
 
