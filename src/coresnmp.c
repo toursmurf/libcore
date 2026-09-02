@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <sys/time.h>
 
+extern  Logger *logger;
+
 static void SnmpTrap_finalize(Object* obj) {
     (void)obj;
 }
@@ -25,6 +27,7 @@ SnmpTrap* new_SnmpTrap(void) {
 
     return self;
 }
+
 
 static void CoreSnmp_finalize(Object* obj) {
     CoreSnmp* self = (CoreSnmp*)obj;
@@ -161,7 +164,6 @@ static ErrorCode sendGetBulk_impl(CoreSnmp* self, const char* ip, const char* oi
     int port;
 
     ssize_t recvd = self->snmp_sender->recv(self->snmp_sender, raw_out, sizeof(raw_out), recv_ip, &port);
-
     if (recvd > 0) {
         if (out_varbinds) {
             snmp_asn_decode_response(raw_out, (size_t)recvd, out_varbinds);
@@ -170,7 +172,6 @@ static ErrorCode sendGetBulk_impl(CoreSnmp* self, const char* ip, const char* oi
         if (out_varbinds && out_varbinds->getSize(out_varbinds) == 0) {
             return ERR_NET_TIMEOUT;
         }
-
         return OK;
     }
 
@@ -207,6 +208,7 @@ static ErrorCode snmpWalk_impl(CoreSnmp* self, const char* ip, const char* root_
             if(is_prefix_match(root_oid, vb->oid)) {
                 SnmpVarBind* copy = new_SnmpVarBind(vb->tag, vb->oid, vb->value_str);
 
+                LOG_DEBUG(logger, "oid : %s, value: %s", copy->oid, copy->value_str);
                 out_all->add(out_all, (Object*)copy);
                 RELEASE_NULL(copy);
 
@@ -223,7 +225,6 @@ static ErrorCode snmpWalk_impl(CoreSnmp* self, const char* ip, const char* root_
                 break;
             }
         }
-
         RELEASE_NULL(bulk);
 
         if (!keep) {
@@ -357,7 +358,7 @@ CoreSnmp* new_Snmp(SnmpTransport transport, const char* version_str, const char*
     if (!version_str || !community) {
         return NULL;
     }
-
+    logger = new_Logger(LOG_LEVEL_DEBUG);
     CoreSnmp* self = (CoreSnmp*)calloc(1, sizeof(CoreSnmp));
 
     if (!self || !CoreSnmp_init_common(self, transport)) {

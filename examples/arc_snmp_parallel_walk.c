@@ -20,7 +20,7 @@
 #define WORKER_THREADS   10       // 동시 처리 스레드 수
 #define SNMP_COMMUNITY   "public"
 #define SNMP_VERSION     "2c"
-#define ROOT_OID         "1.3.6.1.2.1.25.4.2"  // 프로세스 테이블
+#define ROOT_OID         "1.3.6.1.2.1.1"  // 프로세스 테이블
 
 /* =========================================
  * [Task 구조체]
@@ -71,7 +71,6 @@ static void* snmp_walk_worker(void* arg) {
     int count = result->getSize(result);
     t->result_count = count;
     t->success = (ret == OK) ? 1 : 0;
-
     /* 전역 결과 업데이트 */
     pthread_mutex_lock(&g_result_lock);
     if (ret == OK) {
@@ -94,19 +93,19 @@ static void* snmp_walk_worker(void* arg) {
  * [Main]
  * ========================================= */
 int main(void) {
-    printf("=== Toos IT Holdings: Parallel SNMP Walk ===\n");
+    printf("=== Parallel SNMP Walk Demo ===\n");
     printf("스레드 수: %d\n", WORKER_THREADS);
     printf("Root OID: %s\n\n", ROOT_OID);
 
     /* 테스트 장비 목록 (실제 환경에서는 DB에서 로드) */
     const char* ip_list[] = {
         "127.0.0.1",
-        "127.0.0.1",
-	"192.168.210.1",
-        "127.0.0.1",
-        "127.0.0.1",
-	"192.168.210.2",
-        "127.0.0.1",
+    //    "127.0.0.1",
+	//"192.168.210.1",
+    //    "127.0.0.1",
+    //    "127.0.0.1",
+	//"192.168.210.2",
+     //   "127.0.0.1",
     };
 
     int ip_count = (int)(sizeof(ip_list) / sizeof(ip_list[0]));

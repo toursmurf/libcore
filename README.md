@@ -187,8 +187,8 @@ make examples
 # 웹게시판 서버 프로그램
 ./examples/arc_board_server
 
-# 네이버 뉴스 병렬 크롤러 / Naver news parallel crawler
-./examples/arc_naver_news
+# snmp walk 데이터 가져오기 
+./examples/arc_snmp_parallel_walk
 
 # 프로세스 모니터링 에이전트 / Process monitoring agent (RockyLinux8.10/9.8)
 ./examples/arc_process_agent
@@ -301,7 +301,7 @@ WebBoard      BoardHandler / BoardTemplateEngine
 | `arc_echo_server.c`              | TCP 에코 서버 / TCP Echo Server                                 |
 | `arc_reactor_multi_server.c`     | TCP+UDP+Unix 멀티플렉싱 / Multiplexing                          |
 | `arc_http_client_test.c`         | HTTPS 클라이언트 / HTTPS Client                                 |
-| `arc_naver_news.c`               | 병렬 뉴스 크롤러 90건 / Parallel news crawler                   |
+| `arc_snmp_parallel_walk.c`       | 병렬로 snmp walk 데이터 가져오기 / Parallel snmpwalk demo       |
 | `arc_news_crawler.c`             | 다국어 뉴스 크롤러 / Multi-source news crawler                  |
 | `arc_process_agent.c`            | 프로세스 모니터링 에이전트 / Process monitoring agent           |
 | `arc_thread_test.c`              | ThreadPool 동작 검증 / ThreadPool test                          |
@@ -348,6 +348,20 @@ skin: dark
 > Same BoardHandler / Router / TemplateEngine SSR,
 > different DBClient adapters.
 
+## 📡 SNMP Demo — Parallel Walk
+
+`arc_snmp_parallel_walk` demonstrates parallel SNMP Walk
+using libcore CoreSNMP / ASN.1 components.
+
+- SNMP Walk
+- Parallel target processing
+- OID / VarBind decoding
+- CoreSNMP integration
+- Tested on macOS Apple Silicon
+
+![libcore Parallel SNMP Walk](docs/images/snmp_parallel_walk.png)
+
+> CoreSNMP / ASN.1 / SNMP Walk running on the libcore runtime.
 ---
 
 ## 버전 히스토리 / Version History
