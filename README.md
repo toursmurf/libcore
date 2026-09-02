@@ -301,8 +301,6 @@ WebBoard      BoardHandler / BoardTemplateEngine
 | `arc_echo_server.c`              | TCP 에코 서버 / TCP Echo Server                                 |
 | `arc_reactor_multi_server.c`     | TCP+UDP+Unix 멀티플렉싱 / Multiplexing                          |
 | `arc_http_client_test.c`         | HTTPS 클라이언트 / HTTPS Client                                 |
-| `arc_snmp_parallel_walk.c`       | 병렬로 snmp walk 데이터 가져오기 / Parallel snmpwalk demo       |
-| `arc_news_crawler.c`             | 다국어 뉴스 크롤러 / Multi-source news crawler                  |
 | `arc_process_agent.c`            | 프로세스 모니터링 에이전트 / Process monitoring agent           |
 | `arc_thread_test.c`              | ThreadPool 동작 검증 / ThreadPool test                          |
 | `arc_scheduler_system_monitor.c` | 주기 모니터링 / Periodic monitoring                             |
