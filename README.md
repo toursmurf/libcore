@@ -187,6 +187,9 @@ make examples
 # 웹게시판 서버 프로그램
 ./examples/arc_board_server
 
+# 챗팅 데모 서버 프로그램
+./examples/arc_chat_server
+
 # snmp walk 데이터 가져오기 
 ./examples/arc_snmp_parallel_walk
 
@@ -316,7 +319,9 @@ WebBoard      BoardHandler / BoardTemplateEngine
 
 ---
 
-## 🚀 Chat Demo support (RockyLinux-8.10/9.8 ,  macOS (Apple Silicon, M2 Max) — Tested)
+## 💬 Chat Demo — Multi-Client Communication
+
+**Tested:** Rocky Linux 8.10 / 9.8, macOS Apple Silicon (M2 Max)
 
 ![Chat Demo](docs/images/chat.png)
 
