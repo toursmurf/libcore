@@ -318,7 +318,7 @@ WebBoard      BoardHandler / BoardTemplateEngine
 
 ---
 
-## 🚀 Chat Demo support (RockyLinux-8.10/9.8 ,  macbook m2 max  tested)
+## 🚀 Chat Demo support (RockyLinux-8.10/9.8 ,  MacBook Pro (Apple M2 Max)  tested)
 
 ![WebBoard MySQL](docs/images/chat.png)
 
@@ -400,7 +400,7 @@ skin: dark
 
 ```
 OS       : Rocky Linux (9.8 / 8.10)  (64-bit)
-           macOS - macbook m2 max (Apple Silicon)
+           macOS - MacBook Pro (Apple M2 Max) (Apple Silicon)
 
 Compiler : GCC 9+ / Clang 10+
 Make     : GNU Make
