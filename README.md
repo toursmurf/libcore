@@ -186,8 +186,8 @@ make examples
 # 멀티 프로토콜 리액터 / Multi-protocol reactor
 ./examples/arc_reactor_multi_server
 
-# WebSocket 채팅 서버 / WebSocket chat server
-./examples/arc_toostalk_server
+# 웹게시판 서버 프로그램 
+./examples/arc_board_server
 
 # 네이버 뉴스 병렬 크롤러 / Naver news parallel crawler
 ./examples/arc_naver_news
@@ -196,20 +196,7 @@ make examples
 ./examples/arc_process_agent
 ```
 
-### 3. CI 파이프라인 / CI Pipeline
-
-```bash
-# ASan/UBSan 쾌속 검증 (전체 25개)
-make ci-asan
-
-# Valgrind 정밀 검증 (코어 23개)
-make ci-valgrind
-
-# 풀코스 통합 검증
-make ci
-```
-
-### 4. MySQL 연동 (선택) / MySQL Integration (optional)
+### 3. MySQL 연동 (선택) / MySQL Integration (optional)
 
 ```bash
 make WITH_MYSQL=1 \
@@ -301,29 +288,32 @@ Protocol      SNMP / ASN.1 / CoreSNMP
 Utilities     Logger / AsyncLogger / Exception
               Crypto (SHA-256/SHA-512/AES-256-CBC/Base64)
               String / Locale / Regex / DateTime
+              
+Web Board    board_handler /  board_template_engine             
 ```
 
 ---
 
 ## 예제 목록 / Examples
 
-| 파일 / File | 설명 / Description |
-|---|---|
-| `all_test_v2.c` | 전체 통합 테스트 37개 / 37 integration tests |
-| `arc_echo_server.c` | TCP 에코 서버 / TCP Echo Server |
-| `arc_reactor_multi_server.c` | TCP+UDP+Unix 멀티플렉싱 / Multiplexing |
-| `arc_toostalk_server.c` | WebSocket 채팅 서버 / WebSocket Chat |
-| `arc_http_client_test.c` | HTTPS 클라이언트 / HTTPS Client |
-| `arc_naver_news.c` | 병렬 뉴스 크롤러 90건 / Parallel news crawler |
-| `arc_news_crawler.c` | 다국어 뉴스 크롤러 / Multi-source news crawler |
-| `arc_process_agent.c` | 프로세스 모니터링 에이전트 / Process monitoring agent |
-| `arc_thread_test.c` | ThreadPool 동작 검증 / ThreadPool test |
-| `arc_scheduler_system_monitor.c` | 주기 모니터링 / Periodic monitoring |
-| `arc_json_test.c` | JSON 파서 / JSON parser |
-| `arc_crypto_integration_test.c` | SHA/AES 암호화 / SHA/AES crypto |
-| `arc_snmp_parallel_walk.c` | SNMP 병렬 수집 / SNMP parallel walk |
-| `arc_mysql_test.c` | MySQL 연동 / MySQL integration |
-| `compare_raw_vs_libcore.c` | RAW epoll vs libcore 벤치마크 / Benchmark |
+| 파일 / File                      | 설명 / Description                                    |
+|----------------------------------|-------------------------------------------------------|
+| `all_test_v2.c`                  | 전체 통합 테스트 37개 / 37 integration tests          |
+| `arc_echo_server.c`              | TCP 에코 서버 / TCP Echo Server                       |
+| `arc_reactor_multi_server.c`     | TCP+UDP+Unix 멀티플렉싱 / Multiplexing                |
+| `arc_toostalk_server.c`          | WebSocket 채팅 서버 / WebSocket Chat                  |
+| `arc_http_client_test.c`         | HTTPS 클라이언트 / HTTPS Client                       |
+| `arc_naver_news.c`               | 병렬 뉴스 크롤러 90건 / Parallel news crawler         |
+| `arc_news_crawler.c`             | 다국어 뉴스 크롤러 / Multi-source news crawler        |
+| `arc_process_agent.c`            | 프로세스 모니터링 에이전트 / Process monitoring agent |
+| `arc_thread_test.c`              | ThreadPool 동작 검증 / ThreadPool test                |
+| `arc_scheduler_system_monitor.c` | 주기 모니터링 / Periodic monitoring                   |
+| `arc_json_test.c`                | JSON 파서 / JSON parser                               |
+| `arc_crypto_integration_test.c`  | SHA/AES 암호화 / SHA/AES crypto                       |
+| `arc_snmp_parallel_walk.c`       | SNMP 병렬 수집 / SNMP parallel walk                   |
+| `arc_mysql_test.c`               | MySQL 연동 / MySQL integration                        |
+| `compare_raw_vs_libcore.c`       | RAW epoll vs libcore 벤치마크 / Benchmark             |
+| `arc_board_server.c`             | 웹게시판 서버 프로그램 - (mysql, postgresql, sqlite)  |
 
 → 전체 목록: [docs/examples.ko.md](docs/examples.ko.md)
 
