@@ -108,7 +108,7 @@ libcore solves these problems.
 │  ┌──────────────┐    ┌──────────────────────────┐   │
 │  │  ThreadPool  │    │  ARC Memory              │   │
 │  │  Thread      │    │  RETAIN / RELEASE        │   │
-│  │  Semaphore   │    │  Valgrind-clean        │   │
+│  │  Semaphore   │    │  Valgrind-clean          │   │
 │  └──────────────┘    └──────────────────────────┘   │
 │                                                     │
 │  ┌──────────────────────────────────────────────┐   │
@@ -126,17 +126,17 @@ libcore solves these problems.
 
 ## 주요 특징 / Key Features
 
-| 특징 / Feature          | 설명 / Description                                                       |
-|-------------------------|--------------------------------------------------------------------------|
-| **EventLoop**           | Linux: epoll / macOS: kqueue — OS 자동 감지                              |
-| **ARC 메모리**          | RETAIN/RELEASE 기반 자동 메모리 관리 / Auto memory via RETAIN/RELEASE    |
-| **Socket 추상화**       | TCP/UDP/Unix/SSL 통일 인터페이스 / Unified TCP/UDP/Unix/SSL interface    |
-| **ThreadPool**          | 작업 큐 기반 스레드 풀 / Task queue-based thread pool                    |
-| **HTTP 스택**           | HttpServer/HttpClient/Router/:id/WebSocket/Cookie/Multipart              |
-| **PathValidator**       | Rule 16 기반 경로 보안 검증 / Rule 16 path security validation           |
-| **StringBuilder**       | ByteBuffer 기반 ARC 호환 문자열 빌더 / ARC-compatible string builder     |
-| **TextEncoder**         | escapeHtml/urlEncode/base64/Zero-Alloc API                               |
-| **47개 모듈**           | 컬렉션/파일/암호화/JSON/SNMP 등 / Collections/File/Crypto/JSON/SNMP etc. |
+| 특징 / Feature | 설명 / Description |
+|---|---|
+| **EventLoop** | Linux: epoll / macOS: kqueue — OS 자동 감지 |
+| **ARC 메모리** | RETAIN/RELEASE 기반 자동 메모리 관리 / Auto memory via RETAIN/RELEASE |
+| **Socket 추상화** | TCP/UDP/Unix/SSL 통일 인터페이스 / Unified TCP/UDP/Unix/SSL interface |
+| **ThreadPool** | 작업 큐 기반 스레드 풀 / Task queue-based thread pool |
+| **HTTP 스택** | HttpServer/HttpClient/Router/:id/WebSocket/Cookie/Multipart |
+| **PathValidator** | Rule 16 기반 경로 보안 검증 / Rule 16 path security validation |
+| **StringBuilder** | ByteBuffer 기반 ARC 호환 문자열 빌더 / ARC-compatible string builder |
+| **TextEncoder** | escapeHtml/urlEncode/base64/Zero-Alloc API |
+| **73개 C 소스 파일** | 컬렉션/파일/암호화/JSON/SNMP/HTTP/DB 등 / 73 C source files |
 
 ---
 
@@ -184,7 +184,7 @@ make examples
 # 멀티 프로토콜 리액터 / Multi-protocol reactor
 ./examples/arc_reactor_multi_server
 
-# 웹게시판 서버 프로그램 
+# 웹게시판 서버 프로그램
 ./examples/arc_board_server
 
 # 네이버 뉴스 병렬 크롤러 / Naver news parallel crawler
@@ -196,13 +196,13 @@ make examples
 
 ### 3. RDB 연동 / RDB Integration
 
-```bash
+```text
 MySQL / MariaDB
 PostgreSQL
-SQLite 
+SQLite
 ```
 
-→ 자세한 내용: [docs/mysql_setup.md](docs/mysql_setup.md)
+→ MySQL 설정 예시: [docs/mysql_setup.md](docs/mysql_setup.md)
 
 ---
 
@@ -242,8 +242,9 @@ SQLite
  * 1. new_xxx() 생성 시 ref_count = 1 자동
  *    new_xxx() sets ref_count = 1 automatically
  *
- * 2. 컨테이너가 저장시 RETAIN하며, 호출자는 자신의 소유권을 다 쓰면 RELEASE
- *    RETAIN before storing, RELEASE when done
+ * 2. 컨테이너가 저장 시 RETAIN하며, 호출자는 자신의 소유권을 다 쓰면 RELEASE
+ *    Containers RETAIN objects when storing them;
+ *    callers RELEASE their own ownership when done.
  *
  * 3. [OWNED] 반환값은 RELEASE 필수
  *    [BORROWED] 반환값은 RELEASE 금지
@@ -253,7 +254,7 @@ ArrayList* list = new_ArrayList(10);         /* ref=1 */
 String*    str  = new_String("hello");       /* ref=1 */
 list->add(list, (Object*)str);               /* 내부 RETAIN → ref=2 */
 RELEASE((Object*)str);                       /* ref=1, list 가 소유 */
-String* item = (String*)list->get(list, 0); /* [BORROWED] RELEASE 금지 */
+String* item = (String*)list->get(list, 0);  /* [BORROWED] RELEASE 금지 */
 RELEASE((Object*)list);                      /* list + str 전부 소각 */
 ```
 
@@ -286,31 +287,31 @@ Protocol      SNMP / ASN.1 / CoreSNMP
 Utilities     Logger / AsyncLogger / Exception
               Crypto (SHA-256/SHA-512/AES-256-CBC/Base64)
               String / Locale / Regex / DateTime
-              
-Web Board    board_handler /  board_template_engine             
+
+WebBoard      BoardHandler / BoardTemplateEngine
 ```
 
 ---
 
 ## 예제 목록 / Examples
 
-| 파일 / File                      | 설명 / Description                                    |
-|----------------------------------|-------------------------------------------------------|
-| `all_test_v2.c`                  | 전체 통합 테스트 37개 / 37 integration tests          |
-| `arc_echo_server.c`              | TCP 에코 서버 / TCP Echo Server                       |
-| `arc_reactor_multi_server.c`     | TCP+UDP+Unix 멀티플렉싱 / Multiplexing                |
-| `arc_http_client_test.c`         | HTTPS 클라이언트 / HTTPS Client                       |
-| `arc_naver_news.c`               | 병렬 뉴스 크롤러 90건 / Parallel news crawler         |
-| `arc_news_crawler.c`             | 다국어 뉴스 크롤러 / Multi-source news crawler        |
-| `arc_process_agent.c`            | 프로세스 모니터링 에이전트 / Process monitoring agent |
-| `arc_thread_test.c`              | ThreadPool 동작 검증 / ThreadPool test                |
-| `arc_scheduler_system_monitor.c` | 주기 모니터링 / Periodic monitoring                   |
-| `arc_json_test.c`                | JSON 파서 / JSON parser                               |
-| `arc_crypto_integration_test.c`  | SHA/AES 암호화 / SHA/AES crypto                       |
-| `arc_snmp_parallel_walk.c`       | SNMP 병렬 수집 / SNMP parallel walk                   |
-| `arc_mysql_test.c`               | MySQL 연동 / MySQL integration                        |
-| `compare_raw_vs_libcore.c`       | RAW epoll vs libcore 벤치마크 / Benchmark             |
-| `arc_board_server.c`             | 웹게시판 서버 프로그램 - (mysql, postgresql, sqlite)  |
+| 파일 / File | 설명 / Description |
+|---|---|
+| `all_test_v2.c` | 전체 통합 테스트 37개 / 37 integration tests |
+| `arc_echo_server.c` | TCP 에코 서버 / TCP Echo Server |
+| `arc_reactor_multi_server.c` | TCP+UDP+Unix 멀티플렉싱 / Multiplexing |
+| `arc_http_client_test.c` | HTTPS 클라이언트 / HTTPS Client |
+| `arc_naver_news.c` | 병렬 뉴스 크롤러 90건 / Parallel news crawler |
+| `arc_news_crawler.c` | 다국어 뉴스 크롤러 / Multi-source news crawler |
+| `arc_process_agent.c` | 프로세스 모니터링 에이전트 / Process monitoring agent |
+| `arc_thread_test.c` | ThreadPool 동작 검증 / ThreadPool test |
+| `arc_scheduler_system_monitor.c` | 주기 모니터링 / Periodic monitoring |
+| `arc_json_test.c` | JSON 파서 / JSON parser |
+| `arc_crypto_integration_test.c` | SHA/AES 암호화 / SHA/AES crypto |
+| `arc_snmp_parallel_walk.c` | SNMP 병렬 수집 / SNMP parallel walk |
+| `arc_mysql_test.c` | MySQL 연동 / MySQL integration |
+| `compare_raw_vs_libcore.c` | RAW epoll vs libcore 벤치마크 / Benchmark |
+| `arc_board_server.c` | 웹게시판 서버 프로그램 (MySQL / PostgreSQL / SQLite) |
 
 → 전체 목록: [docs/examples.ko.md](docs/examples.ko.md)
 
@@ -320,11 +321,15 @@ libcore v1.7.2 WebBoard runs on the same application code
 with MySQL/MariaDB, PostgreSQL, and SQLite backends.
 
 ### MySQL / MariaDB
+
 skin: white
+
 ![WebBoard MySQL](docs/images/webboard_mysql_white.png)
 
 skin: dark
+
 ![WebBoard MySQL](docs/images/webboard_mysql_dark.png)
+
 ### PostgreSQL
 
 ![WebBoard PostgreSQL](docs/images/webboard_pgsql.png)
@@ -333,7 +338,6 @@ skin: dark
 
 ![WebBoard SQLite](docs/images/webboard_sqlite.png)
 
-
 > Same BoardHandler / Router / TemplateEngine SSR,
 > different DBClient adapters.
 
@@ -341,18 +345,18 @@ skin: dark
 
 ## 버전 히스토리 / Version History
 
-| 버전 / Version | 주요 내용 / Highlights                                            |
-|----------------|-------------------------------------------------------------------|
-| **v1.7.2**     | 3 RDB 지원용 웹게시판 (MySQL / PostgreSQL / SQLITE)               |
-| **v1.7.1**     | Router params 2-Pass engine, OOM/NPD defense                      |
-| **v1.7.0**     | macOS (kqueue) 정식 지원 — Linux + macOS 멀티플랫폼               |
-| **v1.6.2**     | Content-Length 바운드 검증, WS 프레임 상한, EventLoop Object 상속 |
-| **v1.6.1**     | arc_process_agent Health Score, CPU/메모리/디스크/load_avg        |
-| **v1.6.0**     | PathValidator / StringBuilder / TextEncoder / Router :id          |
-| **v1.5.2**     | arc_process_agent 기반 구축                                       |
-| **v1.5.1**     | WebSocket 업그레이드, ToosTalk TT-1 가동                          |
-| **v1.5.0**     | WebCore 완성 — HttpServer/HttpClient/SSL/Router/Cookie            |
-| **v1.0**       | Iron Fortress — 67모듈, Valgrind 0 bytes, CI 5관왕                |
+| 버전 / Version | 주요 내용 / Highlights |
+|---|---|
+| **v1.7.2** | 3 RDB 지원용 웹게시판 (MySQL / PostgreSQL / SQLite) |
+| **v1.7.1** | Router params 2-Pass engine, OOM/NPD defense |
+| **v1.7.0** | macOS (kqueue) 정식 지원 — Linux + macOS 멀티플랫폼 |
+| **v1.6.2** | Content-Length 바운드 검증, WS 프레임 상한, EventLoop Object 상속 |
+| **v1.6.1** | arc_process_agent Health Score, CPU/메모리/디스크/load_avg |
+| **v1.6.0** | PathValidator / StringBuilder / TextEncoder / Router :id |
+| **v1.5.2** | arc_process_agent 기반 구축 |
+| **v1.5.1** | WebSocket 업그레이드, ToosTalk TT-1 가동 |
+| **v1.5.0** | WebCore 완성 — HttpServer/HttpClient/SSL/Router/Cookie |
+| **v1.0** | Iron Fortress — 67모듈, Valgrind 0 bytes, CI 5관왕 |
 
 ---
 
@@ -368,17 +372,18 @@ skin: dark
 
 ## 문서 / Documentation
 
-| 문서 / Document                                                      | 내용 / Content                           |
-|----------------------------------------------------------------------|------------------------------------------|
-| [docs/coding_guide_ko.md](docs/coding_guide_ko.md)                   | 코딩가이드 한글 / Korean Coding Guide    |
-| [docs/coding_guide_en.md](docs/coding_guide_en.md)                   | English Coding Guide                     |
-| [docs/CODING_CONTRACT_KO.md](docs/CODING_CONTRACT_KO.md)             | 코딩규약 한글 / Korean Coding Contract   |
-| [docs/CODING_CONTRACT_EN.md](docs/CODING_CONTRACT_EN.md)             | English Coding Contract                  |
-| [docs/libcore_v1.7.2_API_Reference.md](docs/libcore_v1.7.2_API_Reference.md)          | 1.7.2 api reference     |
-| [docs/libcore_v1_class_diagram.md](docs/libcore_v1_class_diagram.md) | 클래스 다이어그램 / Class diagram        |
-| [docs/mysql_setup.md](docs/mysql_setup.md)                           | MySQL 연동 / MySQL setup                 |
-| [docs/examples.ko.md](docs/examples.ko.md)                           | 예제 가이드 한글                         |
-| [docs/examples.en.md](docs/examples.en.md)                           | Examples guide english                   |
+| 문서 / Document | 내용 / Content |
+|---|---|
+| [docs/coding_guide_ko.md](docs/coding_guide_ko.md) | 코딩가이드 한글 / Korean Coding Guide |
+| [docs/coding_guide_en.md](docs/coding_guide_en.md) | English Coding Guide |
+| [docs/CODING_CONTRACT_KO.md](docs/CODING_CONTRACT_KO.md) | 코딩규약 한글 / Korean Coding Contract |
+| [docs/CODING_CONTRACT_EN.md](docs/CODING_CONTRACT_EN.md) | English Coding Contract |
+| [docs/libcore_v1.7.2_API_Reference.md](docs/libcore_v1.7.2_API_Reference.md) | v1.7.2 API Reference |
+| [docs/libcore_v1_class_diagram.md](docs/libcore_v1_class_diagram.md) | 클래스 다이어그램 / Class diagram |
+| [docs/mysql_setup.md](docs/mysql_setup.md) | MySQL 연동 / MySQL setup |
+| [docs/examples.ko.md](docs/examples.ko.md) | 예제 가이드 한글 / Korean examples guide |
+| [docs/examples.en.md](docs/examples.en.md) | 예제 가이드 영문 / English examples guide |
+
 ---
 
 ## 요구사항 / Requirements
@@ -389,10 +394,11 @@ OS       : Linux 64-bit (Ubuntu / Rocky / Debian)
 Compiler : GCC 9+ / Clang 10+
 Make     : GNU Make
 OpenSSL  : 3.x (HTTPS/SSL 지원 / for HTTPS/SSL)
-Optional : 
-        MariaDB / MySQL client library
-        PostgreSQL libpq
-        SQLite3 
+
+Optional :
+           MariaDB / MySQL client library
+           PostgreSQL libpq
+           SQLite3
 ```
 
 ---
@@ -413,8 +419,10 @@ MIT License — Free to use, modify, and distribute.
 
 ---
 
-*libcore is a high-performance, event-driven server runtime in pure C.*
-*Java-like API / Python-like usability / C-level performance / ARC memory safety.*
-*Valgrind clean /  Graceful shutdown / MIT License.*
+---
 
-**Toos IT Holdings | Iron Fortress v1.7.2**
+*libcore is a high-performance, event-driven server runtime in pure C.*  
+*Java-like API / Python-like usability / C-level performance / ARC memory safety.*  
+*Valgrind clean / Graceful shutdown / MIT License.*
+
+**libcore v1.7.2**
