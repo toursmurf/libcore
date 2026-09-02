@@ -320,7 +320,7 @@ WebBoard      BoardHandler / BoardTemplateEngine
 
 ## 🚀 Chat Demo support (RockyLinux-8.10/9.8 ,  macOS (Apple Silicon, M2 Max) — Tested)
 
-![WebBoard MySQL](docs/images/chat.png)
+![Chat Demo](docs/images/chat.png)
 
 ## 🚀 WebBoard Demo — Multi-RDB Support
 
@@ -372,7 +372,7 @@ skin: dark
 | OS                              | 백엔드 / Backend | 상태 / Status           |
 |---------------------------------|------------------|-------------------------|
 | Rocky Linux 8.10 / 9.x (64-bit) | epoll            | ✅ 테스트 완료 / Tested |
-| macOS (Apple Silicon)           | kqueue           | ✅ 테스트 완료 / Tested |
+| macOS (Apple Silicon, M2 Max)   | kqueue           | ✅ 테스트 완료 / Tested |
 | Windows                         | IOCP             | 🔜 예정                 |
 
 > Ubuntu, Debian, macOS Intel 등 기타 환경은 현재 v1.7.2에서 별도 검증되지 않았습니다.  
@@ -387,7 +387,7 @@ skin: dark
 | [docs/coding_guide_ko.md](docs/coding_guide_ko.md)                           | 코딩가이드 한글 / Korean Coding Guide     |
 | [docs/coding_guide_en.md](docs/coding_guide_en.md)                           | English Coding Guide                      |
 | [docs/CODING_CONTRACT_KO.md](docs/CODING_CONTRACT_KO.md)                     | 코딩규약 한글 / Korean Coding Contract    |
-| [docs/CODING_CONTRACT_EN.md](docs/CODING_CONTRACT_EN.md)                     | English Coding Guide                      |
+| [docs/CODING_CONTRACT_EN.md](docs/CODING_CONTRACT_EN.md)                     | English Coding Contract                      |
 | [docs/libcore_v1.7.2_API_Reference.md](docs/libcore_v1.7.2_API_Reference.md) | v1.7.2 API Reference                      |
 | [docs/libcore_v1_class_diagram.md](docs/libcore_v1_class_diagram.md)         | 클래스 다이어그램 / Class diagram         |
 | [docs/mysql_setup.md](docs/mysql_setup.md)                                   | MySQL 연동 / MySQL setup                  |
@@ -400,7 +400,7 @@ skin: dark
 
 ```
 OS       : Rocky Linux (9.8 / 8.10)  (64-bit) - Tested
-           macOS - MmacOS (Apple Silicon, M2 Max) — Tested
+           macOS - (Apple Silicon, M2 Max) — Tested
 
 Compiler : GCC 9+ / Clang 10+
 Make     : GNU Make
