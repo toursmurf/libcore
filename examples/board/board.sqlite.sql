@@ -45,7 +45,7 @@ CREATE TABLE `board_members` (
 );
 
 INSERT INTO `board_members`(`id`,`username`,`password`,`nickname`,`email`,`role`,`is_active`,`created_at`,`last_login`)
-VALUES    (1,'admin','$2b$12$KIXtfCDge3RR.N5HGXdQzeLCNb5eJMbvpkX4FZ7vVoknFHa8RYMHK','관리자','admin@toos.it',1,1,NULL,NULL);
+VALUES    (1,'admin','$2b$12$KIXtfCDge3RR.N5HGXdQzeLCNb5eJMbvpkX4FZ7vVoknFHa8RYMHK','관리자','admin@toos.it',1,1,'',NULL);
 
 -- ----------------------------------------------------------
 -- board_posts

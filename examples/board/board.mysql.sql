@@ -26,7 +26,7 @@ CREATE TABLE `board_members` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
 INSERT INTO `board_members` VALUES
-(1,'admin', '$2b$12$KIXtfCDge3RR.N5HGXdQzeLCNb5eJMbvpkX4FZ7vVoknFHa8RYMHK','관리자','admin@domain.com', 1,1,NULL,NULL);
+(1,'admin', '$2b$12$KIXtfCDge3RR.N5HGXdQzeLCNb5eJMbvpkX4FZ7vVoknFHa8RYMHK','관리자','admin@domain.com', 1,1,'',NULL);
 
 -- ----------------------------------------------------------
 -- board_posts
