@@ -22,8 +22,8 @@ CREATE TABLE board_members (
   CONSTRAINT uk_members_email    UNIQUE (email)
 );
 
-INSERT INTO board_members VALUES
-(1,'admin', '$2b$12$KIXtfCDge3RR.N5HGXdQzeLCNb5eJMbvpkX4FZ7vVoknFHa8RYMHK','관리자','admin@toos.it', 1,1,'',NULL);
+INSERT INTO board_members (id, username, password, nickname, email, role, is_active, last_login)   VALUES
+(1,'admin', '','관리자','admin@toos.it', 1,1,NULL);
 -- ----------------------------------------------------------
 -- board_posts
 -- ----------------------------------------------------------
