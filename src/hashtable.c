@@ -187,7 +187,7 @@ static ArrayList* ht_keys(Hashtable *self) {
     for (size_t i = 0; i < (size_t)self->capacity; i++) {
         HashtableEntry *e = self->table[i];
         while (e) {
-            list->add(list, RETAIN(e->key));
+            list->add(list, e->key);
             e = e->next;
         }
     }
@@ -201,7 +201,7 @@ static ArrayList* ht_values(Hashtable *self) {
     for (size_t i = 0; i < (size_t)self->capacity; i++) {
         HashtableEntry *e = self->table[i];
         while (e) {
-            list->add(list, RETAIN(e->value));
+            list->add(list, e->value);
             e = e->next;
         }
     }
