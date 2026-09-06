@@ -314,6 +314,7 @@ WebBoard      BoardHandler / BoardTemplateEngine
 | `compare_raw_vs_libcore.c`       | RAW epoll vs libcore 벤치마크 / Benchmark (RockyLinux서 테스트) |
 | `arc_chat_server.c`              | chatting server (icq, kakaotalk)                                |
 | `arc_board_server.c`             | 웹게시판 서버 프로그램 (MySQL / PostgreSQL / SQLite)            |
+| `arc_pixel_server.c`             | Pixel Board Game Server                                         |
 
 → 전체 목록: [docs/examples.ko.md](docs/examples.ko.md)
 
@@ -350,6 +351,12 @@ skin: dark
 
 > Same BoardHandler / Router / TemplateEngine SSR,
 > different DBClient adapters.
+
+## 🚀 Toos Pixel Demo — Pixel Board Game
+
+libcore v1.7.2 pixel game demo. 
+
+![WebBoard SQLite](docs/images/pixel_board.png)
 
 ## 📡 SNMP Demo — Parallel Walk
 
