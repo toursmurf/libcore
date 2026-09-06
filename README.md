@@ -352,9 +352,17 @@ skin: dark
 > Same BoardHandler / Router / TemplateEngine SSR,
 > different DBClient adapters.
 
-## 🚀 Toos Pixel Demo — Pixel Board Game
 
-libcore v1.7.2 pixel game demo. 
+Real-time RED vs BLUE multiplayer game powered by
+`HttpServer + WebSocket + EventLoop`.
+
+- Server-authoritative game state
+- Multi-client real-time synchronization
+- Config / score / board synchronization
+- Host migration
+- Timeout or full-board automatic game over
+- Linux epoll / macOS kqueue
+- Valgrind tested: 0 errors / 0 bytes leaked
 
 ![WebBoard SQLite](docs/images/pixel_board.png)
 
