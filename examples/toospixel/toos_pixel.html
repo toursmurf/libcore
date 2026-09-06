@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>ToosPixel Simulator (Phase 2 Ultimate)</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a24; color: #eee; margin: 0; display: flex; flex-direction: column; align-items: center; }
+        h1 { margin-top: 20px; font-size: 28px; }
+        .config-box { background: #252533; padding: 15px 30px; border-radius: 10px; display: flex; gap: 20px; align-items: center; margin-bottom: 20px; border: 1px solid #333; }
+        .config-box input { background: #111; color: #fff; border: 1px solid #444; padding: 5px; width: 60px; text-align: center; border-radius: 4px; }
+        .btn-start { background: #fdb121; color: #000; font-weight: bold; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; }
+        .btn-start:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .dashboard { width: 512px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .team-btn { padding: 8px 15px; border: 2px solid #555; border-radius: 20px; cursor: pointer; font-weight: bold; background: #222; color: #aaa; transition: all 0.2s; }
+        .team-btn.red { border-color: #ff4444; color: #ff4444; }
+        .team-btn.blue { border-color: #4444ff; color: #4444ff; }
+        .team-btn.active { background: #555; color: #fff; }
+
+        .score-board { font-size: 20px; font-weight: bold; }
+        .timer-box { background: #252533; padding: 5px 15px; border-radius: 8px; font-size: 24px; font-weight: bold; border: 1px solid #444; }
+
+        .canvas-container { position: relative; width: 512px; height: 512px; }
+        #board { background: #dcdcdc; border-radius: 8px; cursor: crosshair; image-rendering: pixelated; width: 100%; height: 100%; }
+
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); color: white; display: none; flex-direction: column; justify-content: center; align-items: center; font-size: 30px; font-weight: bold; border-radius: 8px; z-index: 10; pointer-events: none; text-align: center; }
+    </style>
+</head>
+<body>
+<h1>🚀 ToosPixel Simulator</h1>
+
+<div class="config-box">
+    <label>가로 <input type="number" id="w" value="512" disabled></label>
+    <label>세로 <input type="number" id="h" value="512" disabled></label>
+    <label>붓 크기 <input type="number" id="b" value="5" disabled></label>
+    <label>게임 시간(초) <input type="number" id="t" value="180" disabled></label>
+    <button id="btnStart" class="btn-start" onclick="startGame()" disabled>적용 및 캔버스 초기화</button>
+</div>
+
+<div class="dashboard">
+    <div>
+        <button id="btnRed" class="team-btn red" onclick="joinTeam(1)">🔴 RED</button>
+        <button id="btnBlue" class="team-btn blue" onclick="joinTeam(2)">🔵 BLUE</button>
+    </div>
+    <div class="score-board">
+        <span style="color:#ff4444" id="scoreRed">0</span> : <span style="color:#4444ff" id="scoreBlue">0</span>
+        <span style="font-size: 14px; color: #777;">(빈칸: <span id="emptyCount">0</span>)</span>
+    </div>
+    <div class="timer-box" id="timer">0:00</div>
+</div>
+
+<div class="canvas-container">
+    <canvas id="board" width="512" height="512"></canvas>
+    <div id="overlay"></div>
+</div>
+
+<script>
+    let ws_url = "ws://127.0.0.1:8888/ws";
+    if (location.host && location.protocol !== "file:") {
+        const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+        ws_url = `${wsProtocol}//${location.host}/ws`;
+    }
+
+    const ws = new WebSocket(ws_url);
+    const canvas = document.getElementById("board");
+    const ctx = canvas.getContext("2d");
+    const overlay = document.getElementById("overlay");
+
+    let requestId = 0;
+    let myTeam = 0;
+    let isHost = false;
+    let gameRunning = false;
+    let activeBrushSize = 1;
+    let endTime = 0;
+    let timerInterval;
+
+    function enableHostUI(enable) {
+        document.getElementById("w").disabled = !enable;
+        document.getElementById("h").disabled = !enable;
+        document.getElementById("b").disabled = !enable;
+        document.getElementById("t").disabled = !enable;
+        document.getElementById("btnStart").disabled = !enable;
+    }
+
+    function joinTeam(team) {
+        ws.send(JSON.stringify({ type: "JOIN_GAME", team: team }));
+    }
+
+    function startGame() {
+        if (!isHost) return;
+        const w = parseInt(document.getElementById("w").value);
+        const h = parseInt(document.getElementById("h").value);
+        const brush = parseInt(document.getElementById("b").value);
+        const duration = parseInt(document.getElementById("t").value);
+        ws.send(JSON.stringify({ type: "START_GAME", width: w, height: h, brushSize: brush, duration: duration }));
+    }
+
+    ws.onopen = () => {
+        console.log("[WS] Connected to " + ws_url);
+    };
+
+    ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+
+        if (msg.type === "JOIN_ACK") {
+            myTeam = msg.team;
+            isHost = msg.isHost;
+
+            document.getElementById("btnRed").classList.toggle("active", myTeam === 1);
+            document.getElementById("btnBlue").classList.toggle("active", myTeam === 2);
+            enableHostUI(isHost && !gameRunning);
+
+        } else if (msg.type === "HOST_CHANGED") {
+            isHost = msg.isHost;
+            enableHostUI(isHost && !gameRunning);
+            console.log("👑 You are the new Host!");
+
+        } else if (msg.type === "GAME_STARTED") {
+            gameRunning = true;
+            activeBrushSize = msg.brushSize;
+
+            enableHostUI(false);
+
+            document.getElementById("w").value = msg.width;
+            document.getElementById("h").value = msg.height;
+            document.getElementById("b").value = msg.brushSize;
+            document.getElementById("t").value = Math.floor(msg.durationMs / 1000);
+
+            canvas.width = msg.width;
+            canvas.height = msg.height;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            document.getElementById("emptyCount").innerText = msg.width * msg.height;
+            document.getElementById("scoreRed").innerText = 0;
+            document.getElementById("scoreBlue").innerText = 0;
+
+            overlay.style.display = "none";
+            canvas.style.pointerEvents = "auto";
+
+            endTime = performance.now() + msg.durationMs;
+            clearInterval(timerInterval);
+
+            timerInterval = setInterval(() => {
+                const remainingMs = endTime - performance.now();
+                const left = Math.max(0, Math.ceil(remainingMs / 1000));
+
+                document.getElementById("timer").innerText = `${Math.floor(left/60)}:${(left%60).toString().padStart(2,'0')}`;
+
+                if (remainingMs <= 0) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+
+                    if (gameRunning && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: "CHECK_GAME_OVER" }));
+                    }
+                }
+            }, 100);
+
+        } else if (msg.type === "PIXEL_CHANGED") {
+            ctx.fillStyle = msg.team === 1 ? "#ff4444" : (msg.team === 2 ? "#4444ff" : "#222");
+            const offset = Math.floor(activeBrushSize / 2);
+
+            for (let dy = 0; dy < activeBrushSize; dy++) {
+                for (let dx = 0; dx < activeBrushSize; dx++) {
+                    ctx.fillRect(msg.x - offset + dx, msg.y - offset + dy, 1, 1);
+                }
+            }
+
+            document.getElementById("scoreRed").innerText = msg.redScore;
+            document.getElementById("scoreBlue").innerText = msg.blueScore;
+            document.getElementById("emptyCount").innerText = (canvas.width * canvas.height) - msg.redScore - msg.blueScore;
+
+        } else if (msg.type === "GAME_OVER") {
+            gameRunning = false;
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+
+            // 🚨 의장님 지시 완벽 반영: 타이머를 "0:00"으로 강제 초기화하지 않습니다!
+            // 남은 시간이 그대로 박제(Freeze)되어 스피드런 기록으로 남습니다.
+
+            enableHostUI(isHost);
+
+            canvas.style.pointerEvents = "none";
+            overlay.style.display = "flex";
+
+            const winColor = msg.winner === "RED" ? "#ff4444" : (msg.winner === "BLUE" ? "#4444ff" : "#fff");
+            overlay.innerHTML = `<span style="color:${winColor}">🏆 ${msg.winner} TEAM WIN!</span><br><br>
+                                     <span style="font-size:20px; color:#fff">RED: ${msg.redScore} | BLUE: ${msg.blueScore}</span>`;
+        }
+    };
+
+    function sendPaint(e) {
+        if (!gameRunning) return;
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = Math.floor((e.clientX - rect.left) * scaleX);
+        const y = Math.floor((e.clientY - rect.top) * scaleY);
+
+        ws.send(JSON.stringify({ type: "PAINT", x: x, y: y, requestId: ++requestId }));
+    }
+
+    canvas.addEventListener("mousedown", sendPaint);
+    canvas.addEventListener("mousemove", (e) => {
+        if (e.buttons === 1) sendPaint(e);
+    });
+</script>
+</body>
+</html>
