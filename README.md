@@ -50,7 +50,7 @@ static void on_accept(Socket* self, void* loop_ptr) {
 }
 
 int main(void) {
-    EventLoop* loop   = new_EventLoop(1024);
+    EventLoop* loop   = event_loop_create();
     TcpSocket* server = new_TcpServer("0.0.0.0", 8080);
     server->base.on_readable = on_accept;
     loop->addSocket(loop, (Socket*)server, EV_READ);
