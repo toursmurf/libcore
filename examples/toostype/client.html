@@ -137,13 +137,14 @@
     let joinedPlayerId = null;
     let pendingPlayerId = null;
     let currentSentenceId = null;
-    const activeSentences = new Map(); // sentenceId -> sentence data
+    let submissionPending = false;
+    const activeSentences = new Map();
 
     function logMessage(direction, text) {
         const box = document.getElementById('logBox');
         const time = new Date().toISOString().substring(11, 19);
 
-        // 🔴 [마감] XSS 및 스크립트 인젝션 원천 차단형 textContent 로깅
+        // XSS 방어형 textContent 로깅
         const line = document.createElement('div');
         line.textContent = `[${time}] ${direction} ${text}`;
         box.appendChild(line);
@@ -152,6 +153,31 @@
 
     function clearLogs() {
         document.getElementById('logBox').innerHTML = '';
+    }
+
+    // 🔴 [마감 패치] 재접속 및 초기화 시 UI 잔재를 말끔히 지워주는 청소 함수
+    function resetGameUI() {
+        activeSentences.clear();
+        joinedPlayerId = null;
+        pendingPlayerId = null;
+        currentSentenceId = null;
+        submissionPending = false;
+
+        const input = document.getElementById('typingInput');
+        input.value = '';
+        input.disabled = true;
+
+        document.getElementById('playerId').disabled = false;
+        document.getElementById('gameState').textContent = 'IDLE';
+        document.getElementById('countdownArea').textContent = '';
+        document.getElementById('sentenceArea').textContent = '서버 연결 및 참가 대기 중...';
+
+        document.getElementById('myScore').textContent = '0';
+        document.getElementById('myWpm').textContent = '0';
+
+        const result = document.getElementById('lastResult');
+        result.textContent = '-';
+        result.style.color = '#aaa';
     }
 
     function toggleConnect() {
@@ -170,10 +196,16 @@
         if (!url) return;
 
         logMessage('SYS', `Connecting to ${url}...`);
-        ws = new WebSocket(url);
+
+        // 연결 전 UI 선행 초기화
+        resetGameUI();
+
+        const socket = new WebSocket(url);
+        ws = socket;
         btn.disabled = true;
 
-        ws.onopen = () => {
+        socket.onopen = () => {
+            if (ws !== socket) return;
             btn.disabled = false;
             btn.innerText = 'DISCONNECT';
             document.getElementById('connStatus').innerText = 'CONNECTED';
@@ -181,32 +213,27 @@
             logMessage('SYS', 'WebSocket Connected.');
         };
 
-        ws.onclose = () => {
+        socket.onclose = () => {
+            if (ws !== socket) return;
             document.getElementById('connStatus').innerText = 'DISCONNECTED';
             document.getElementById('connStatus').style.color = 'red';
             btn.innerText = 'CONNECT';
             btn.disabled = false;
 
-            // 🔴 [마감] 연결 종료 시 모든 세션 상태 및 인풋 초기화
-            document.getElementById('typingInput').disabled = true;
-            document.getElementById('playerId').disabled = false;
-            document.getElementById('gameState').innerText = 'IDLE';
-
-            activeSentences.clear();
-            currentSentenceId = null;
-            joinedPlayerId = null;
-            pendingPlayerId = null;
+            resetGameUI();
 
             logMessage('SYS', 'WebSocket Disconnected.');
             ws = null;
         };
 
-        ws.onerror = () => {
+        socket.onerror = () => {
+            if (ws !== socket) return;
             btn.disabled = false;
             logMessage('ERR', 'WebSocket Error occurred.');
         };
 
-        ws.onmessage = (event) => {
+        socket.onmessage = (event) => {
+            if (ws !== socket) return;
             logMessage('RX', event.data);
             try {
                 const msg = JSON.parse(event.data);
@@ -256,9 +283,17 @@
                 document.getElementById('playerId').disabled = true;
             }
 
+            if (msg.state === 'WAITING') {
+                document.getElementById('sentenceArea').innerText = '참가 완료! 다른 플레이어의 READY를 기다리는 중...';
+                document.getElementById('lastResult').innerText = '-';
+                document.getElementById('lastResult').style.color = '#aaa';
+                document.getElementById('countdownArea').innerText = '';
+                document.getElementById('typingInput').value = '';
+                document.getElementById('typingInput').disabled = true;
+            }
+
             if (msg.state === 'PLAYING') {
                 document.getElementById('countdownArea').innerText = '';
-                // 문장이 DROP 되기 전까지는 인풋 대기
                 document.getElementById('typingInput').disabled = true;
             }
         }
@@ -267,9 +302,9 @@
             document.getElementById('countdownArea').innerText = `COUNTDOWN: ${msg.durationMs}ms`;
         }
         else if (msg.type === 'SENTENCE_DROP') {
-            // 🔴 [마감] Map에 적재 및 안전한 currentSentenceId 갱신
             activeSentences.set(String(msg.sentenceId), msg);
             currentSentenceId = String(msg.sentenceId);
+            submissionPending = false;
 
             document.getElementById('sentenceArea').innerText = `[ID: ${msg.sentenceId}] ${msg.text}`;
 
@@ -280,6 +315,9 @@
         }
         else if (msg.type === 'SENTENCE_RESULT') {
             const result = msg.result;
+            const input = document.getElementById('typingInput');
+
+            submissionPending = false;
             document.getElementById('lastResult').innerText = result;
 
             if (result === 'CORRECT') {
@@ -293,7 +331,6 @@
 
                 if (String(currentSentenceId) === String(msg.sentenceId)) {
                     currentSentenceId = null;
-                    const input = document.getElementById('typingInput');
                     input.value = '';
                     input.disabled = true;
                 }
@@ -303,10 +340,14 @@
                 } else if (result === 'EXPIRED') {
                     document.getElementById('sentenceArea').innerText = '시간 초과! 다음 문장 대기 중...';
                 }
+            } else {
+                if (currentSentenceId !== null) {
+                    input.disabled = false;
+                    input.focus();
+                }
             }
         }
         else if (msg.type === 'SCORE_UPDATE') {
-            //브로드캐스트된 점수 중 내 플레이어 ID(joinedPlayerId)와 일치하는 것만 필터링 반영!
             if (joinedPlayerId !== null && String(msg.playerId) === String(joinedPlayerId)) {
                 document.getElementById('myScore').innerText = msg.totalScore;
                 document.getElementById('myWpm').innerText = msg.wpm;
@@ -317,6 +358,7 @@
             document.getElementById('sentenceArea').innerText = `게임 종료! (이유: ${msg.reason || 'NORMAL'})`;
             document.getElementById('typingInput').disabled = true;
             currentSentenceId = null;
+            submissionPending = false;
         }
     }
 
@@ -333,14 +375,29 @@
             return;
         }
 
+        if (submissionPending) {
+            logMessage('SYS', 'Submission already pending.');
+            return;
+        }
+
         const payload = {
             type: "TYPE_RESULT",
             sentenceId: String(currentSentenceId),
             input: event.target.value
         };
         const json = JSON.stringify(payload);
-        ws.send(json);
-        logMessage('TX', json);
+
+        submissionPending = true;
+        event.target.disabled = true;
+
+        try {
+            ws.send(json);
+            logMessage('TX', json);
+        } catch (e) {
+            submissionPending = false;
+            event.target.disabled = false;
+            logMessage('ERR', 'WebSocket send failed: ' + e.message);
+        }
     }
 </script>
 
