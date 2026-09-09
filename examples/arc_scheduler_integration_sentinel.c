@@ -66,11 +66,6 @@ int main() {
     }
 
     RELEASE((Object*)pulse);
-    RELEASE((Object*)sched);
-    RELEASE((Object*)global_loop);
-    RELEASE((Object*)pool);
-    RELEASE((Object*)logger);
-
     printf("   [CLEANUP] Sentinel safely deactivated. BAAAM!!!\n");
 
     // 1. 스케줄러를 먼저 파괴 (내부에서 pool과 loop를 RELEASE함)
@@ -81,6 +76,9 @@ int main() {
     if (pool)  RELEASE((Object*)pool);
 
     // 3. 로거 소각
-    if (logger) RELEASE((Object*)logger);
+    if (logger) {
+        RELEASE((Object*)logger);
+        logger = NULL;
+    }
     return 0;
 }
