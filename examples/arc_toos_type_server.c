@@ -92,7 +92,7 @@ int main() {
         fprintf(stderr, "[FATAL] Config allocation failed\n");
         return exit_code;
     }
-    cfg->load(cfg, "config.ini");
+    cfg->load(cfg, "examples/toostype/app.conf");
 
     int port = cfg->getInt(cfg, "port", 8080);
     const char* base_dir = cfg->getString(cfg, "base_dir", ".");
