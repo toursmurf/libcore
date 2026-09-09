@@ -1,0 +1,21 @@
+2026-09-09 21:50:47	[SQLITE]	[@127.0.0.1:3306]	[INFO]	SQLite Connected: :memory:	CONNECT
+2026-09-09 21:50:47	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	CREATE TABLE IF NOT EXISTS toos_type_categories (id INTEGER PRIMARY KEY, code TEXT, name_ko TEXT, name_en TEXT, sort_order INTEGER, enabled INTEGER);
+2026-09-09 21:50:47	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	CREATE TABLE IF NOT EXISTS toos_type_sentences (id INTEGER PRIMARY KEY, category_id INTEGER, difficulty_ko INTEGER, difficulty_en INTEGER, ko_text TEXT, en_text TEXT, enabled INTEGER);
+2026-09-09 21:50:47	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	INSERT INTO toos_type_categories (id, code, name_ko, name_en, sort_order, enabled) VALUES (1, 'BASIC', '기본문장', 'Basic', 1, 1);
+2026-09-09 21:50:47	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	INSERT INTO toos_type_sentences (id, category_id, difficulty_ko, difficulty_en, ko_text, en_text, enabled) VALUES (101, 1, 1, 1, '안녕, 세상아!', 'Hello, World!', 1);
+2026-09-09 21:50:47	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	INSERT INTO toos_type_sentences (id, category_id, difficulty_ko, difficulty_en, ko_text, en_text, enabled) VALUES (102, 1, 1, 1, '타자 연습 시작합니다.', 'Typing practice starts now.', 1);
+2026-09-09 21:50:47	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	INSERT INTO toos_type_sentences (id, category_id, difficulty_ko, difficulty_en, ko_text, en_text, enabled) VALUES (103, 1, 1, 1, '포비 고문님 만세.', 'Long live Poby.', 1);
+2026-09-09 21:52:01	[SQLITE]	[@127.0.0.1:3306]	[INFO]	SQLite Connected: :memory:	CONNECT
+2026-09-09 21:52:01	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	CREATE TABLE IF NOT EXISTS toos_type_categories (id INTEGER PRIMARY KEY, code TEXT, name_ko TEXT, name_en TEXT, sort_order INTEGER, enabled INTEGER);
+2026-09-09 21:52:01	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	CREATE TABLE IF NOT EXISTS toos_type_sentences (id INTEGER PRIMARY KEY, category_id INTEGER, difficulty_ko INTEGER, difficulty_en INTEGER, ko_text TEXT, en_text TEXT, enabled INTEGER);
+2026-09-09 21:52:01	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	INSERT INTO toos_type_categories (id, code, name_ko, name_en, sort_order, enabled) VALUES (1, 'BASIC', '기본문장', 'Basic', 1, 1);
+2026-09-09 21:52:01	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	INSERT INTO toos_type_sentences (id, category_id, difficulty_ko, difficulty_en, ko_text, en_text, enabled) VALUES (101, 1, 1, 1, '안녕, 세상아!', 'Hello, World!', 1);
+2026-09-09 21:52:01	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	INSERT INTO toos_type_sentences (id, category_id, difficulty_ko, difficulty_en, ko_text, en_text, enabled) VALUES (102, 1, 1, 1, '타자 연습 시작합니다.', 'Typing practice starts now.', 1);
+2026-09-09 21:52:01	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	INSERT INTO toos_type_sentences (id, category_id, difficulty_ko, difficulty_en, ko_text, en_text, enabled) VALUES (103, 1, 1, 1, '포비 고문님 만세.', 'Long live Poby.', 1);
+2026-09-09 22:03:06	[SQLITE]	[@127.0.0.1:3306]	[INFO]	SQLite Connected: :memory:	CONNECT
+2026-09-09 22:03:06	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	CREATE TABLE IF NOT EXISTS toos_type_categories (id INTEGER PRIMARY KEY, code TEXT, name_ko TEXT, name_en TEXT, sort_order INTEGER, enabled INTEGER);
+2026-09-09 22:03:06	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	CREATE TABLE IF NOT EXISTS toos_type_sentences (id INTEGER PRIMARY KEY, category_id INTEGER, difficulty_ko INTEGER, difficulty_en INTEGER, ko_text TEXT, en_text TEXT, enabled INTEGER);
+2026-09-09 22:03:06	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	INSERT INTO toos_type_categories (id, code, name_ko, name_en, sort_order, enabled) VALUES (1, 'BASIC', '기본문장', 'Basic', 1, 1);
+2026-09-09 22:03:06	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	INSERT INTO toos_type_sentences (id, category_id, difficulty_ko, difficulty_en, ko_text, en_text, enabled) VALUES (101, 1, 1, 1, '안녕, 세상아!', 'Hello, World!', 1);
+2026-09-09 22:03:06	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	INSERT INTO toos_type_sentences (id, category_id, difficulty_ko, difficulty_en, ko_text, en_text, enabled) VALUES (102, 1, 1, 1, '타자 연습 시작합니다.', 'Typing practice starts now.', 1);
+2026-09-09 22:03:06	[SQLITE]	[@127.0.0.1:3306]	[INFO]	QUERY_OK	INSERT INTO toos_type_sentences (id, category_id, difficulty_ko, difficulty_en, ko_text, en_text, enabled) VALUES (103, 1, 1, 1, '포비 고문님 만세.', 'Long live Poby.', 1);

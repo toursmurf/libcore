@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>ToosType v0.3 - Protocol Harness</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #00ffcc;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            width: 700px;
+            border: 2px solid #00ffcc;
+            border-radius: 8px;
+            padding: 20px;
+            background-color: #1e1e1e;
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.2);
+        }
+        h2 { text-align: center; margin-top: 0; color: #ff5555; }
+        .section {
+            margin-bottom: 15px;
+            padding: 10px;
+            border: 1px dashed #444;
+            border-radius: 4px;
+        }
+        label { font-weight: bold; margin-right: 5px; }
+        input[type="text"] {
+            background-color: #111;
+            border: 1px solid #00ffcc;
+            color: #fff;
+            padding: 5px;
+            width: 180px;
+        }
+        input[type="text"]:disabled {
+            border-color: #555;
+            color: #777;
+        }
+        button {
+            background-color: #00ffcc;
+            color: #121212;
+            border: none;
+            padding: 6px 12px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        button:hover { background-color: #00b386; }
+        button:disabled { background-color: #555; cursor: not-allowed; }
+        .game-screen {
+            text-align: center;
+            padding: 20px;
+            background-color: #0a0a0a;
+            border: 2px solid #ff5555;
+            border-radius: 5px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .countdown { font-size: 24px; color: #ffaa00; font-weight: bold; }
+        .sentence-text { font-size: 20px; color: #ffffff; margin: 10px 0; }
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        .log-box {
+            width: 100%;
+            height: 150px;
+            background-color: #000;
+            border: 1px solid #444;
+            color: #00ff00;
+            font-size: 12px;
+            overflow-y: scroll;
+            padding: 5px;
+            box-sizing: border-box;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>TOOS TYPE v0.3 PROTOCOL HARNESS</h2>
+
+    <!-- Connection & Session -->
+    <div class="section">
+        <div>
+            <label>Server:</label>
+            <input type="text" id="serverUrl" value="ws://127.0.0.1:8888/ws">
+            <button id="connectBtn" onclick="toggleConnect()">CONNECT</button>
+            <span id="connStatus" style="color: red; margin-left: 10px;">DISCONNECTED</span>
+        </div>
+        <div style="margin-top: 8px;">
+            <label>Player ID:</label>
+            <input type="text" id="playerId" value="1001">
+            <button onclick="sendJoin()">JOIN</button>
+            <button onclick="sendReady()" style="background-color: #ffaa00; margin-left: 10px;">READY</button>
+        </div>
+    </div>
+
+    <!-- State & Screen -->
+    <div class="section">
+        <div><strong>State:</strong> <span id="gameState" style="color: #ffaa00;">IDLE</span></div>
+        <div class="game-screen" style="margin-top: 10px;">
+            <div id="countdownArea" class="countdown"></div>
+            <div id="sentenceArea" class="sentence-text">서버 연결 및 참가 대기 중...</div>
+            <div style="margin-top: 10px;">
+                <input type="text" id="typingInput" placeholder="문장을 입력 후 Enter" style="width: 350px;" disabled onkeydown="handleTyping(event)">
+            </div>
+        </div>
+        <div class="stats">
+            <div>Score: <span id="myScore">0</span></div>
+            <div>WPM: <span id="myWpm">0</span></div>
+            <div>Result: <span id="lastResult" style="color: #aaa;">-</span></div>
+        </div>
+    </div>
+
+    <!-- WebSocket Logs -->
+    <div class="section">
+        <label>WebSocket Log:</label>
+        <button onclick="clearLogs()" style="float: right; font-size: 10px; padding: 2px 5px;">Clear</button>
+        <div id="logBox" class="log-box" style="margin-top: 5px;"></div>
+    </div>
+</div>
+
+<script>
+    let ws = null;
+    let joinedPlayerId = null;
+    let pendingPlayerId = null;
+    let currentSentenceId = null;
+    const activeSentences = new Map(); // sentenceId -> sentence data
+
+    function logMessage(direction, text) {
+        const box = document.getElementById('logBox');
+        const time = new Date().toISOString().substring(11, 19);
+
+        // 🔴 [마감] XSS 및 스크립트 인젝션 원천 차단형 textContent 로깅
+        const line = document.createElement('div');
+        line.textContent = `[${time}] ${direction} ${text}`;
+        box.appendChild(line);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    function clearLogs() {
+        document.getElementById('logBox').innerHTML = '';
+    }
+
+    function toggleConnect() {
+        const btn = document.getElementById('connectBtn');
+        if (ws) {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.close();
+                return;
+            }
+            if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.CLOSING) {
+                return;
+            }
+        }
+
+        const url = document.getElementById('serverUrl').value.trim();
+        if (!url) return;
+
+        logMessage('SYS', `Connecting to ${url}...`);
+        ws = new WebSocket(url);
+        btn.disabled = true;
+
+        ws.onopen = () => {
+            btn.disabled = false;
+            btn.innerText = 'DISCONNECT';
+            document.getElementById('connStatus').innerText = 'CONNECTED';
+            document.getElementById('connStatus').style.color = '#00ffcc';
+            logMessage('SYS', 'WebSocket Connected.');
+        };
+
+        ws.onclose = () => {
+            document.getElementById('connStatus').innerText = 'DISCONNECTED';
+            document.getElementById('connStatus').style.color = 'red';
+            btn.innerText = 'CONNECT';
+            btn.disabled = false;
+
+            // 🔴 [마감] 연결 종료 시 모든 세션 상태 및 인풋 초기화
+            document.getElementById('typingInput').disabled = true;
+            document.getElementById('playerId').disabled = false;
+            document.getElementById('gameState').innerText = 'IDLE';
+
+            activeSentences.clear();
+            currentSentenceId = null;
+            joinedPlayerId = null;
+            pendingPlayerId = null;
+
+            logMessage('SYS', 'WebSocket Disconnected.');
+            ws = null;
+        };
+
+        ws.onerror = () => {
+            btn.disabled = false;
+            logMessage('ERR', 'WebSocket Error occurred.');
+        };
+
+        ws.onmessage = (event) => {
+            logMessage('RX', event.data);
+            try {
+                const msg = JSON.parse(event.data);
+                handleServerMessage(msg);
+            } catch (e) {
+                logMessage('ERR', 'Failed to parse JSON: ' + e.message);
+            }
+        };
+    }
+
+    function sendJoin() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            alert('WebSocket is not connected.');
+            return;
+        }
+        const pid = document.getElementById('playerId').value.trim();
+        if (!/^[1-9][0-9]*$/.test(pid)) {
+            alert('Player ID는 1 이상의 10진수 정수여야 합니다.');
+            return;
+        }
+
+        pendingPlayerId = pid;
+        const payload = { type: "JOIN_GAME", playerId: pid };
+        const json = JSON.stringify(payload);
+        ws.send(json);
+        logMessage('TX', json);
+    }
+
+    function sendReady() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            alert('WebSocket is not connected.');
+            return;
+        }
+        const payload = { type: "READY" };
+        const json = JSON.stringify(payload);
+        ws.send(json);
+        logMessage('TX', json);
+    }
+
+    function handleServerMessage(msg) {
+        if (msg.type === 'GAME_STATE') {
+            document.getElementById('gameState').innerText = msg.state;
+
+            if (msg.state === 'WAITING' && pendingPlayerId !== null) {
+                joinedPlayerId = pendingPlayerId;
+                pendingPlayerId = null;
+                document.getElementById('playerId').disabled = true;
+            }
+
+            if (msg.state === 'PLAYING') {
+                document.getElementById('countdownArea').innerText = '';
+                // 문장이 DROP 되기 전까지는 인풋 대기
+                document.getElementById('typingInput').disabled = true;
+            }
+        }
+        else if (msg.type === 'COUNTDOWN') {
+            document.getElementById('gameState').innerText = 'COUNTDOWN';
+            document.getElementById('countdownArea').innerText = `COUNTDOWN: ${msg.durationMs}ms`;
+        }
+        else if (msg.type === 'SENTENCE_DROP') {
+            // 🔴 [마감] Map에 적재 및 안전한 currentSentenceId 갱신
+            activeSentences.set(String(msg.sentenceId), msg);
+            currentSentenceId = String(msg.sentenceId);
+
+            document.getElementById('sentenceArea').innerText = `[ID: ${msg.sentenceId}] ${msg.text}`;
+
+            const input = document.getElementById('typingInput');
+            input.value = '';
+            input.disabled = false;
+            input.focus();
+        }
+        else if (msg.type === 'SENTENCE_RESULT') {
+            const result = msg.result;
+            document.getElementById('lastResult').innerText = result;
+
+            if (result === 'CORRECT') {
+                document.getElementById('lastResult').style.color = '#00ffcc';
+            } else {
+                document.getElementById('lastResult').style.color = '#ff5555';
+            }
+
+            if (result === 'CORRECT' || result === 'EXPIRED' || result === 'ALREADY_CLEARED') {
+                activeSentences.delete(String(msg.sentenceId));
+
+                if (String(currentSentenceId) === String(msg.sentenceId)) {
+                    currentSentenceId = null;
+                    const input = document.getElementById('typingInput');
+                    input.value = '';
+                    input.disabled = true;
+                }
+
+                if (result === 'CORRECT') {
+                    document.getElementById('sentenceArea').innerText = '정답! 다음 문장 대기 중...';
+                } else if (result === 'EXPIRED') {
+                    document.getElementById('sentenceArea').innerText = '시간 초과! 다음 문장 대기 중...';
+                }
+            }
+        }
+        else if (msg.type === 'SCORE_UPDATE') {
+            //브로드캐스트된 점수 중 내 플레이어 ID(joinedPlayerId)와 일치하는 것만 필터링 반영!
+            if (joinedPlayerId !== null && String(msg.playerId) === String(joinedPlayerId)) {
+                document.getElementById('myScore').innerText = msg.totalScore;
+                document.getElementById('myWpm').innerText = msg.wpm;
+            }
+        }
+        else if (msg.type === 'GAME_OVER') {
+            document.getElementById('gameState').innerText = 'GAME_OVER';
+            document.getElementById('sentenceArea').innerText = `게임 종료! (이유: ${msg.reason || 'NORMAL'})`;
+            document.getElementById('typingInput').disabled = true;
+            currentSentenceId = null;
+        }
+    }
+
+    function handleTyping(event) {
+        if (event.key !== 'Enter') return;
+
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            logMessage('ERR', 'WebSocket is not connected.');
+            return;
+        }
+
+        if (currentSentenceId === null) {
+            logMessage('SYS', 'No active sentence to type.');
+            return;
+        }
+
+        const payload = {
+            type: "TYPE_RESULT",
+            sentenceId: String(currentSentenceId),
+            input: event.target.value
+        };
+        const json = JSON.stringify(payload);
+        ws.send(json);
+        logMessage('TX', json);
+    }
+</script>
+
+</body>
+</html>
