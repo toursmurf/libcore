@@ -28,18 +28,19 @@ typedef struct EventLoop {
 
     /* OS별 내부 심장(epoll/kqueue/IOCP)과 연결되는 비밀 통로 */
     struct EventLoopImpl* impl;
-		/* 편의 래퍼 API */
-		int  (*addTimer)    (struct EventLoop* self, Timer* timer);
+
+    /* [계약] addTimer / removeTimer / Timer.start / Timer.stop 은 반드시
+     *         이 EventLoop를 구동하는 단일 Owner Thread 내부에서만 호출해야 합니다. (Thread-affinity) */
+    int  (*addTimer)    (struct EventLoop* self, Timer* timer);
     int  (*removeTimer) (struct EventLoop* self, Timer* timer);
-    int  (*addSocket)(struct EventLoop* self, Socket* sock, uint32_t mask);
-    int  (*delSocket)(struct EventLoop* self, Socket* sock);
-    void (*poll)(struct EventLoop* self, int timeout_ms);
+    int  (*addSocket)   (struct EventLoop* self, Socket* sock, uint32_t mask);
+    int  (*delSocket)   (struct EventLoop* self, Socket* sock);
+    void (*poll)        (struct EventLoop* self, int timeout_ms);
     void (*stop)        (struct EventLoop* self);
-    void (*deferRelease)(struct EventLoop* self, Object* obj); /* 순회 문맥 안전 지연 해제 */
+    void (*deferRelease)(struct EventLoop* self, Object* obj);
 
 } EventLoop;
 
-/* 공용 API 프로토타입 (외부 노출용) */
 EventLoop* event_loop_create(void);
 void       event_loop_destroy(EventLoop* loop);
 int        event_loop_run(EventLoop* loop);

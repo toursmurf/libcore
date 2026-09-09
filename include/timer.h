@@ -15,9 +15,11 @@ struct Timer {
     bool        repeating;      // 반복 여부
     long        interval_ms;    // 실행 간격 (ms)
     TimerCallback callback;     // 실행될 로직
-    void* user_data;      // [BORROWED] 콜백 인자
+    void*       user_data;      // [BORROWED] 콜백 인자
     bool        active;         // 현재 동작 상태
     char        name[64];       // 식별용 이름
+
+    void*       platform_data;  // [BORROWED] EventLoop 포인터 보관용 (내부 용도)
 
     // [VTable] 인터페이스
     bool (*start)   (Timer* self);

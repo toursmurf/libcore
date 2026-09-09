@@ -3,7 +3,7 @@
 
 #include "event_loop.h"
 #include "socket_base.h"
-#include "object.h"   /* Object* — defer_pending 배열 타입 */
+#include "object.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -13,13 +13,9 @@
 #define EVENT_CLOSE  0x08u
 
 typedef enum {
-    OP_READ,
-    OP_WRITE,
-    OP_ACCEPT,
-    OP_CONNECT
+    OP_READ, OP_WRITE, OP_ACCEPT, OP_CONNECT
 } AsyncOperation;
 
-/* OS별 비동기 I/O 코어 스위칭 체계 */
 #if defined(_WIN32) || defined(_WIN64)
     #define LIBCORE_USE_IOCP
     #include <winsock2.h>
@@ -37,10 +33,13 @@ typedef enum {
     #include <sys/epoll.h>
 #endif
 
-/* V1.x SocketContext */
 typedef struct {
+    Object base;
+    int is_timer;
     Socket* sock;
+    Timer* timer;
     void* platform_data;
+    uint32_t registered_mask;
 
 #ifdef LIBCORE_USE_IOCP
     int pending_io;
@@ -48,8 +47,9 @@ typedef struct {
 #endif
 } SocketContext;
 
-/* V1.x LibcoreEvent */
 typedef struct {
+    int is_timer;
+    Timer* timer;
     SocketContext* ctx;
     uint32_t mask;
     AsyncOperation operation;
@@ -58,16 +58,6 @@ typedef struct {
     uint64_t timestamp_ms;
 } LibcoreEvent;
 
-#ifdef LIBCORE_USE_IOCP
-typedef struct {
-    WSAOVERLAPPED overlapped;
-    WSABUF buffer;
-    SocketContext* socket_ctx;
-    AsyncOperation operation;
-} IocpContext;
-#endif
-
-/* 불투명 포인터용 실제 구현체 (fd 매핑 테이블 내장) */
 #define DEFER_CAP 64
 
 struct EventLoopImpl {
@@ -80,17 +70,23 @@ struct EventLoopImpl {
 #endif
     SocketContext* ctx_map[65536];
 
-    /* 지연 해제 큐 — 인스턴스별 격리 (다중 Reactor 스레드 안전) */
-    Object* defer_pending[DEFER_CAP];
-    int     defer_count;
+    /* 동적 할당되는 지연 해제 큐 (Overflow 방어) */
+    Object** defer_pending;
+    int      defer_count;
+    int      defer_capacity;
+
+    Timer* active_timers[1024];
+    int    active_timer_count;
 };
 
-/* 5대 공통 백엔드 인터페이스 */
 int  event_backend_init(EventLoop* loop);
 int  event_backend_add(EventLoop* loop, Socket* sock, uint32_t mask);
 int  event_backend_modify(EventLoop* loop, Socket* sock, uint32_t mask);
 int  event_backend_remove(EventLoop* loop, Socket* sock);
 int  event_backend_wait(EventLoop* loop, LibcoreEvent* events, int max_events, int timeout_ms);
 void event_backend_destroy(EventLoop* loop);
+
+int event_backend_add_timer(EventLoop* loop, Timer* timer);
+int event_backend_remove_timer(EventLoop* loop, Timer* timer);
 
 #endif /* EVENT_LOOP_INTERNAL_H */
