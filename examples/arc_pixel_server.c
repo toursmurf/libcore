@@ -21,7 +21,6 @@
 #include <signal.h>
 
 static HttpServer*  g_server = NULL;
-GameRoom*           g_active_room = NULL;
 
 static void on_signal(int sig) {
     (void)sig;
@@ -110,9 +109,19 @@ int main(void) {
     LOG_INFO(logger, "DB 설정 로드 완료 (초기 기본값) - 캔버스: %dx%d", board_width, board_height);
     RELEASE((Object*)db);
 
-    g_active_room = new_GameRoom(1, (uint16_t)board_width, (uint16_t)board_height);
-    if (!g_active_room) {
+    EventLoop* loop = event_loop_create();
+    if (!loop) {
+        LOG_ERROR(logger, "EventLoop 생성 실패");
+        RELEASE((Object*)logger);
+        logger = NULL;
+        RELEASE((Object*)cfg);
+        return 1;
+    }
+
+    GameRoom* active_room = new_GameRoom(loop, 1, (uint16_t)board_width, (uint16_t)board_height);
+    if (!active_room) {
         LOG_ERROR(logger, "GameRoom 생성 실패");
+        RELEASE((Object*)loop);
         RELEASE((Object*)logger);
         logger = NULL;
         RELEASE((Object*)cfg);
@@ -122,7 +131,8 @@ int main(void) {
     Router* router = new_Router(NULL);
     if (!router) {
         LOG_ERROR(logger, "Router 생성 실패");
-        RELEASE((Object*)g_active_room);
+        RELEASE((Object*)loop);
+        RELEASE((Object*)active_room);
         RELEASE((Object*)logger);
         logger = NULL;
         RELEASE((Object*)cfg);
@@ -130,23 +140,12 @@ int main(void) {
     }
     router->GET(router, "/ws", WsUpgrade_handler);
 
-    EventLoop* loop = event_loop_create();
-    if (!loop) {
-        LOG_ERROR(logger, "EventLoop 생성 실패");
-        RELEASE((Object*)router);
-        RELEASE((Object*)g_active_room);
-        RELEASE((Object*)logger);
-        logger = NULL;
-        RELEASE((Object*)cfg);
-        return 1;
-    }
-
     HttpServer* server = new_HttpServer(loop, router);
     if (!server) {
         LOG_ERROR(logger, "HttpServer 생성 실패");
         RELEASE((Object*)loop);
         RELEASE((Object*)router);
-        RELEASE((Object*)g_active_room);
+        RELEASE((Object*)active_room);
         RELEASE((Object*)logger);
         logger = NULL;
         RELEASE((Object*)cfg);
@@ -154,18 +153,27 @@ int main(void) {
     }
     g_server = server;
 
-    server->on_ws_open    = GameRoomHandler_on_ws_open;
-    server->on_ws_message = GameRoomHandler_on_ws_message;
-    server->on_ws_close   = GameRoomHandler_on_ws_close;
-
-    if (server->listen(server, port) != 0) {
-        LOG_ERROR(logger, "포트 %d 바인딩 실패", port);
-        GameRoomHandler_cleanup_sessions(server);
+    if (!GameRoomHandler_bind(server, active_room)) {
+        LOG_ERROR(logger, "GameRoomHandler 바인딩 실패");
         g_server = NULL;
         RELEASE((Object*)server);
         RELEASE((Object*)loop);
         RELEASE((Object*)router);
-        RELEASE((Object*)g_active_room);
+        RELEASE((Object*)active_room);
+        RELEASE((Object*)logger);
+        logger = NULL;
+        RELEASE((Object*)cfg);
+        return 1;
+    }
+
+    if (server->listen(server, port) != 0) {
+        LOG_ERROR(logger, "포트 %d 바인딩 실패", port);
+        GameRoomHandler_unbind(server, active_room);
+        g_server = NULL;
+        RELEASE((Object*)server);
+        RELEASE((Object*)loop);
+        RELEASE((Object*)router);
+        RELEASE((Object*)active_room);
         RELEASE((Object*)logger);
         logger = NULL;
         RELEASE((Object*)cfg);
@@ -179,13 +187,13 @@ int main(void) {
     event_loop_run(loop);
 
     printf("\n🛑 Shutting down ToosPixel Server gracefully...\n");
-    GameRoomHandler_cleanup_sessions(server);
+    GameRoomHandler_unbind(server, active_room);
     g_server = NULL;
 
     RELEASE((Object*)server);
     RELEASE((Object*)loop);
     RELEASE((Object*)router);
-    RELEASE((Object*)g_active_room);
+    RELEASE((Object*)active_room);
     RELEASE((Object*)logger);
     logger = NULL;
     RELEASE((Object*)cfg);

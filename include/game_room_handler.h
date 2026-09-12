@@ -20,11 +20,8 @@ struct PlayerSession {
 
 PlayerSession* new_PlayerSession(GameRoom *room, uint64_t user_id);
 
-void GameRoomHandler_on_ws_message(HttpConnection *conn, const char *msg, size_t len);
-void GameRoomHandler_on_ws_open(HttpConnection *conn);
-void GameRoomHandler_on_ws_close(HttpConnection *conn);
-void GameRoomHandler_cleanup_sessions(HttpServer *server);
-void GameRoomHandler_on_game_over(GameRoom *room, HttpServer *server);
+bool GameRoomHandler_bind(HttpServer *server, GameRoom *room);
+void GameRoomHandler_unbind(HttpServer *server, GameRoom *room);
 
 #ifdef __cplusplus
 }

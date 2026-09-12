@@ -3,7 +3,7 @@
 
 #include "object.h"
 #include <stdint.h>
-#include <stdbool.h>
+/* 불필요한 <stdbool.h> 제거 */
 
 #ifdef __cplusplus
 extern "C" {
@@ -16,7 +16,6 @@ typedef enum {
     TEAM_BLUE  = 2
 } PixelTeam;
 
-/* Paint 결과 (v0.2 규격) */
 typedef enum {
     PIXEL_PAINT_ERROR     = -1,  /* 범위 초과 등 에러 */
     PIXEL_PAINT_UNCHANGED =  0,  /* 같은 팀 → seq 증가 X, broadcast X */
@@ -36,11 +35,15 @@ struct PixelBoard {
     uint32_t  red_score;
     uint32_t  blue_score;
     uint32_t  empty_count;    /* 불변식 유지용: R+B+E = W*H */
-    uint64_t  sequence;       /* Board State Version */
+
+    uint64_t  sequence;
 };
 
 /* API */
 PixelBoard* new_PixelBoard(uint16_t width, uint16_t height); /* [OWNED] */
+
+/* 보드 상태만 완전히 초기화 (메모리 재사용, sequence 단조 증가) */
+void PixelBoard_clear(PixelBoard *self);
 
 PixelPaintResult PixelBoard_paint(PixelBoard *self, uint16_t x, uint16_t y, PixelTeam team);
 PixelTeam PixelBoard_get(PixelBoard *self, uint16_t x, uint16_t y);

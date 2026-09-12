@@ -52,6 +52,32 @@ PixelBoard* new_PixelBoard(uint16_t width, uint16_t height) {
 }
 
 /* =========================================================
+   보드 초기화 (RESET 명령 시 호출)
+   ========================================================= */
+void PixelBoard_clear(PixelBoard *self) {
+    if (!self || !self->pixels) {
+        return;
+    }
+
+    size_t total_pixels = (size_t)self->width * (size_t)self->height;
+
+    /* 캔버스를 TEAM_EMPTY 로 밀어버리기 */
+    memset(self->pixels, TEAM_EMPTY, total_pixels);
+
+    /* 점수 불변식 초기화 */
+    self->red_score   = 0;
+    self->blue_score  = 0;
+    self->empty_count = (uint32_t)total_pixels;
+
+    /*
+     * Board state version must never move backwards
+     * during the lifetime of this PixelBoard.
+     * Clear itself is a state change.
+     */
+    self->sequence++;
+}
+
+/* =========================================================
    상태 변경 및 조회 API
    ========================================================= */
 PixelPaintResult PixelBoard_paint(PixelBoard *self, uint16_t x, uint16_t y, PixelTeam team) {
@@ -109,7 +135,7 @@ void PixelBoard_snapshot(PixelBoard *self, uint8_t *out, uint64_t *out_seq) {
     /* 현재 버전 저장 */
     *out_seq = self->sequence;
 
-    /* 캔버스 전체 복사 (256KiB) */
+    /* 캔버스 전체 복사 */
     size_t total_pixels = (size_t)self->width * self->height;
     memcpy(out, self->pixels, total_pixels);
 }
