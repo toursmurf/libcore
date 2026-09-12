@@ -7,16 +7,20 @@ bin/
 # DB 설정
 dbconfig.conf
 examples/board/app.conf
+examples/toospixel/app.conf
 
 # 런타임 산출물
 examples/board/board.db
 examples/board/uploads/
 logs/
+log/
 
 # macOS
 .DS_Store
 .DS_Store?
-
+*.conf
+app.conf
+*.ini
 # 에디터
 *.swp
 *.swo
