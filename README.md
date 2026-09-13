@@ -1,7 +1,7 @@
 # libcore — C Server Runtime Framework
 
-> **EventLoop + ThreadPool 기반, C 서버를 100줄로.**
-> **Build a C server in 100 lines with EventLoop + ThreadPool.**
+> **EventLoop + ThreadPool 기반, C 서버를 100줄로.**  
+> **Build a C server in ~100 lines with EventLoop + ThreadPool.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Valgrind](https://img.shields.io/badge/Valgrind-clean-brightgreen)](/)
@@ -10,41 +10,54 @@
 
 ---
 
-## 한 줄로
+## 한 줄로 / In One Line
 
-```
+```text
 🇰🇷 C99 기반 서버 런타임 프레임워크.
-     EventLoop + ThreadPool + ARC 메모리 관리로
-     고성능 서버를 빠르게 만들 수 있습니다.
+     EventLoop + ThreadPool + 참조 카운팅 메모리 관리로
+     고성능 서버 애플리케이션을 빠르게 만들 수 있습니다.
+
 🇬🇧 A C99 server runtime framework.
-     Build high-performance servers quickly with
-     EventLoop + ThreadPool + ARC memory management.
+     Build high-performance server applications quickly with
+     EventLoop + ThreadPool + reference-counted memory management.
 ```
 
 ---
 
-## 이렇게 씁니다 / This is how you use it
+## 이렇게 씁니다 / This Is How You Use It
 
 ```c
-/* TCP 에코 서버 — 20줄 / TCP Echo Server — 20 lines */
+/* TCP 에코 서버 / TCP Echo Server */
 #include "libcore.h"
 
 static void on_client(Socket* self, void* loop_ptr) {
     char buf[1024];
+
     ssize_t n = self->recv(self, buf, sizeof(buf), NULL, NULL);
-    if (n > 0) self->send(self, buf, n, NULL, 0);
-    else {
-        ((EventLoop*)loop_ptr)->delSocket((EventLoop*)loop_ptr, self);
+
+    if (n > 0) {
+        self->send(self, buf, n, NULL, 0);
+    } else {
+        EventLoop* loop = (EventLoop*)loop_ptr;
+        loop->delSocket(loop, self);
         RELEASE((Object*)self);
     }
 }
 
 static void on_accept(Socket* self, void* loop_ptr) {
     EventLoop* loop = (EventLoop*)loop_ptr;
-    TcpSocket* client = ((TcpSocket*)self)->accept((TcpSocket*)self, NULL, NULL);
+
+    TcpSocket* client =
+        ((TcpSocket*)self)->accept((TcpSocket*)self, NULL, NULL);
+
     if (client) {
         client->base.on_readable = on_client;
         loop->addSocket(loop, (Socket*)client, EV_READ);
+
+        /*
+         * EventLoop owns the registered socket.
+         * Caller releases its own ownership.
+         */
         RELEASE((Object*)client);
     }
 }
@@ -52,11 +65,16 @@ static void on_accept(Socket* self, void* loop_ptr) {
 int main(void) {
     EventLoop* loop   = event_loop_create();
     TcpSocket* server = new_TcpServer("0.0.0.0", 8080);
+
     server->base.on_readable = on_accept;
+
     loop->addSocket(loop, (Socket*)server, EV_READ);
-    loop->run(loop);                          /* 블로킹 / blocking */
+
+    loop->run(loop);  /* blocking */
+
     RELEASE((Object*)server);
     RELEASE((Object*)loop);
+
     return 0;
 }
 ```
@@ -65,61 +83,76 @@ int main(void) {
 
 ## 왜 libcore인가 / Why libcore
 
-```
+```text
 🇰🇷
-C 언어로 서버를 만들 때 반복되는 문제들:
-→ epoll 직접 관리 → 복잡하고 실수하기 쉬움
-→ 스레드 풀 직접 구현 → 매번 같은 코드
-→ 메모리 관리 → free() 타이밍 실수 → 누수
-→ 소켓 추상화 없음 → TCP/UDP/Unix 각각 따로
 
-libcore 는 이 문제들을 해결합니다.
+C 언어로 서버를 만들면 반복해서 만나게 되는 문제들이 있습니다.
+
+→ epoll / kqueue 직접 관리
+→ 소켓 수명과 이벤트 등록 해제 관리
+→ ThreadPool 반복 구현
+→ Timer / Scheduler 구현
+→ free() 타이밍 실수와 메모리 누수
+→ TCP / UDP / Unix / SSL 별도 처리
+→ HTTP / WebSocket / Router 반복 구현
+
+libcore는 이런 반복 작업을 하나의 C99 서버 런타임으로 묶습니다.
+
 
 🇬🇧
-When building servers in C, you face the same problems repeatedly:
-→ Managing epoll directly — complex and error-prone
-→ Implementing thread pools every time — same boilerplate
-→ Memory management — wrong free() timing → leaks
-→ No socket abstraction — TCP/UDP/Unix all separate
 
-libcore solves these problems.
+C server development repeatedly involves the same problems:
+
+→ Managing epoll / kqueue directly
+→ Managing socket lifetime and event registration
+→ Reimplementing thread pools
+→ Implementing timers and schedulers
+→ Memory leaks caused by ownership mistakes
+→ Separate handling for TCP / UDP / Unix / SSL
+→ Reimplementing HTTP / WebSocket / routing layers
+
+libcore brings these components together
+into a reusable C99 server runtime.
 ```
 
 ---
 
 ## 핵심 구성 / Core Components
 
-```
-┌─────────────────────────────────────────────────────┐
-│                   libcore v1.7.2                    │
-├─────────────────────────────────────────────────────┤
-│                                                     │
-│  ┌──────────────┐    ┌──────────────────────────┐   │
-│  │  EventLoop   │◄───│  Socket                  │   │
-│  │  epoll/kqueue│    │  TcpSocket / SslSocket   │   │
-│  │              │◄───│  UdpSocket               │   │
-│  │              │◄───│  UnixSocket              │   │
-│  └──────┬───────┘    └──────────────────────────┘   │
-│         │                                           │
-│         │            ┌──────────────────────────┐   │
-│         └───────────►│  Timer / Scheduler       │   │
-│                      └──────────────────────────┘   │
-│                                                     │
-│  ┌──────────────┐    ┌──────────────────────────┐   │
-│  │  ThreadPool  │    │  ARC Memory              │   │
-│  │  Thread      │    │  RETAIN / RELEASE        │   │
-│  │  Semaphore   │    │  Valgrind-clean          │   │
-│  └──────────────┘    └──────────────────────────┘   │
-│                                                     │
-│  ┌──────────────────────────────────────────────┐   │
-│  │  HTTP Layer                                  │   │
-│  │  HttpServer / HttpClient / Router            │   │
-│  │  PathValidator / StringBuilder / TextEncoder │   │
-│  │  WebSocket / Cookie / Multipart              │   │
-│  └──────────────────────────────────────────────┘   │
-│                                                     │
-│  Collections  String  JSON  Logger  Crypto  SNMP   │
-└─────────────────────────────────────────────────────┘
+```text
+┌──────────────────────────────────────────────────────────┐
+│                     libcore v1.7.2                       │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│   ┌─────────────────┐      ┌─────────────────────────┐   │
+│   │   EventLoop     │◄─────│ Socket                  │   │
+│   │                 │      │ TcpSocket               │   │
+│   │ Linux : epoll   │      │ UdpSocket               │   │
+│   │ macOS : kqueue  │      │ UnixSocket              │   │
+│   │                 │      │ SslSocket               │   │
+│   └────────┬────────┘      └─────────────────────────┘   │
+│            │                                             │
+│            ├────────────► Timer / Scheduler               │
+│            │                                             │
+│            └────────────► WebSocket / HTTP                │
+│                                                          │
+│   ┌─────────────────┐      ┌─────────────────────────┐   │
+│   │ ThreadPool      │      │ ARC-style Ownership     │   │
+│   │ Thread          │      │ RETAIN / RELEASE        │   │
+│   │ Semaphore       │      │ Valgrind-clean          │   │
+│   └─────────────────┘      └─────────────────────────┘   │
+│                                                          │
+│   ┌──────────────────────────────────────────────────┐   │
+│   │ HTTP Layer                                       │   │
+│   │ HttpServer / HttpClient / HttpTransport          │   │
+│   │ Router / Cookie / Multipart / WebSocket          │   │
+│   │ PathValidator / StringBuilder / TextEncoder      │   │
+│   └──────────────────────────────────────────────────┘   │
+│                                                          │
+│   Collections / String / JSON / Logger / Crypto / SNMP  │
+│   MySQL / PostgreSQL / SQLite                           │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -129,31 +162,41 @@ libcore solves these problems.
 | 특징 / Feature | 설명 / Description |
 |---|---|
 | **EventLoop** | Linux: epoll / macOS: kqueue — OS 자동 감지 |
-| **ARC 메모리** | RETAIN/RELEASE 기반 자동 메모리 관리 / Auto memory via RETAIN/RELEASE |
-| **Socket 추상화** | TCP/UDP/Unix/SSL 통일 인터페이스 / Unified TCP/UDP/Unix/SSL interface |
-| **ThreadPool** | 작업 큐 기반 스레드 풀 / Task queue-based thread pool |
-| **HTTP 스택** | HttpServer/HttpClient/Router/:id/WebSocket/Cookie/Multipart |
-| **PathValidator** | Rule 16 기반 경로 보안 검증 / Rule 16 path security validation |
-| **StringBuilder** | ByteBuffer 기반 ARC 호환 문자열 빌더 / ARC-compatible string builder |
-| **TextEncoder** | escapeHtml/urlEncode/base64/Zero-Alloc API |
-| **73개 C 소스 파일** | 컬렉션/파일/암호화/JSON/SNMP/HTTP/DB 등 / 73 C source files |
+| **Reference-counted Memory** | RETAIN / RELEASE 기반 객체 수명 관리 |
+| **Socket 추상화** | TCP / UDP / Unix / SSL 통합 인터페이스 |
+| **ThreadPool** | 작업 큐 기반 ThreadPool |
+| **Timer / Scheduler** | EventLoop 기반 Timer와 주기적 작업 |
+| **HTTP Stack** | HttpServer / HttpClient / HttpTransport |
+| **Router** | 동적 `:id` 파라미터 지원 |
+| **WebSocket** | 실시간 양방향 통신 |
+| **Cookie / Multipart** | HTTP 애플리케이션 지원 |
+| **PathValidator** | Rule 16 기반 경로 보안 검증 |
+| **StringBuilder** | ByteBuffer 기반 ARC 호환 문자열 빌더 |
+| **TextEncoder** | HTML escape / URL encode / Base64 / Zero-Alloc API |
+| **RDB Support** | MySQL / MariaDB / PostgreSQL / SQLite |
+| **SNMP** | ASN.1 / CoreSNMP / SNMP Walk |
+| **Cross Platform** | Rocky Linux epoll / macOS kqueue |
 
 ---
 
-## 빠른 시작 / Quick Start
+# 빠른 시작 / Quick Start
 
-### 1. 빌드 / Build
+## 1. 빌드 / Build
 
 ```bash
 git clone https://github.com/toursmurf/libcore.git
 cd libcore
+
 make examples
 ```
 
-빌드 시 OS가 자동으로 감지됩니다 / OS is auto-detected at build time:
+빌드 시 운영체제와 EventLoop backend가 자동으로 선택됩니다.
 
-```
-# Rocky Linux 9.x (epoll)
+The operating system and EventLoop backend are selected automatically.
+
+### Rocky Linux
+
+```text
 =========================================
  libcore Build Configuration (v1.7.2)
 =========================================
@@ -161,8 +204,11 @@ make examples
  Backend    : epoll
  OpenSSL    : 3.5.1
 =========================================
+```
 
-# macOS Apple Silicon (kqueue)
+### macOS Apple Silicon
+
+```text
 =========================================
  libcore Build Configuration (v1.7.2)
 =========================================
@@ -172,32 +218,42 @@ make examples
 =========================================
 ```
 
-### 2. 예제 실행 / Run Examples
+---
+
+## 2. 예제 실행 / Run Examples
 
 ```bash
 # 통합 테스트 / Integration test
 ./examples/all_test_v2
 
-# TCP 에코 서버 / TCP echo server
+# TCP 에코 서버
 ./examples/arc_echo_server
 
-# 멀티 프로토콜 리액터 / Multi-protocol reactor
+# TCP + UDP + Unix 멀티 프로토콜 Reactor
 ./examples/arc_reactor_multi_server
 
-# 웹게시판 서버 프로그램
+# 웹게시판 서버
 ./examples/arc_board_server
 
-# 챗팅 데모 서버 프로그램
+# WebSocket 채팅 데모
 ./examples/arc_chat_server
 
-# snmp walk 데이터 가져오기 
+# SNMP Parallel Walk
 ./examples/arc_snmp_parallel_walk
 
-# 프로세스 모니터링 에이전트 / Process monitoring agent (RockyLinux8.10/9.8)
+# 프로세스 모니터링 에이전트
 ./examples/arc_process_agent
+
+# RED vs BLUE Pixel multiplayer game
+./examples/arc_pixel_server
+
+# Multiplayer typing game
+./examples/arc_toos_type_server
 ```
 
-### 3. RDB 연동 / RDB Integration
+---
+
+## 3. RDB 연동 / RDB Integration
 
 ```text
 MySQL / MariaDB
@@ -205,265 +261,461 @@ PostgreSQL
 SQLite
 ```
 
-→ MySQL 설정 예시: [docs/mysql_setup.md](docs/mysql_setup.md)
+MySQL 설정: [docs/mysql_setup.md](docs/mysql_setup.md)
 
 ---
 
-## 사용 시나리오 / Use Cases
+# 사용 시나리오 / Use Cases
 
-```
-🇰🇷 이런 것을 만들 때 씁니다:
-✔ TCP/UDP 서버 (단일 EventLoop, 다중 클라이언트)
-✔ IPC 서버 (Unix Domain Socket)
-✔ 멀티 프로토콜 서버 (TCP + UDP + Unix 동시)
-✔ HTTP/HTTPS REST API 서버
-✔ WebSocket 실시간 채팅 서버
-✔ 주기적 작업 서버 (Scheduler + ThreadPool)
-✔ 고성능 데이터 수집기 (병렬 크롤러 + ThreadPool)
-✔ SNMP 네트워크 관리 에이전트
+```text
+🇰🇷 이런 것을 만들 때 사용할 수 있습니다.
 
-🇬🇧 Build these with libcore:
-✔ TCP/UDP servers (single EventLoop, multiple clients)
-✔ IPC servers (Unix Domain Socket)
-✔ Multi-protocol servers (TCP + UDP + Unix simultaneously)
-✔ HTTP/HTTPS REST API servers
-✔ WebSocket real-time chat servers
-✔ Periodic task servers (Scheduler + ThreadPool)
-✔ High-performance data collectors (parallel crawler + ThreadPool)
-✔ SNMP network management agents
+✔ TCP / UDP 서버
+✔ Unix Domain Socket IPC 서버
+✔ TCP + UDP + Unix 멀티 프로토콜 서버
+✔ HTTP / HTTPS REST API 서버
+✔ WebSocket 실시간 서버
+✔ 주기적 작업 서버
+✔ ThreadPool 기반 병렬 작업 서버
+✔ 네트워크 데이터 Collector
+✔ SNMP 네트워크 관리 프로그램
+✔ 실시간 채팅 서버
+✔ 멀티플레이 게임 서버
+✔ 웹 애플리케이션 서버
+
+
+🇬🇧 Build applications such as:
+
+✔ TCP / UDP servers
+✔ Unix Domain Socket IPC servers
+✔ Multi-protocol servers
+✔ HTTP / HTTPS REST APIs
+✔ WebSocket real-time servers
+✔ Periodic task servers
+✔ ThreadPool-based parallel workers
+✔ Network data collectors
+✔ SNMP management applications
+✔ Real-time chat servers
+✔ Multiplayer game servers
+✔ Web application servers
 ```
 
 ---
 
-## ARC 메모리 규칙 / ARC Memory Rules
+# ARC 메모리 규칙 / Ownership Rules
+
+libcore는 `RETAIN / RELEASE` 기반의 참조 카운팅 객체 수명 관리 방식을 사용합니다.
+
+libcore uses reference-counted object ownership based on `RETAIN / RELEASE`.
 
 ```c
 /*
- * 🇰🇷 3가지만 기억하세요:
- * 🇬🇧 Just remember 3 rules:
+ * 🇰🇷 3가지만 기억하세요.
  *
- * 1. new_xxx() 생성 시 ref_count = 1 자동
- *    new_xxx() sets ref_count = 1 automatically
+ * 1. new_xxx() 로 생성된 객체는 ref_count = 1
  *
- * 2. 컨테이너가 저장 시 RETAIN하며, 호출자는 자신의 소유권을 다 쓰면 RELEASE
- *    Containers RETAIN objects when storing them;
- *    callers RELEASE their own ownership when done.
+ * 2. 컨테이너가 객체를 저장할 때 RETAIN
+ *    호출자는 자신의 ownership을 다 쓰면 RELEASE
  *
- * 3. [OWNED] 반환값은 RELEASE 필수
+ * 3. [OWNED] 반환값은 RELEASE 필요
  *    [BORROWED] 반환값은 RELEASE 금지
- *    Must RELEASE [OWNED], never RELEASE [BORROWED]
+ *
+ *
+ * 🇬🇧 Remember three rules.
+ *
+ * 1. new_xxx() returns an object with ref_count = 1
+ *
+ * 2. Containers RETAIN stored objects.
+ *    Callers RELEASE their own ownership when finished.
+ *
+ * 3. RELEASE [OWNED] results.
+ *    Never RELEASE [BORROWED] results.
  */
-ArrayList* list = new_ArrayList(10);         /* ref=1 */
-String*    str  = new_String("hello");       /* ref=1 */
-list->add(list, (Object*)str);               /* 내부 RETAIN → ref=2 */
-RELEASE((Object*)str);                       /* ref=1, list 가 소유 */
-String* item = (String*)list->get(list, 0);  /* [BORROWED] RELEASE 금지 */
-RELEASE((Object*)list);                      /* list + str 전부 소각 */
+```
+
+예제:
+
+```c
+ArrayList* list = new_ArrayList(10);        /* ref=1 */
+
+String* str = new_String("hello");          /* ref=1 */
+
+list->add(list, (Object*)str);               /* RETAIN → ref=2 */
+
+RELEASE((Object*)str);                       /* ref=1, owned by list */
+
+String* item =
+    (String*)list->get(list, 0);             /* [BORROWED] */
+
+/* RELEASE(item) 하면 안 됨 */
+
+RELEASE((Object*)list);                      /* list + str cleanup */
 ```
 
 ---
 
-## 모듈 구성 / Module Overview
+# 모듈 구성 / Module Overview
 
-```
-Collections   ArrayList / HashMap / Hashtable / Queue / Stack
-              Vector / List / LinkedList / BTree / Tree / JSON
+```text
+Collections
+    ArrayList / HashMap / Hashtable / Queue / Stack
+    Vector / List / LinkedList / BTree / Tree / JSON
 
-Concurrency   Thread / ThreadPool / Semaphore
-              RingBuffer / Mutex / RWLock / CondVar
+Concurrency
+    Thread / ThreadPool / Semaphore
+    RingBuffer / Mutex / RWLock / CondVar
 
-Network       Socket / TcpSocket / UdpSocket / UnixSocket / SslSocket
-              EventLoop (epoll / kqueue) / Timer / Scheduler / ByteBuffer
+Network
+    Socket / TcpSocket / UdpSocket / UnixSocket / SslSocket
+    EventLoop / Timer / Scheduler / ByteBuffer
 
-HTTP Layer    HttpServer / HttpClient / HttpTransport
-              Router (동적 :id 파라미터) / Cookie
-              PathValidator / StringBuilder / TextEncoder
-              WebSocket / Multipart
+HTTP Layer
+    HttpServer / HttpClient / HttpTransport
+    Router / Cookie / Multipart / WebSocket
+    PathValidator / StringBuilder / TextEncoder
 
-File/IO       Path / File / Directory / FileWatcher / MappedFile
-              FileUtil / AsyncFile
+File / IO
+    Path / File / Directory / FileWatcher
+    MappedFile / FileUtil / AsyncFile
 
-Application   AppContext / Context / Config / ServiceRegistry
+Application
+    AppContext / Context / Config / ServiceRegistry
 
-Protocol      SNMP / ASN.1 / CoreSNMP
+Database
+    MySQL / MariaDB / PostgreSQL / SQLite
 
-Utilities     Logger / AsyncLogger / Exception
-              Crypto (SHA-256/SHA-512/AES-256-CBC/Base64)
-              String / Locale / Regex / DateTime
+Protocol
+    SNMP / ASN.1 / CoreSNMP
 
-WebBoard      BoardHandler / BoardTemplateEngine
+Utilities
+    Logger / AsyncLogger / Exception / Crypto
+    String / Locale / Regex / DateTime
+
+WebBoard
+    BoardHandler / BoardTemplateEngine
 ```
 
 ---
 
-## 예제 목록 / Examples
+# 예제 목록 / Examples
 
-| 파일 / File                      | 설명 / Description                                              |
-|----------------------------------|-----------------------------------------------------------------|
-| `all_test_v2.c`                  | 전체 통합 테스트 37개 / 37 integration tests                    |
-| `arc_echo_server.c`              | TCP 에코 서버 / TCP Echo Server                                 |
-| `arc_reactor_multi_server.c`     | TCP+UDP+Unix 멀티플렉싱 / Multiplexing                          |
-| `arc_http_client_test.c`         | HTTPS 클라이언트 / HTTPS Client                                 |
-| `arc_process_agent.c`            | 프로세스 모니터링 에이전트 / Process monitoring agent           |
-| `arc_thread_test.c`              | ThreadPool 동작 검증 / ThreadPool test                          |
-| `arc_scheduler_system_monitor.c` | 주기 모니터링 / Periodic monitoring                             |
-| `arc_json_test.c`                | JSON 파서 / JSON parser                                         |
-| `arc_crypto_integration_test.c`  | SHA/AES 암호화 / SHA/AES crypto                                 |
-| `arc_snmp_parallel_walk.c`       | SNMP 병렬 수집 / SNMP parallel walk                             |
-| `arc_mysql_test.c`               | MySQL 연동 / MySQL integration                                  |
-| `compare_raw_vs_libcore.c`       | RAW epoll vs libcore 벤치마크 / Benchmark (RockyLinux서 테스트) |
-| `arc_chat_server.c`              | chatting server (icq, kakaotalk)                                |
-| `arc_board_server.c`             | 웹게시판 서버 프로그램 (MySQL / PostgreSQL / SQLite)            |
-| `arc_pixel_server.c`             | Pixel Board Game Server                                         |
+> 아래 표는 대표 예제만 표시합니다. 전체 54개 예제는
+> [docs/examples.ko.md](docs/examples.ko.md)를 참고하세요.
+>
+> The table below lists selected examples only.
+> See [docs/examples.en.md](docs/examples.en.md) for the complete set of 54 examples.
 
-→ 전체 목록: [docs/examples.ko.md](docs/examples.ko.md)
+| 파일 / File | 설명 / Description |
+|---|---|
+| `all_test_v2.c` | 전체 통합 테스트 |
+| `arc_echo_server.c` | TCP Echo Server |
+| `arc_reactor_multi_server.c` | TCP + UDP + Unix multiplexing |
+| `arc_http_client_test.c` | HTTPS Client |
+| `arc_process_agent.c` | Process monitoring agent |
+| `arc_thread_test.c` | Thread / ThreadPool test |
+| `arc_scheduler_system_monitor.c` | Periodic monitoring |
+| `arc_json_test.c` | JSON parser |
+| `arc_crypto_integration_test.c` | SHA / AES crypto |
+| `arc_snmp_parallel_walk.c` | Parallel SNMP Walk |
+| `arc_mysql_test.c` | MySQL integration |
+| `compare_raw_vs_libcore.c` | RAW epoll vs libcore benchmark |
+| `arc_chat_server.c` | WebSocket chat server |
+| `arc_board_server.c` | WebBoard server |
+| `arc_pixel_server.c` | RED vs BLUE multiplayer Pixel game |
+| `arc_toos_type_server.c` | Multiplayer typing game |
 
 ---
 
-## 💬 Chat Demo — Multi-Client Communication
+# 💬 Chat Demo — Multi-Client Communication
 
-**Tested:** Rocky Linux 8.10 / 9.8, macOS Apple Silicon (M2 Max)
+WebSocket 기반 멀티 클라이언트 채팅 데모입니다.
+
+WebSocket-based multi-client chat demo.
+
+**Tested**
+
+```text
+Rocky Linux 8.10
+Rocky Linux 9.x
+macOS Apple Silicon
+```
 
 ![Chat Demo](docs/images/chat.png)
 
-## 🚀 WebBoard Demo — Multi-RDB Support
+---
 
-libcore v1.7.2 WebBoard runs on the same application code
-with MySQL/MariaDB, PostgreSQL, and SQLite backends.
+# 🚀 WebBoard Demo — Multi-RDB Support
 
-### MySQL / MariaDB
+libcore v1.7.2 WebBoard는 동일한 애플리케이션 코드에서
 
-skin: white
+```text
+MySQL / MariaDB
+PostgreSQL
+SQLite
+```
 
-![WebBoard MySQL](docs/images/webboard_mysql_white.png)
+를 사용할 수 있습니다.
 
-skin: dark
+The same WebBoard application runs with multiple RDB backends.
 
-![WebBoard MySQL](docs/images/webboard_mysql_dark.png)
+## MySQL / MariaDB
 
-### PostgreSQL
+### White Skin
+
+![WebBoard MySQL White](docs/images/webboard_mysql_white.png)
+
+### Dark Skin
+
+![WebBoard MySQL Dark](docs/images/webboard_mysql_dark.png)
+
+## PostgreSQL
 
 ![WebBoard PostgreSQL](docs/images/webboard_pgsql.png)
 
-### SQLite
+## SQLite
 
 ![WebBoard SQLite](docs/images/webboard_sqlite.png)
 
-> Same BoardHandler / Router / TemplateEngine SSR,
-> different DBClient adapters.
+```text
+Same application layer:
 
+BoardHandler
+Router
+TemplateEngine SSR
+
+Different database adapters.
+```
+
+---
+
+# 🎨 PixelBoard Demo — RED vs BLUE
 
 Real-time RED vs BLUE multiplayer game powered by
-`HttpServer + WebSocket + EventLoop`.
+
+```text
+HttpServer + WebSocket + EventLoop
+```
+
+주요 기능:
 
 - Server-authoritative game state
 - Multi-client real-time synchronization
-- Config / score / board synchronization
-- Host migration
-- Timeout or full-board automatic game over
+- RED / BLUE team assignment
+- Pixel / Score synchronization
+- Host player management
+- Player paint cooldown
+- Configurable board size / brush size
+- Game timeout / Automatic GAME_OVER
 - Linux epoll / macOS kqueue
-- Valgrind tested: 0 errors / 0 bytes leaked
+- Valgrind tested — 0 errors / 0 bytes leaked
 
-![WebBoard SQLite](docs/images/pixel_board.png)
+![PixelBoard](docs/images/pixel_board.png)
 
-## 📡 SNMP Demo — Parallel Walk
+---
+
+# ⌨️ ToosType Demo — Multiplayer Typing Race
+
+Real-time multiplayer typing race powered by
+
+```text
+HttpServer + WebSocket + EventLoop + SQLite
+```
+
+ToosType demonstrates a complete real-time multiplayer game
+running on top of the libcore runtime.
+
+주요 기능:
+
+- Server-authoritative game state
+- 2–8 multiplayer clients
+- Host / Guest session model
+- Shared randomized sentence deck
+- Independent per-player sentence cursor
+- Korean / English typing mode
+- SQLite-backed sentence dataset
+- 5-minute game / 4 game phases
+- CORRECT / INCORRECT / EXPIRED judgement
+- Play Score + Phase Score + Accuracy Score
+- WPM calculation
+- FINISHED / DNF result handling / Final ranking
+- Linux epoll / macOS kqueue
+
+### 기본 Phase 구성 / Default Phase Profile
+
+| Phase | Game Time | Sentence Timeout | Correct Score |
+|---|---:|---:|---:|
+| Phase 1 | 0–90 sec | 30 sec | +1 |
+| Phase 2 | 90–180 sec | 20 sec | +2 |
+| Phase 3 | 180–240 sec | 15 sec | +3 |
+| Phase 4 | 240–300 sec | 10 sec | +4 |
+
+### Linux Valgrind Test
+
+```text
+total heap usage: 4,057 allocs, 4,057 frees, 2,032,455 bytes allocated
+
+in use at exit: 0 bytes in 0 blocks
+All heap blocks were freed -- no leaks are possible
+ERROR SUMMARY: 0 errors from 0 contexts
+```
+
+![ToosType](docs/images/toostype.png)
+
+---
+
+# 📡 SNMP Demo — Parallel Walk
 
 `arc_snmp_parallel_walk` demonstrates parallel SNMP Walk
 using libcore CoreSNMP / ASN.1 components.
 
-- SNMP Walk
-- Parallel target processing
-- OID / VarBind decoding
-- CoreSNMP integration
-- Tested on macOS Apple Silicon M2 Max
-
 ![libcore Parallel SNMP Walk](docs/images/snmp_parallel_walk.png)
 
-> CoreSNMP / ASN.1 / SNMP Walk running on the libcore runtime.
 ---
 
-## 버전 히스토리 / Version History
+# 버전 히스토리 / Version History
 
-| 버전 / Version | 주요 내용 / Highlights                                            |
-|---|-------------------------------------------------------------------|
-| **v1.7.2** | 3 RDB 지원용 웹게시판 (MySQL / PostgreSQL / SQLite)               |
-| **v1.7.1** | Router params 2-Pass engine, OOM/NPD defense                      |
-| **v1.7.0** | macOS (kqueue) 정식 지원 — Linux + macOS 멀티플랫폼               |
-| **v1.6.2** | Content-Length 바운드 검증, WS 프레임 상한, EventLoop Object 상속 |
-| **v1.6.1** | CSS filter, HTML entity decoding 안정화                           |
-| **v1.6.0** | PathValidator / StringBuilder / TextEncoder / Router :id          |
-| **v1.5.2** | webcore: Router parameter validation & Global Error Handling      |
-| **v1.5.1** | json, event loop 수정                                             |
-| **v1.5.0** | WebCore 완성 — HttpServer/HttpClient/SSL/Router/Cookie            |
-| **v1.0** | Iron Fortress — 67모듈, Valgrind 0 bytes, CI 5관왕                |
-
----
-
-## 플랫폼 지원 / Platform Support
-
-| OS                              | 백엔드 / Backend | 상태 / Status           |
-|---------------------------------|------------------|-------------------------|
-| Rocky Linux 8.10 / 9.x (64-bit) | epoll            | ✅ 테스트 완료 / Tested |
-| macOS (Apple Silicon, M2 Max)   | kqueue           | ✅ 테스트 완료 / Tested |
-| Windows                         | IOCP             | 🔜 예정                 |
-
-> Ubuntu, Debian, macOS Intel 등 기타 환경은 현재 v1.7.2에서 별도 검증되지 않았습니다.  
-> Other environments have not been independently verified for v1.7.2.
+| 버전 / Version | 주요 내용 / Highlights |
+|---|---|
+| **v1.7.2** | WebBoard multi-RDB (MySQL / PostgreSQL / SQLite), real-time WebSocket demos: PixelBoard and ToosType |
+| **v1.7.1** | Router parameter 2-Pass engine, OOM / NPD defense |
+| **v1.7.0** | macOS kqueue support — Linux + macOS |
+| **v1.6.2** | Content-Length bounds, WebSocket frame limits, EventLoop Object inheritance |
+| **v1.6.1** | CSS filter, HTML entity decoding |
+| **v1.6.0** | PathValidator / StringBuilder / TextEncoder / Router `:id` |
+| **v1.5.2** | Router parameter validation / Global Error Handling |
+| **v1.5.1** | JSON / EventLoop improvements |
+| **v1.5.0** | WebCore — HttpServer / HttpClient / SSL / Router / Cookie |
+| **v1.0** | Iron Fortress — core runtime stabilization / Valgrind clean |
 
 ---
 
-## 문서 / Documentation
+# 플랫폼 지원 / Platform Support
 
-| 문서 / Document                                                              | 내용 / Content                            |
-|------------------------------------------------------------------------------|-------------------------------------------|
-| [docs/coding_guide_ko.md](docs/coding_guide_ko.md)                           | 코딩가이드 한글 / Korean Coding Guide     |
-| [docs/coding_guide_en.md](docs/coding_guide_en.md)                           | English Coding Guide                      |
-| [docs/CODING_CONTRACT_KO.md](docs/CODING_CONTRACT_KO.md)                     | 코딩규약 한글 / Korean Coding Contract    |
-| [docs/CODING_CONTRACT_EN.md](docs/CODING_CONTRACT_EN.md)                     | English Coding Contract                      |
-| [docs/libcore_v1.7.2_API_Reference.md](docs/libcore_v1.7.2_API_Reference.md) | v1.7.2 API Reference                      |
-| [docs/libcore_v1_class_diagram.md](docs/libcore_v1_class_diagram.md)         | 클래스 다이어그램 / Class diagram         |
-| [docs/mysql_setup.md](docs/mysql_setup.md)                                   | MySQL 연동 / MySQL setup                  |
-| [docs/examples.ko.md](docs/examples.ko.md)                                   | 예제 가이드 한글 / Korean examples guide  |
-| [docs/examples.en.md](docs/examples.en.md)                                   | 예제 가이드 영문 / English examples guide |
+| OS | Backend | Status |
+|---|---|---|
+| Rocky Linux 8.10 / 9.x (64-bit) | epoll | ✅ Tested |
+| macOS Apple Silicon | kqueue | ✅ Tested |
+| Windows | IOCP | 🔜 Planned |
 
----
+현재 별도 검증되지 않은 환경:
 
-## 요구사항 / Requirements
-
-```
-OS       : Rocky Linux (9.8 / 8.10)  (64-bit) - Tested
-           macOS  (Apple Silicon, M2 Max) — Tested
-
-Compiler : GCC 9+ / Clang 10+
-Make     : GNU Make
-OpenSSL  : 3.x (HTTPS/SSL 지원 / for HTTPS/SSL)
-
-Optional :
-           MariaDB / MySQL client library
-           PostgreSQL libpq
-           SQLite3
+```text
+Ubuntu / Debian / macOS Intel / Other Linux distributions
 ```
 
----
-
-## 라이선스 / License
-
-MIT License — 자유롭게 사용, 수정, 배포 가능.  
-MIT License — Free to use, modify, and distribute.
+> Other environments may work, but have not been independently
+> verified for libcore v1.7.2.
 
 ---
 
-## 링크 / Links
+# 문서 / Documentation
 
-- Author : INDONG KIM(김인동) - idong322@naver.com
+| 문서 / Document | 내용 / Content |
+|---|---|
+| [docs/coding_guide_ko.md](docs/coding_guide_ko.md) | Korean Coding Guide |
+| [docs/coding_guide_en.md](docs/coding_guide_en.md) | English Coding Guide |
+| [docs/CODING_CONTRACT_KO.md](docs/CODING_CONTRACT_KO.md) | Korean Coding Contract |
+| [docs/CODING_CONTRACT_EN.md](docs/CODING_CONTRACT_EN.md) | English Coding Contract |
+| [docs/libcore_v1.7.2_API_Reference.md](docs/libcore_v1.7.2_API_Reference.md) | v1.7.2 API Reference |
+| [docs/libcore_v1_class_diagram.md](docs/libcore_v1_class_diagram.md) | Class Diagram |
+| [docs/mysql_setup.md](docs/mysql_setup.md) | MySQL Setup |
+| [docs/examples.ko.md](docs/examples.ko.md) | Korean Examples Guide |
+| [docs/examples.en.md](docs/examples.en.md) | English Examples Guide |
+
+---
+
+# 요구사항 / Requirements
+
+```text
+OS
+    Rocky Linux 8.10 / 9.x 64-bit
+    macOS Apple Silicon
+
+Compiler
+    GCC 9+ / Clang 10+
+
+Build
+    GNU Make
+
+SSL
+    OpenSSL 3.x
+
+Optional Database Libraries
+    MariaDB / MySQL client library
+    PostgreSQL libpq
+    SQLite3
+```
+
+---
+
+# 설계 철학 / Design Philosophy
+
+```text
+Java-like API
++
+Python-like usability
++
+C-level performance
++
+Explicit ownership safety
+```
+
+```text
+Object → Collections → Thread / ThreadPool
+→ Socket → EventLoop → HTTP / WebSocket → Application
+```
+
+---
+
+# Valgrind
+
+```bash
+valgrind \
+    --leak-check=full \
+    --show-leak-kinds=all \
+    --suppressions=./libcore.supp \
+    ./examples/arc_toos_type_server
+```
+
+```text
+All heap blocks were freed
+0 bytes leaked
+ERROR SUMMARY: 0
+```
+
+---
+
+# 라이선스 / License
+
+MIT License — free to use, modify and distribute.
+
+```text
+Use / Modify / Distribute / Commercial use
+```
+
+---
+
+# 링크 / Links
+
+- **Author**: INDONG KIM (김인동)
+- **Email**: idong322@naver.com
 - **GitHub**: https://github.com/toursmurf/libcore
 - **Homepage**: https://toos.it
 - **Issues**: https://github.com/toursmurf/libcore/issues
 
 ---
 
-*libcore is a high-performance, event-driven server runtime in pure C.*  
-*Java-like API / Python-like usability / C-level performance / ARC memory safety.*  
-*Valgrind clean / Graceful shutdown / MIT License.*
+```text
+High-performance event-driven server runtime in pure C.
+
+EventLoop / ThreadPool / Socket / HTTP / WebSocket
+RDB / SNMP / ARC-style ownership
+
+Linux epoll / macOS kqueue
+
+Valgrind clean. MIT licensed.
+```
+
+> **Java-like API / Python-like usability / C-level performance / explicit ownership safety.**
 
 **libcore v1.7.2**
