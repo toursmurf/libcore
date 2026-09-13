@@ -1,43 +1,50 @@
 #pragma once
+#include "toos_type_types.h"
 
-#include "object.h"
-#include <stdint.h>
-#include <stdbool.h>
+typedef struct {
+    uint32_t duration_ms;
+    uint32_t input_timeout_ms;
+    uint32_t correct_score;
+} ToosTypePhaseProfile;
 
-#define TOOS_TYPE_COUNTDOWN_MS 3000ULL
-#define TOOS_TYPE_PHASE1_DURATION_MS 60000ULL
+typedef struct {
+    uint32_t countdown_ms;
+    uint64_t random_seed;
+    uint32_t play_score_per_sec;
+    uint32_t accuracy_score_multiplier;
+    ToosTypePhaseProfile phases[TOOS_TYPE_MAX_PHASES];
+} ToosTypeGameProfile;
 
 typedef enum {
-    TOOS_TYPE_STATE_WAITING = 0,
-    TOOS_TYPE_STATE_COUNTDOWN,
-    TOOS_TYPE_STATE_PLAYING,
-    TOOS_TYPE_STATE_RESULT
-} ToosTypeState;
+    TOOS_TYPE_ROOM_TICK_NONE = 0,
+    TOOS_TYPE_ROOM_TICK_GAME_STARTED,
+    TOOS_TYPE_ROOM_TICK_PHASE_CHANGED,
+    TOOS_TYPE_ROOM_TICK_GAME_ENDED
+} ToosTypeRoomTickResult;
 
-typedef enum {
-    TOOS_TYPE_TRANSITION_NONE = 0,
-    TOOS_TYPE_TRANSITION_COUNTDOWN_STARTED,
-    TOOS_TYPE_TRANSITION_GAME_STARTED,
-    TOOS_TYPE_TRANSITION_GAME_OVER,
-    TOOS_TYPE_TRANSITION_ERROR
-} ToosTypeTransition;
-
-typedef struct ToosTypeRoom ToosTypeRoom;
-
-struct ToosTypeRoom {
-    Object base;
+typedef struct ToosTypeRoom {
     uint64_t room_id;
+    ToosTypeGameProfile profile;
     ToosTypeState state;
-    uint64_t seq;
-    uint32_t phase;
+
+    ToosTypeLanguage language;
+    bool language_locked;
+    uint32_t host_player_no;
 
     uint64_t state_start_ms;
+    uint64_t game_start_ms;
+    uint64_t game_end_ms;
     uint64_t countdown_ends_at_ms;
-    uint64_t game_ends_at_ms;
 
-    ToosTypeTransition (*startCountdown)(ToosTypeRoom *self, uint64_t now_ms);
-    ToosTypeTransition (*tick)(ToosTypeRoom *self, uint64_t now_ms);
-    ToosTypeTransition (*abortGame)(ToosTypeRoom *self, uint64_t now_ms);
-    bool (*nextSeq)(ToosTypeRoom *self, uint64_t *out_seq);
-};
-ToosTypeRoom *new_ToosTypeRoom(uint64_t room_id);
+    uint32_t current_phase;
+} ToosTypeRoom;
+
+void ToosTypeRoom_init(ToosTypeRoom *self, uint64_t room_id, const ToosTypeGameProfile *profile);
+
+uint32_t ToosTypeRoom_phase_at(const ToosTypeRoom *self, uint64_t now_ms);
+uint64_t ToosTypeRoom_sentence_timeout_ms(const ToosTypeRoom *self, uint64_t now_ms);
+
+bool ToosTypeRoom_start_countdown(ToosTypeRoom *self, uint64_t now_ms);
+//[컴파일 에러 해결] 카운트다운 취소 함수 선언 추가!
+void ToosTypeRoom_cancel_countdown(ToosTypeRoom *self, uint64_t now_ms);
+ToosTypeRoomTickResult ToosTypeRoom_tick(ToosTypeRoom *self, uint64_t now_ms);

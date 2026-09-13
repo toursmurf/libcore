@@ -2,404 +2,1067 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>ToosType v0.3 - Protocol Harness</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ToosType v1.3</title>
     <style>
+        :root {
+            color-scheme: dark;
+            --bg: #0b0f14;
+            --panel: #121820;
+            --panel-2: #0e141b;
+            --line: #263241;
+            --text: #e8eef5;
+            --muted: #8ea0b4;
+            --accent: #39e6b0;
+            --accent-2: #66a3ff;
+            --warn: #ffbf5a;
+            --danger: #ff6b72;
+            --ok: #5df0a5;
+            --shadow: rgba(0, 0, 0, .35);
+        }
+
+        * { box-sizing: border-box; }
+
         body {
-            background-color: #121212;
-            color: #00ffcc;
-            font-family: 'Courier New', Courier, monospace;
             margin: 0;
-            padding: 20px;
+            min-height: 100vh;
+            background:
+                    radial-gradient(circle at 20% 0%, rgba(57, 230, 176, .08), transparent 28rem),
+                    radial-gradient(circle at 100% 10%, rgba(102, 163, 255, .08), transparent 26rem),
+                    var(--bg);
+            color: var(--text);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        }
+
+        button, input, select { font: inherit; }
+
+        .app {
+            width: min(1180px, calc(100% - 28px));
+            margin: 22px auto 36px;
+        }
+
+        .topbar {
             display: flex;
-            flex-direction: column;
             align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            margin-bottom: 14px;
         }
-        .container {
-            width: 700px;
-            border: 2px solid #00ffcc;
+
+        .brand h1 {
+            margin: 0;
+            font-size: clamp(22px, 4vw, 34px);
+            letter-spacing: .04em;
+        }
+
+        .brand small { color: var(--muted); }
+
+        .badge-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            min-height: 28px;
+            padding: 5px 9px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            color: var(--muted);
+            background: rgba(255,255,255,.025);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--danger);
+            box-shadow: 0 0 9px currentColor;
+        }
+
+        .dot.on { background: var(--ok); }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 320px minmax(0, 1fr);
+            gap: 14px;
+        }
+
+        .card {
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: linear-gradient(180deg, rgba(255,255,255,.018), transparent), var(--panel);
+            box-shadow: 0 10px 30px var(--shadow);
+            overflow: hidden;
+        }
+
+        .card-head {
+            padding: 13px 15px;
+            border-bottom: 1px solid var(--line);
+            color: var(--muted);
+            font-size: 12px;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+        }
+
+        .card-body { padding: 15px; }
+
+        .stack { display: grid; gap: 10px; }
+
+        .row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .row > * { min-width: 0; }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        input[type="text"], select {
+            width: 100%;
+            border: 1px solid #314155;
             border-radius: 8px;
-            padding: 20px;
-            background-color: #1e1e1e;
-            box-shadow: 0 0 15px rgba(0, 255, 204, 0.2);
+            outline: none;
+            background: #090d12;
+            color: var(--text);
+            padding: 10px 11px;
         }
-        h2 { text-align: center; margin-top: 0; color: #ff5555; }
-        .section {
-            margin-bottom: 15px;
-            padding: 10px;
-            border: 1px dashed #444;
-            border-radius: 4px;
+
+        input[type="text"]:focus, select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(57, 230, 176, .10);
         }
-        label { font-weight: bold; margin-right: 5px; }
-        input[type="text"] {
-            background-color: #111;
-            border: 1px solid #00ffcc;
-            color: #fff;
-            padding: 5px;
-            width: 180px;
+
+        input:disabled, select:disabled {
+            opacity: .55;
+            cursor: not-allowed;
         }
-        input[type="text"]:disabled {
-            border-color: #555;
-            color: #777;
-        }
+
         button {
-            background-color: #00ffcc;
-            color: #121212;
-            border: none;
-            padding: 6px 12px;
-            font-weight: bold;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            padding: 9px 12px;
             cursor: pointer;
-            border-radius: 3px;
+            font-weight: 700;
+            transition: transform .06s ease, opacity .15s ease, border-color .15s ease;
         }
-        button:hover { background-color: #00b386; }
-        button:disabled { background-color: #555; cursor: not-allowed; }
-        .game-screen {
+
+        button:active:not(:disabled) { transform: translateY(1px); }
+        button:disabled { opacity: .4; cursor: not-allowed; }
+
+        .btn-primary { background: var(--accent); color: #06100d; }
+        .btn-secondary { background: #1b2633; color: var(--text); border-color: #314155; }
+        .btn-warn { background: var(--warn); color: #1a1204; }
+        .btn-danger { background: transparent; color: var(--danger); border-color: rgba(255,107,114,.45); }
+
+        .btn-wide { width: 100%; }
+
+        .kv {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px 12px;
+            font-size: 13px;
+        }
+
+        .kv .k { color: var(--muted); }
+        .kv .v { text-align: right; color: var(--text); }
+        .host-mark { color: var(--warn); font-weight: 700; }
+
+        .game-card { min-height: 500px; }
+
+        .game-head {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .clock-box {
+            padding: 12px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: var(--panel-2);
             text-align: center;
-            padding: 20px;
-            background-color: #0a0a0a;
-            border: 2px solid #ff5555;
-            border-radius: 5px;
-            min-height: 120px;
+        }
+
+        .clock-label { color: var(--muted); font-size: 11px; margin-bottom: 5px; }
+        .clock-value { font-size: clamp(18px, 4vw, 28px); font-weight: 800; }
+        .phase-value { color: var(--accent-2); }
+        .game-time { color: var(--accent); }
+        .sentence-time { color: var(--warn); }
+
+        .race-stage {
+            min-height: 232px;
+            border: 1px solid #314155;
+            border-radius: 12px;
+            padding: 22px;
+            background:
+                    linear-gradient(rgba(102,163,255,.035) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(102,163,255,.035) 1px, transparent 1px),
+                    #090d12;
+            background-size: 22px 22px;
             display: flex;
             flex-direction: column;
             justify-content: center;
-            align-items: center;
+            gap: 18px;
         }
-        .countdown { font-size: 24px; color: #ffaa00; font-weight: bold; }
-        .sentence-text { font-size: 20px; color: #ffffff; margin: 10px 0; }
-        .stats {
+
+        .status-line {
+            color: var(--muted);
+            text-align: center;
+            min-height: 20px;
+        }
+
+        .countdown-big {
+            display: none;
+            text-align: center;
+            color: var(--warn);
+            font-weight: 900;
+            font-size: clamp(32px, 8vw, 68px);
+            line-height: 1;
+        }
+
+        .sentence {
+            min-height: 62px;
             display: flex;
-            justify-content: space-around;
-            font-weight: bold;
-            margin-top: 10px;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-size: clamp(18px, 3vw, 27px);
+            line-height: 1.55;
+            word-break: keep-all;
         }
-        .log-box {
+
+        .sentence-id {
+            text-align: center;
+            color: #5f748b;
+            font-size: 11px;
+            min-height: 14px;
+        }
+
+        #typingInput {
+            font-size: 17px;
+            padding: 13px 14px;
+        }
+
+        #typingInput.correct-flash { border-color: var(--ok); }
+        #typingInput.wrong-flash { border-color: var(--danger); }
+
+        .result-line {
+            height: 22px;
+            text-align: center;
+            font-weight: 800;
+            color: var(--muted);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 8px;
+            margin-top: 14px;
+        }
+
+        .stat {
+            min-width: 0;
+            padding: 10px 8px;
+            border: 1px solid var(--line);
+            border-radius: 9px;
+            background: rgba(255,255,255,.02);
+            text-align: center;
+        }
+
+        .stat .name { color: var(--muted); font-size: 10px; white-space: nowrap; }
+        .stat .num { margin-top: 5px; font-size: 18px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; }
+        .stat.total .num { color: var(--accent); }
+
+        .notice {
+            display: none;
+            margin-bottom: 12px;
+            padding: 10px 12px;
+            border-radius: 9px;
+            border: 1px solid rgba(255,107,114,.35);
+            background: rgba(255,107,114,.07);
+            color: #ffc2c5;
+            font-size: 13px;
+        }
+
+        .ranking-card { margin-top: 14px; display: none; }
+        .table-wrap { overflow-x: auto; }
+
+        table {
             width: 100%;
-            height: 150px;
-            background-color: #000;
-            border: 1px solid #444;
-            color: #00ff00;
+            border-collapse: collapse;
             font-size: 12px;
-            overflow-y: scroll;
-            padding: 5px;
-            box-sizing: border-box;
-            text-align: left;
+        }
+
+        th, td {
+            padding: 9px 8px;
+            border-bottom: 1px solid var(--line);
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        th:first-child, td:first-child,
+        th:nth-child(2), td:nth-child(2),
+        th:nth-child(3), td:nth-child(3) { text-align: left; }
+
+        tr.me { background: rgba(57,230,176,.07); }
+        .rank-cell { font-weight: 900; color: var(--warn); }
+
+        details.log-card { margin-top: 14px; }
+        details.log-card > summary {
+            cursor: pointer;
+            list-style: none;
+            padding: 12px 15px;
+            color: var(--muted);
+            user-select: none;
+        }
+        details.log-card > summary::-webkit-details-marker { display: none; }
+
+        .log-toolbar {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 7px;
+        }
+
+        .log-box {
+            height: 220px;
+            overflow: auto;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #06090d;
+            padding: 9px;
+            font-size: 11px;
+            line-height: 1.55;
+            color: #9fb2c6;
+        }
+
+        .log-rx { color: #8ecbff; }
+        .log-tx { color: #8ff0c4; }
+        .log-err { color: #ff8b91; }
+        .log-sys { color: #b5a6ff; }
+
+        .hint {
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.5;
+        }
+
+        @media (max-width: 860px) {
+            .grid { grid-template-columns: 1fr; }
+            .game-head { grid-template-columns: repeat(3, 1fr); }
+            .stats-grid { grid-template-columns: repeat(3, 1fr); }
+            .topbar { align-items: flex-start; flex-direction: column; }
+            .badge-row { justify-content: flex-start; }
+        }
+
+        @media (max-width: 520px) {
+            .app { width: min(100% - 18px, 1180px); margin-top: 10px; }
+            .game-head { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .race-stage { padding: 15px; }
         }
     </style>
 </head>
 <body>
-
-<div class="container">
-    <h2>TOOS TYPE v0.3 PROTOCOL HARNESS</h2>
-
-    <!-- Connection & Session -->
-    <div class="section">
-        <div>
-            <label>Server:</label>
-            <input type="text" id="serverUrl" value="ws://127.0.0.1:8888/ws">
-            <button id="connectBtn" onclick="toggleConnect()">CONNECT</button>
-            <span id="connStatus" style="color: red; margin-left: 10px;">DISCONNECTED</span>
+<div class="app">
+    <div class="topbar">
+        <div class="brand">
+            <h1>TOOS TYPE <span style="color:var(--accent)">v1.3</span></h1>
+            <small>Server-authoritative multiplayer typing race</small>
         </div>
-        <div style="margin-top: 8px;">
-            <label>Player ID:</label>
-            <input type="text" id="playerId" value="1001">
-            <button onclick="sendJoin()">JOIN</button>
-            <button onclick="sendReady()" style="background-color: #ffaa00; margin-left: 10px;">READY</button>
+        <div class="badge-row">
+            <span class="badge"><span id="connDot" class="dot"></span><span id="connStatus">DISCONNECTED</span></span>
+            <span class="badge">ROOM <strong id="roomBadge">-</strong></span>
+            <span class="badge">STATE <strong id="stateBadge">IDLE</strong></span>
+            <span class="badge">PLAYER <strong id="playerBadge">-</strong></span>
         </div>
     </div>
 
-    <!-- State & Screen -->
-    <div class="section">
-        <div><strong>State:</strong> <span id="gameState" style="color: #ffaa00;">IDLE</span></div>
-        <div class="game-screen" style="margin-top: 10px;">
-            <div id="countdownArea" class="countdown"></div>
-            <div id="sentenceArea" class="sentence-text">서버 연결 및 참가 대기 중...</div>
-            <div style="margin-top: 10px;">
-                <input type="text" id="typingInput" placeholder="문장을 입력 후 Enter" style="width: 350px;" disabled onkeydown="handleTyping(event)">
-            </div>
-        </div>
-        <div class="stats">
-            <div>Score: <span id="myScore">0</span></div>
-            <div>WPM: <span id="myWpm">0</span></div>
-            <div>Result: <span id="lastResult" style="color: #aaa;">-</span></div>
-        </div>
+    <div id="notice" class="notice"></div>
+
+    <div class="grid">
+        <aside class="stack">
+            <section class="card">
+                <div class="card-head">Connection</div>
+                <div class="card-body stack">
+                    <div>
+                        <label for="serverUrl">WebSocket URL</label>
+                        <input type="text" id="serverUrl" spellcheck="false" autocomplete="off">
+                    </div>
+                    <div class="row">
+                        <button id="connectBtn" class="btn-primary btn-wide" type="button">CONNECT</button>
+                        <button id="joinBtn" class="btn-secondary btn-wide" type="button" disabled>JOIN</button>
+                    </div>
+                    <div class="hint">Player 번호는 서버가 P0001~P0008 중 가장 낮은 빈 슬롯으로 자동 배정합니다.</div>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-head">Room</div>
+                <div class="card-body stack">
+                    <div class="kv">
+                        <span class="k">Player</span><span class="v" id="playerInfo">-</span>
+                        <span class="k">Host</span><span class="v" id="hostInfo">-</span>
+                        <span class="k">Language</span><span class="v" id="languageInfo">NONE</span>
+                        <span class="k">Language Lock</span><span class="v" id="lockInfo">NO</span>
+                    </div>
+
+                    <div>
+                        <label for="languageSelect">Host Language</label>
+                        <div class="row">
+                            <select id="languageSelect" disabled>
+                                <option value="EN">English</option>
+                                <option value="KO">한국어</option>
+                            </select>
+                            <button id="languageBtn" class="btn-secondary" type="button" disabled>APPLY</button>
+                        </div>
+                    </div>
+
+                    <button id="readyBtn" class="btn-warn btn-wide" type="button" disabled>READY</button>
+                    <div class="hint">첫 READY 시 언어가 잠깁니다. 2명 이상이 접속하고 전원이 READY가 되면 서버가 Countdown을 시작합니다.</div>
+                </div>
+            </section>
+        </aside>
+
+        <main>
+            <section class="card game-card">
+                <div class="card-head">Race Console</div>
+                <div class="card-body">
+                    <div class="game-head">
+                        <div class="clock-box">
+                            <div class="clock-label">PHASE</div>
+                            <div id="phaseDisplay" class="clock-value phase-value">-</div>
+                        </div>
+                        <div class="clock-box">
+                            <div class="clock-label">GAME TIME</div>
+                            <div id="gameTimeDisplay" class="clock-value game-time">05:00.0</div>
+                        </div>
+                        <div class="clock-box">
+                            <div class="clock-label">SENTENCE TIME</div>
+                            <div id="sentenceTimeDisplay" class="clock-value sentence-time">--.-</div>
+                        </div>
+                    </div>
+
+                    <div class="race-stage">
+                        <div id="statusLine" class="status-line">서버에 연결해 주세요.</div>
+                        <div id="countdownBig" class="countdown-big"></div>
+                        <div id="sentenceText" class="sentence">-</div>
+                        <div id="sentenceIdText" class="sentence-id"></div>
+                        <input id="typingInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+                               placeholder="문장을 입력하고 Enter" disabled>
+                        <div id="resultLine" class="result-line">-</div>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat"><div class="name">PLAY</div><div id="playScore" class="num">0</div></div>
+                        <div class="stat"><div class="name">PHASE</div><div id="phaseScore" class="num">0</div></div>
+                        <div class="stat"><div class="name">ACCURACY</div><div id="accuracyPercent" class="num">0.00%</div></div>
+                        <div class="stat"><div class="name">ACC SCORE</div><div id="accuracyScore" class="num">0</div></div>
+                        <div class="stat total"><div class="name">TOTAL</div><div id="totalScore" class="num">0</div></div>
+                        <div class="stat"><div class="name">WPM</div><div id="wpm" class="num">0</div></div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="rankingCard" class="card ranking-card">
+                <div class="card-head">Final Ranking</div>
+                <div class="card-body table-wrap">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>Rank</th><th>Player</th><th>Status</th><th>Played</th>
+                            <th>Play</th><th>Phase</th><th>Accuracy</th><th>Acc.Score</th><th>Total</th><th>WPM</th>
+                        </tr>
+                        </thead>
+                        <tbody id="rankingBody"></tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
     </div>
 
-    <!-- WebSocket Logs -->
-    <div class="section">
-        <label>WebSocket Log:</label>
-        <button onclick="clearLogs()" style="float: right; font-size: 10px; padding: 2px 5px;">Clear</button>
-        <div id="logBox" class="log-box" style="margin-top: 5px;"></div>
-    </div>
+    <details class="card log-card">
+        <summary>WebSocket protocol log</summary>
+        <div class="card-body">
+            <div class="log-toolbar"><button id="clearLogBtn" class="btn-secondary" type="button">CLEAR</button></div>
+            <div id="logBox" class="log-box"></div>
+        </div>
+    </details>
 </div>
 
 <script>
-    let ws = null;
-    let joinedPlayerId = null;
-    let pendingPlayerId = null;
-    let currentSentenceId = null;
-    let submissionPending = false;
-    const activeSentences = new Map();
+    (() => {
+        'use strict';
 
-    function logMessage(direction, text) {
-        const box = document.getElementById('logBox');
-        const time = new Date().toISOString().substring(11, 19);
+        const $ = (id) => document.getElementById(id);
 
-        // XSS 방어형 textContent 로깅
-        const line = document.createElement('div');
-        line.textContent = `[${time}] ${direction} ${text}`;
-        box.appendChild(line);
-        box.scrollTop = box.scrollHeight;
-    }
+        let ws = null;
+        let playerNo = null;
+        let hostPlayerNo = 0;
+        let joined = false;
+        let readySent = false;
 
-    function clearLogs() {
-        document.getElementById('logBox').innerHTML = '';
-    }
+        let roomId = null;
+        let roomState = 'IDLE';
+        let language = 'NONE';
+        let languageLocked = false;
+        let currentPhase = 0;
 
-    // 🔴 [마감 패치] 재접속 및 초기화 시 UI 잔재를 말끔히 지워주는 청소 함수
-    function resetGameUI() {
-        activeSentences.clear();
-        joinedPlayerId = null;
-        pendingPlayerId = null;
-        currentSentenceId = null;
-        submissionPending = false;
+        let currentSentenceId = null;
+        let submissionPending = false;
 
-        const input = document.getElementById('typingInput');
-        input.value = '';
-        input.disabled = true;
+        let gameAnchorMs = null;
+        let gameAnchorPerf = 0;
+        let sentenceAnchorMs = null;
+        let sentenceAnchorPerf = 0;
+        let countdownAnchorMs = null;
+        let countdownAnchorPerf = 0;
 
-        document.getElementById('playerId').disabled = false;
-        document.getElementById('gameState').textContent = 'IDLE';
-        document.getElementById('countdownArea').textContent = '';
-        document.getElementById('sentenceArea').textContent = '서버 연결 및 참가 대기 중...';
+        let noticeTimer = null;
 
-        document.getElementById('myScore').textContent = '0';
-        document.getElementById('myWpm').textContent = '0';
+        function defaultWsUrl() {
+            if (location.protocol === 'http:' || location.protocol === 'https:') {
+                const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+                return `${scheme}//${location.host}/ws`;
+            }
+            return 'ws://127.0.0.1:8888/ws';
+        }
 
-        const result = document.getElementById('lastResult');
-        result.textContent = '-';
-        result.style.color = '#aaa';
-    }
+        function log(kind, text) {
+            const box = $('logBox');
+            const line = document.createElement('div');
+            line.className = `log-${kind.toLowerCase()}`;
+            const t = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+            line.textContent = `[${t}] ${kind.toUpperCase()} ${text}`;
+            box.appendChild(line);
+            box.scrollTop = box.scrollHeight;
+        }
 
-    function toggleConnect() {
-        const btn = document.getElementById('connectBtn');
-        if (ws) {
-            if (ws.readyState === WebSocket.OPEN) {
+        function showNotice(message, kind = 'error') {
+            const el = $('notice');
+            el.textContent = message;
+            el.style.display = 'block';
+            el.style.borderColor = kind === 'ok' ? 'rgba(93,240,165,.35)' : 'rgba(255,107,114,.35)';
+            el.style.background = kind === 'ok' ? 'rgba(93,240,165,.07)' : 'rgba(255,107,114,.07)';
+            el.style.color = kind === 'ok' ? '#b8ffd8' : '#ffc2c5';
+            clearTimeout(noticeTimer);
+            noticeTimer = setTimeout(() => { el.style.display = 'none'; }, 4200);
+        }
+
+        function send(payload) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                showNotice('WebSocket이 연결되어 있지 않습니다.');
+                return false;
+            }
+            const json = JSON.stringify(payload);
+            ws.send(json);
+            log('TX', json);
+            return true;
+        }
+
+        function playerLabel(no) {
+            if (!Number.isInteger(Number(no)) || Number(no) <= 0) return '-';
+            return `P${String(Number(no)).padStart(4, '0')}`;
+        }
+
+        function setGameAnchor(ms) {
+            gameAnchorMs = Math.max(0, Number(ms) || 0);
+            gameAnchorPerf = performance.now();
+        }
+
+        function setSentenceAnchor(ms) {
+            sentenceAnchorMs = Math.max(0, Number(ms) || 0);
+            sentenceAnchorPerf = performance.now();
+        }
+
+        function setCountdownAnchor(ms) {
+            countdownAnchorMs = Math.max(0, Number(ms) || 0);
+            countdownAnchorPerf = performance.now();
+        }
+
+        function remaining(anchorMs, anchorPerf) {
+            if (anchorMs === null) return null;
+            return Math.max(0, anchorMs - (performance.now() - anchorPerf));
+        }
+
+        function formatGameTime(ms) {
+            ms = Math.max(0, ms || 0);
+            const totalTenths = Math.ceil(ms / 100);
+            const min = Math.floor(totalTenths / 600);
+            const sec = Math.floor((totalTenths % 600) / 10);
+            const tenth = totalTenths % 10;
+            return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${tenth}`;
+        }
+
+        function formatSentenceTime(ms) {
+            if (ms === null) return '--.-';
+            return (Math.max(0, ms) / 1000).toFixed(1);
+        }
+
+        function formatPlayed(ms) {
+            const sec = Math.floor((Number(ms) || 0) / 1000);
+            return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+        }
+
+        function setRoomState(state) {
+            roomState = state || 'IDLE';
+            $('stateBadge').textContent = roomState;
+            updateControls();
+
+            if (roomState === 'WAITING') {
+                currentPhase = 0;
+                gameAnchorMs = null;
+                sentenceAnchorMs = null;
+                countdownAnchorMs = null;
+                currentSentenceId = null;
+                submissionPending = false;
+                $('phaseDisplay').textContent = '-';
+                $('gameTimeDisplay').textContent = '05:00.0';
+                $('sentenceTimeDisplay').textContent = '--.-';
+                $('countdownBig').style.display = 'none';
+                $('typingInput').disabled = true;
+                $('typingInput').value = '';
+                $('sentenceIdText').textContent = '';
+                $('sentenceText').textContent = joined
+                    ? (readySent ? 'READY 완료 — 다른 참가자를 기다리는 중...' : '언어 확인 후 READY를 눌러 주세요.')
+                    : 'JOIN을 눌러 방에 참가해 주세요.';
+            } else if (roomState === 'COUNTDOWN') {
+                currentSentenceId = null;
+                submissionPending = false;
+                $('typingInput').disabled = true;
+                $('typingInput').value = '';
+                $('sentenceIdText').textContent = '';
+                $('sentenceText').textContent = '게임 시작 준비 중...';
+            } else if (roomState === 'PLAYING') {
+                countdownAnchorMs = null;
+                $('countdownBig').style.display = 'none';
+                if (currentSentenceId === null) $('sentenceText').textContent = '첫 문장 수신 중...';
+            } else if (roomState === 'RESULT') {
+                countdownAnchorMs = null;
+                sentenceAnchorMs = null;
+                currentSentenceId = null;
+                submissionPending = false;
+                $('typingInput').disabled = true;
+            }
+        }
+
+        function updateControls() {
+            const open = !!ws && ws.readyState === WebSocket.OPEN;
+            const isHost = joined && playerNo !== null && Number(hostPlayerNo) === Number(playerNo);
+
+            $('serverUrl').disabled = !!ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING);
+            $('joinBtn').disabled = !open || joined || roomState === 'COUNTDOWN' || roomState === 'PLAYING' || roomState === 'RESULT';
+
+            const canLanguage = open && joined && isHost && roomState === 'WAITING' && !languageLocked;
+            $('languageSelect').disabled = !canLanguage;
+            $('languageBtn').disabled = !canLanguage;
+
+            const canReady = open && joined && roomState === 'WAITING' && language !== 'NONE' && !readySent;
+            $('readyBtn').disabled = !canReady;
+            $('readyBtn').textContent = readySent ? 'READY ✓' : 'READY';
+
+            $('playerInfo').textContent = playerNo === null ? '-' : playerLabel(playerNo);
+            if (isHost) {
+                $('playerInfo').textContent += ' (HOST)';
+                $('playerInfo').className = 'v host-mark';
+            } else {
+                $('playerInfo').className = 'v';
+            }
+            $('hostInfo').textContent = hostPlayerNo ? playerLabel(hostPlayerNo) : '-';
+            $('languageInfo').textContent = language;
+            $('lockInfo').textContent = languageLocked ? 'YES' : 'NO';
+            $('playerBadge').textContent = playerNo === null ? '-' : playerLabel(playerNo);
+            $('roomBadge').textContent = roomId === null ? '-' : String(roomId);
+
+            if (language === 'EN' || language === 'KO') $('languageSelect').value = language;
+        }
+
+        function resetSessionUI() {
+            playerNo = null;
+            hostPlayerNo = 0;
+            joined = false;
+            readySent = false;
+            roomId = null;
+            roomState = 'IDLE';
+            language = 'NONE';
+            languageLocked = false;
+            currentPhase = 0;
+            currentSentenceId = null;
+            submissionPending = false;
+            gameAnchorMs = null;
+            sentenceAnchorMs = null;
+            countdownAnchorMs = null;
+
+            $('roomBadge').textContent = '-';
+            $('stateBadge').textContent = 'IDLE';
+            $('playerBadge').textContent = '-';
+            $('phaseDisplay').textContent = '-';
+            $('gameTimeDisplay').textContent = '05:00.0';
+            $('sentenceTimeDisplay').textContent = '--.-';
+            $('statusLine').textContent = '서버에 연결해 주세요.';
+            $('countdownBig').style.display = 'none';
+            $('countdownBig').textContent = '';
+            $('sentenceText').textContent = '-';
+            $('sentenceIdText').textContent = '';
+            $('typingInput').value = '';
+            $('typingInput').disabled = true;
+            $('resultLine').textContent = '-';
+            $('resultLine').style.color = 'var(--muted)';
+
+            $('playScore').textContent = '0';
+            $('phaseScore').textContent = '0';
+            $('accuracyPercent').textContent = '0.00%';
+            $('accuracyScore').textContent = '0';
+            $('totalScore').textContent = '0';
+            $('wpm').textContent = '0';
+
+            $('rankingBody').textContent = '';
+            $('rankingCard').style.display = 'none';
+            updateControls();
+        }
+
+        function setConnected(connected) {
+            $('connDot').classList.toggle('on', connected);
+            $('connStatus').textContent = connected ? 'CONNECTED' : 'DISCONNECTED';
+            $('connectBtn').textContent = connected ? 'DISCONNECT' : 'CONNECT';
+            $('connectBtn').className = connected ? 'btn-danger btn-wide' : 'btn-primary btn-wide';
+            updateControls();
+        }
+
+        function connectOrDisconnect() {
+            if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
                 ws.close();
                 return;
             }
-            if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.CLOSING) {
+
+            const url = $('serverUrl').value.trim();
+            if (!url) {
+                showNotice('WebSocket URL을 입력해 주세요.');
                 return;
             }
+
+            resetSessionUI();
+            log('SYS', `Connecting to ${url}`);
+            $('connectBtn').disabled = true;
+
+            const socket = new WebSocket(url);
+            ws = socket;
+
+            socket.onopen = () => {
+                if (ws !== socket) return;
+                $('connectBtn').disabled = false;
+                setConnected(true);
+                $('statusLine').textContent = '연결 완료 — JOIN을 눌러 주세요.';
+                log('SYS', 'WebSocket connected');
+            };
+
+            socket.onmessage = (event) => {
+                if (ws !== socket) return;
+                log('RX', event.data);
+                try {
+                    const msg = JSON.parse(event.data);
+                    handleServerMessage(msg);
+                } catch (err) {
+                    log('ERR', `JSON parse failed: ${err.message}`);
+                }
+            };
+
+            socket.onerror = () => {
+                if (ws !== socket) return;
+                log('ERR', 'WebSocket error');
+                showNotice('WebSocket 오류가 발생했습니다.');
+            };
+
+            socket.onclose = () => {
+                if (ws !== socket) return;
+                ws = null;
+                resetSessionUI();
+                setConnected(false);
+                $('connectBtn').disabled = false;
+                log('SYS', 'WebSocket disconnected');
+            };
         }
 
-        const url = document.getElementById('serverUrl').value.trim();
-        if (!url) return;
+        function handleServerMessage(msg) {
+            if (!msg || typeof msg.type !== 'string') return;
 
-        logMessage('SYS', `Connecting to ${url}...`);
+            switch (msg.type) {
+                case 'JOIN_ACK': {
+                    playerNo = Number(msg.playerNo);
+                    joined = Number.isInteger(playerNo) && playerNo > 0;
+                    readySent = false;
+                    $('statusLine').textContent = `${playerLabel(playerNo)} 참가 완료`;
+                    if (msg.isHost) $('statusLine').textContent += ' — HOST';
+                    updateControls();
+                    break;
+                }
 
-        // 연결 전 UI 선행 초기화
-        resetGameUI();
+                case 'ROOM_CONFIG': {
+                    roomId = msg.roomId ?? roomId;
+                    hostPlayerNo = Number(msg.hostPlayerNo) || 0;
+                    language = (msg.language === 'EN' || msg.language === 'KO') ? msg.language : 'NONE';
+                    languageLocked = !!msg.languageLocked;
+                    if (typeof msg.roomState === 'string') setRoomState(msg.roomState);
+                    updateControls();
+                    break;
+                }
 
-        const socket = new WebSocket(url);
-        ws = socket;
-        btn.disabled = true;
+                case 'COUNTDOWN': {
+                    setRoomState('COUNTDOWN');
+                    setCountdownAnchor(msg.countdownRemainingMs);
+                    $('statusLine').textContent = '전원 READY — Countdown';
+                    break;
+                }
 
-        socket.onopen = () => {
-            if (ws !== socket) return;
-            btn.disabled = false;
-            btn.innerText = 'DISCONNECT';
-            document.getElementById('connStatus').innerText = 'CONNECTED';
-            document.getElementById('connStatus').style.color = '#00ffcc';
-            logMessage('SYS', 'WebSocket Connected.');
-        };
+                case 'GAME_STATE': {
+                    if (typeof msg.state === 'string') setRoomState(msg.state);
+                    currentPhase = Number(msg.phase) || 0;
+                    $('phaseDisplay').textContent = currentPhase > 0 ? String(currentPhase) : '-';
+                    if (msg.state === 'PLAYING') {
+                        setGameAnchor(msg.gameRemainingMs);
+                        $('statusLine').textContent = 'PLAYING';
+                    } else if (msg.state === 'WAITING') {
+                        countdownAnchorMs = null;
+                        $('statusLine').textContent = readySent
+                            ? 'Countdown 취소 — READY 상태 유지, 참가자 대기 중'
+                            : 'WAITING';
+                    }
+                    break;
+                }
 
-        socket.onclose = () => {
-            if (ws !== socket) return;
-            document.getElementById('connStatus').innerText = 'DISCONNECTED';
-            document.getElementById('connStatus').style.color = 'red';
-            btn.innerText = 'CONNECT';
-            btn.disabled = false;
+                case 'PHASE_CHANGED': {
+                    currentPhase = Number(msg.phase) || currentPhase;
+                    $('phaseDisplay').textContent = currentPhase > 0 ? String(currentPhase) : '-';
+                    setGameAnchor(msg.gameRemainingMs);
+                    $('statusLine').textContent = `PHASE ${currentPhase}`;
+                    break;
+                }
 
-            resetGameUI();
+                case 'SENTENCE_DROP': {
+                    currentSentenceId = String(msg.sentenceId);
+                    submissionPending = false;
+                    setSentenceAnchor(msg.sentenceRemainingMs);
+                    $('sentenceText').textContent = String(msg.text ?? '');
+                    $('sentenceIdText').textContent = `Sentence #${currentSentenceId}`;
+                    $('resultLine').textContent = '-';
+                    $('resultLine').style.color = 'var(--muted)';
 
-            logMessage('SYS', 'WebSocket Disconnected.');
-            ws = null;
-        };
-
-        socket.onerror = () => {
-            if (ws !== socket) return;
-            btn.disabled = false;
-            logMessage('ERR', 'WebSocket Error occurred.');
-        };
-
-        socket.onmessage = (event) => {
-            if (ws !== socket) return;
-            logMessage('RX', event.data);
-            try {
-                const msg = JSON.parse(event.data);
-                handleServerMessage(msg);
-            } catch (e) {
-                logMessage('ERR', 'Failed to parse JSON: ' + e.message);
-            }
-        };
-    }
-
-    function sendJoin() {
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
-            alert('WebSocket is not connected.');
-            return;
-        }
-        const pid = document.getElementById('playerId').value.trim();
-        if (!/^[1-9][0-9]*$/.test(pid)) {
-            alert('Player ID는 1 이상의 10진수 정수여야 합니다.');
-            return;
-        }
-
-        pendingPlayerId = pid;
-        const payload = { type: "JOIN_GAME", playerId: pid };
-        const json = JSON.stringify(payload);
-        ws.send(json);
-        logMessage('TX', json);
-    }
-
-    function sendReady() {
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
-            alert('WebSocket is not connected.');
-            return;
-        }
-        const payload = { type: "READY" };
-        const json = JSON.stringify(payload);
-        ws.send(json);
-        logMessage('TX', json);
-    }
-
-    function handleServerMessage(msg) {
-        if (msg.type === 'GAME_STATE') {
-            document.getElementById('gameState').innerText = msg.state;
-
-            if (msg.state === 'WAITING' && pendingPlayerId !== null) {
-                joinedPlayerId = pendingPlayerId;
-                pendingPlayerId = null;
-                document.getElementById('playerId').disabled = true;
-            }
-
-            if (msg.state === 'WAITING') {
-                document.getElementById('sentenceArea').innerText = '참가 완료! 다른 플레이어의 READY를 기다리는 중...';
-                document.getElementById('lastResult').innerText = '-';
-                document.getElementById('lastResult').style.color = '#aaa';
-                document.getElementById('countdownArea').innerText = '';
-                document.getElementById('typingInput').value = '';
-                document.getElementById('typingInput').disabled = true;
-            }
-
-            if (msg.state === 'PLAYING') {
-                document.getElementById('countdownArea').innerText = '';
-                document.getElementById('typingInput').disabled = true;
-            }
-        }
-        else if (msg.type === 'COUNTDOWN') {
-            document.getElementById('gameState').innerText = 'COUNTDOWN';
-            document.getElementById('countdownArea').innerText = `COUNTDOWN: ${msg.durationMs}ms`;
-        }
-        else if (msg.type === 'SENTENCE_DROP') {
-            activeSentences.set(String(msg.sentenceId), msg);
-            currentSentenceId = String(msg.sentenceId);
-            submissionPending = false;
-
-            document.getElementById('sentenceArea').innerText = `[ID: ${msg.sentenceId}] ${msg.text}`;
-
-            const input = document.getElementById('typingInput');
-            input.value = '';
-            input.disabled = false;
-            input.focus();
-        }
-        else if (msg.type === 'SENTENCE_RESULT') {
-            const result = msg.result;
-            const input = document.getElementById('typingInput');
-
-            submissionPending = false;
-            document.getElementById('lastResult').innerText = result;
-
-            if (result === 'CORRECT') {
-                document.getElementById('lastResult').style.color = '#00ffcc';
-            } else {
-                document.getElementById('lastResult').style.color = '#ff5555';
-            }
-
-            if (result === 'CORRECT' || result === 'EXPIRED' || result === 'ALREADY_CLEARED') {
-                activeSentences.delete(String(msg.sentenceId));
-
-                if (String(currentSentenceId) === String(msg.sentenceId)) {
-                    currentSentenceId = null;
+                    const input = $('typingInput');
                     input.value = '';
-                    input.disabled = true;
-                }
-
-                if (result === 'CORRECT') {
-                    document.getElementById('sentenceArea').innerText = '정답! 다음 문장 대기 중...';
-                } else if (result === 'EXPIRED') {
-                    document.getElementById('sentenceArea').innerText = '시간 초과! 다음 문장 대기 중...';
-                }
-            } else {
-                if (currentSentenceId !== null) {
                     input.disabled = false;
+                    input.classList.remove('correct-flash', 'wrong-flash');
                     input.focus();
+                    break;
                 }
+
+                case 'SENTENCE_RESULT': {
+                    const sid = String(msg.sentenceId);
+                    const result = String(msg.result || 'UNKNOWN');
+                    submissionPending = false;
+                    $('resultLine').textContent = result;
+
+                    const input = $('typingInput');
+
+                    if (result === 'CORRECT') {
+                        $('resultLine').style.color = 'var(--ok)';
+                        input.classList.remove('wrong-flash');
+                        input.classList.add('correct-flash');
+                        if (sid === currentSentenceId) {
+                            currentSentenceId = null;
+                            sentenceAnchorMs = null;
+                            input.disabled = true;
+                            input.value = '';
+                            $('sentenceText').textContent = '정답 — 다음 문장 대기 중...';
+                            $('sentenceIdText').textContent = '';
+                        }
+                    } else if (result === 'INCORRECT') {
+                        // v1.3: 같은 문장을 유지하고 retry 허용.
+                        $('resultLine').style.color = 'var(--danger)';
+                        input.classList.remove('correct-flash');
+                        input.classList.add('wrong-flash');
+                        if (sid === currentSentenceId && roomState === 'PLAYING') {
+                            input.disabled = false;
+                            input.focus();
+                            input.select();
+                        }
+                    } else if (result === 'EXPIRED') {
+                        $('resultLine').style.color = 'var(--warn)';
+                        if (sid === currentSentenceId) {
+                            currentSentenceId = null;
+                            sentenceAnchorMs = null;
+                            input.disabled = true;
+                            input.value = '';
+                            $('sentenceText').textContent = '시간 초과 — 다음 문장 대기 중...';
+                            $('sentenceIdText').textContent = '';
+                        }
+                    } else if (result === 'STALE') {
+                        $('resultLine').style.color = 'var(--muted)';
+                        if (currentSentenceId !== null && roomState === 'PLAYING') {
+                            input.disabled = false;
+                            input.focus();
+                        }
+                    } else {
+                        $('resultLine').style.color = 'var(--danger)';
+                    }
+                    break;
+                }
+
+                case 'SCORE_UPDATE': {
+                    if (playerNo !== null && Number(msg.playerNo) !== Number(playerNo)) break;
+                    $('playScore').textContent = String(msg.playScore ?? 0);
+                    $('phaseScore').textContent = String(msg.phaseScore ?? 0);
+                    $('accuracyScore').textContent = String(msg.accuracyScore ?? 0);
+                    $('accuracyPercent').textContent = `${((Number(msg.accuracyX100) || 0) / 100).toFixed(2)}%`;
+                    $('totalScore').textContent = String(msg.totalScore ?? 0);
+                    $('wpm').textContent = String(msg.wpm ?? 0);
+                    break;
+                }
+
+                case 'GAME_OVER': {
+                    setRoomState('RESULT');
+                    $('statusLine').textContent = `GAME OVER — ${msg.reason || 'NORMAL_END'}`;
+                    $('sentenceText').textContent = '최종 순위를 집계 중...';
+                    $('sentenceIdText').textContent = '';
+                    break;
+                }
+
+                case 'FINAL_RANKING': {
+                    renderRanking(Array.isArray(msg.entries) ? msg.entries : []);
+                    $('sentenceText').textContent = '게임 종료 — FINAL RANKING';
+                    break;
+                }
+
+                case 'ERROR': {
+                    const message = String(msg.message || 'UNKNOWN_ERROR');
+                    showNotice(message);
+                    log('ERR', message);
+                    if (message === 'ERROR_LANGUAGE_NOT_SELECTED') readySent = false;
+                    updateControls();
+                    break;
+                }
+
+                default:
+                    log('SYS', `Unhandled message type: ${msg.type}`);
             }
         }
-        else if (msg.type === 'SCORE_UPDATE') {
-            if (joinedPlayerId !== null && String(msg.playerId) === String(joinedPlayerId)) {
-                document.getElementById('myScore').innerText = msg.totalScore;
-                document.getElementById('myWpm').innerText = msg.wpm;
+
+        function renderRanking(entries) {
+            const body = $('rankingBody');
+            body.textContent = '';
+
+            for (const e of entries) {
+                const tr = document.createElement('tr');
+                if (playerNo !== null && Number(e.playerNo) === Number(playerNo)) tr.classList.add('me');
+
+                const values = [
+                    e.rank ?? '-',
+                    playerLabel(e.playerNo),
+                    e.status ?? '-',
+                    formatPlayed(e.playedMs),
+                    e.playScore ?? 0,
+                    e.phaseScore ?? 0,
+                    `${((Number(e.accuracyX100) || 0) / 100).toFixed(2)}%`,
+                    e.accuracyScore ?? 0,
+                    e.totalScore ?? 0,
+                    e.wpm ?? 0
+                ];
+
+                values.forEach((value, index) => {
+                    const td = document.createElement('td');
+                    td.textContent = String(value);
+                    if (index === 0) td.className = 'rank-cell';
+                    tr.appendChild(td);
+                });
+                body.appendChild(tr);
+            }
+
+            $('rankingCard').style.display = 'block';
+            $('rankingCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function joinGame() {
+            if (!joined && send({ type: 'JOIN_GAME' })) {
+                $('statusLine').textContent = 'JOIN 요청 전송 — 서버 응답 대기 중...';
             }
         }
-        else if (msg.type === 'GAME_OVER') {
-            document.getElementById('gameState').innerText = 'GAME_OVER';
-            document.getElementById('sentenceArea').innerText = `게임 종료! (이유: ${msg.reason || 'NORMAL'})`;
-            document.getElementById('typingInput').disabled = true;
-            currentSentenceId = null;
-            submissionPending = false;
-        }
-    }
 
-    function handleTyping(event) {
-        if (event.key !== 'Enter') return;
-
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
-            logMessage('ERR', 'WebSocket is not connected.');
-            return;
+        function applyLanguage() {
+            const value = $('languageSelect').value;
+            if (value !== 'EN' && value !== 'KO') return;
+            send({ type: 'SET_LANGUAGE', language: value });
         }
 
-        if (currentSentenceId === null) {
-            logMessage('SYS', 'No active sentence to type.');
-            return;
+        function readyGame() {
+            if (send({ type: 'READY' })) {
+                readySent = true;
+                $('readyBtn').textContent = 'READY ✓';
+                $('statusLine').textContent = 'READY 전송 완료 — 다른 참가자를 기다리는 중...';
+                updateControls();
+            }
         }
 
-        if (submissionPending) {
-            logMessage('SYS', 'Submission already pending.');
-            return;
+        function submitTyping(event) {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+
+            if (roomState !== 'PLAYING' || currentSentenceId === null) return;
+            if (submissionPending) return;
+
+            const input = $('typingInput');
+            const payload = {
+                type: 'TYPE_RESULT',
+                sentenceId: String(currentSentenceId),
+                input: input.value
+            };
+
+            if (send(payload)) {
+                submissionPending = true;
+                input.disabled = true;
+            }
         }
 
-        const payload = {
-            type: "TYPE_RESULT",
-            sentenceId: String(currentSentenceId),
-            input: event.target.value
-        };
-        const json = JSON.stringify(payload);
+        function animationLoop() {
+            const gameMs = remaining(gameAnchorMs, gameAnchorPerf);
+            if (gameMs !== null) $('gameTimeDisplay').textContent = formatGameTime(gameMs);
 
-        submissionPending = true;
-        event.target.disabled = true;
+            const sentenceMs = remaining(sentenceAnchorMs, sentenceAnchorPerf);
+            $('sentenceTimeDisplay').textContent = formatSentenceTime(sentenceMs);
 
-        try {
-            ws.send(json);
-            logMessage('TX', json);
-        } catch (e) {
-            submissionPending = false;
-            event.target.disabled = false;
-            logMessage('ERR', 'WebSocket send failed: ' + e.message);
+            const countdownMs = remaining(countdownAnchorMs, countdownAnchorPerf);
+            if (roomState === 'COUNTDOWN' && countdownMs !== null) {
+                const big = $('countdownBig');
+                big.style.display = 'block';
+                big.textContent = countdownMs > 0 ? String(Math.max(1, Math.ceil(countdownMs / 1000))) : 'GO';
+            }
+
+            requestAnimationFrame(animationLoop);
         }
-    }
+
+        $('serverUrl').value = defaultWsUrl();
+        $('connectBtn').addEventListener('click', connectOrDisconnect);
+        $('joinBtn').addEventListener('click', joinGame);
+        $('languageBtn').addEventListener('click', applyLanguage);
+        $('readyBtn').addEventListener('click', readyGame);
+        $('typingInput').addEventListener('keydown', submitTyping);
+        $('clearLogBtn').addEventListener('click', () => { $('logBox').textContent = ''; });
+
+        resetSessionUI();
+        setConnected(false);
+        requestAnimationFrame(animationLoop);
+    })();
 </script>
-
 </body>
 </html>

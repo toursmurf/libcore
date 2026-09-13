@@ -1,25 +1,11 @@
 #include "toos_type_spawn.h"
-#include <stdlib.h>
 #include <string.h>
+#include <stdlib.h>
+#include  "logger.h"
 
 // --------------------------------------------------------
-// Static Internal Helpers
+// Static Helpers: 32-bit & 64-bit Deterministic RNG (LCG)
 // --------------------------------------------------------
-
-// 🔴 [수정 1] 공통 Fail-Stop 헬퍼 추가
-static void fail_stop(ToosTypeSpawnEngine *engine) {
-    if (!engine) return;
-    engine->started = false;
-    engine->next_spawn_ms = 0;
-    engine->rematch_required = true;
-}
-
-static bool make_deadline(uint64_t now_ms, uint32_t duration_ms, uint64_t *out_deadline) {
-    if (!out_deadline) return false;
-    if (UINT64_MAX - now_ms < duration_ms) return false;
-    *out_deadline = now_ms + duration_ms;
-    return true;
-}
 
 static uint32_t local_rand_next(uint64_t *state) {
     if (!state) return 0;
@@ -38,279 +24,204 @@ static uint32_t bounded_rand(uint64_t *state, uint32_t bound) {
     return r % bound;
 }
 
-static void shuffle_pool_indices(ToosTypeSentencePool *pool, uint64_t *rng_state) {
-    if (pool->count == 0) return;
-    for (uint32_t i = pool->count - 1; i > 0; i--) {
-        uint32_t j = bounded_rand(rng_state, i + 1);
-        uint32_t temp = pool->indices[i];
-        pool->indices[i] = pool->indices[j];
-        pool->indices[j] = temp;
-    }
-    pool->head = 0;
+//[패치 2] 64-bit Reservoir Sampling을 위한 고정밀 난수 생성기
+static uint64_t local_rand_next64(uint64_t *state) {
+    if (!state) return 0;
+    *state = (*state * 6364136223846793005ULL) + 1442695040888963407ULL;
+    return *state;
 }
 
-static bool compute_next_spawn_ms(uint64_t current_spawn_ms, uint32_t interval_ms, uint64_t now_ms, uint64_t *out_next) {
-    if (!out_next || interval_ms == 0) return false;
-    uint64_t next = current_spawn_ms;
+static uint64_t bounded_rand64(uint64_t *state, uint64_t bound) {
+    if (!state || bound == 0) return 0;
+    if (bound == 1) return 0;
+
+    uint64_t threshold = (uint64_t)(-bound) % bound;
+    uint64_t r;
     do {
-        if (!make_deadline(next, interval_ms, &next)) return false;
-    } while (next <= now_ms);
-    *out_next = next;
-    return true;
-}
-
-static bool advance_spawn_schedule(ToosTypeSpawnEngine *engine, uint64_t now_ms) {
-    if (!engine) return false;
-    uint64_t next = 0;
-
-    // 🔴 [수정 1] 스케줄 실패 시 완벽한 fail_stop
-    if (!compute_next_spawn_ms(engine->next_spawn_ms, engine->spawn_interval_ms, now_ms, &next)) {
-        fail_stop(engine);
-        return false;
-    }
-
-    engine->next_spawn_ms = next;
-    return true;
-}
-
-static bool pool_collect_callback(const ToosTypeSentence *sentence, void *user_data) {
-    if (!sentence || !user_data) return false;
-    ToosTypeSpawnEngine *engine = (ToosTypeSpawnEngine *)user_data;
-    ToosTypeSentencePool *pool = &engine->pool;
-
-    if (engine->total_db_rows_visited == UINT32_MAX) return false;
-
-    engine->total_db_rows_visited++;
-
-    if (pool->count < TOOS_TYPE_MAX_POOL_SIZE) {
-        pool->sentences[pool->count] = *sentence;
-        pool->indices[pool->count] = pool->count;
-        pool->count++;
-    } else {
-        uint32_t j = bounded_rand(&engine->rng_state, engine->total_db_rows_visited);
-        if (j < TOOS_TYPE_MAX_POOL_SIZE) {
-            pool->sentences[j] = *sentence;
-        }
-    }
-    return true;
+        r = local_rand_next64(state);
+    } while (r < threshold);
+    return r % bound;
 }
 
 // --------------------------------------------------------
 // API Implementation
 // --------------------------------------------------------
 
-void toos_type_spawn_engine_init(ToosTypeSpawnEngine *engine, uint32_t interval_ms, uint32_t fall_duration_ms, uint8_t max_active, uint64_t seed) {
+void ToosTypeSpawnEngine_init(ToosTypeSpawnEngine *engine, uint64_t seed) {
     if (!engine) return;
     memset(engine, 0, sizeof(ToosTypeSpawnEngine));
-    engine->spawn_interval_ms = interval_ms;
-    engine->fall_duration_ms = fall_duration_ms;
-    engine->max_active = max_active;
-    engine->rng_state = (seed == 0) ? 12345ULL : seed;
+    engine->rng_state = seed;
     engine->loaded = false;
-    engine->started = false;
-    engine->rematch_required = false;
 }
 
-bool toos_type_spawn_engine_load(ToosTypeSpawnEngine *engine, sqlite3 *db, ToosTypeLanguage lang, uint8_t difficulty) {
-    if (!engine || !db || engine->started) return false;
-
-    memset(engine->active_list, 0, sizeof(engine->active_list));
-    engine->next_spawn_ms = 0;
-    engine->pool.count = 0;
-    engine->pool.head = 0;
-    engine->total_db_rows_visited = 0;
-    engine->loaded = false;
-
-    bool ok = toos_type_sentence_visit_by_difficulty(db, lang, difficulty, pool_collect_callback, engine);
-
-    if (!ok || engine->pool.count == 0) {
-        memset(&engine->pool, 0, sizeof(engine->pool));
-        memset(engine->active_list, 0, sizeof(engine->active_list));
-        engine->total_db_rows_visited = 0;
-        engine->next_spawn_ms = 0;
-        engine->loaded = false;
-        engine->started = false;
-        engine->rematch_required = false;
-        return false;
-    }
-
-    shuffle_pool_indices(&engine->pool, &engine->rng_state);
-    engine->loaded = true;
-    engine->rematch_required = false;
-    return true;
-}
-
-bool toos_type_spawn_engine_start(ToosTypeSpawnEngine *engine, uint64_t game_start_ms) {
-    if (!engine || !engine->loaded || engine->started) return false;
-    if (engine->rematch_required) return false;
-
-    if (engine->spawn_interval_ms == 0 || engine->fall_duration_ms == 0) return false;
-    if (engine->max_active == 0 || engine->max_active > TOOS_TYPE_ACTIVE_CAPACITY) return false;
-
-    uint64_t next_spawn_ms = 0;
-    if (!make_deadline(game_start_ms, engine->spawn_interval_ms, &next_spawn_ms)) {
-        return false;
-    }
-
-    engine->next_spawn_ms = next_spawn_ms;
-    engine->started = true;
-    return true;
-}
-
-void toos_type_spawn_engine_stop(ToosTypeSpawnEngine *engine) {
+void ToosTypeSpawnEngine_deinit(ToosTypeSpawnEngine *engine) {
     if (!engine) return;
-    engine->started = false;
-    engine->next_spawn_ms = 0;
-    memset(engine->active_list, 0, sizeof(engine->active_list));
-    engine->rematch_required = true;
+
+    if (engine->base_pool) {
+        free(engine->base_pool);
+        engine->base_pool = NULL;
+    }
+    if (engine->sequence) {
+        free(engine->sequence);
+        engine->sequence = NULL;
+    }
+    memset(engine, 0, sizeof(ToosTypeSpawnEngine));
 }
 
-// 🔴 [수정 2] 원자성 보장: Fallible calculation first -> Commit
-bool toos_type_spawn_engine_reset_for_rematch(ToosTypeSpawnEngine *engine, uint64_t new_game_start_ms, uint32_t initial_interval_ms, uint8_t initial_max_active) {
-    // 1. 상태 및 입력값 엄격 검증
-    if (!engine || !engine->loaded || engine->started || !engine->rematch_required) return false;
-    if (initial_interval_ms == 0) return false;
-    if (engine->fall_duration_ms == 0) return false;
-    if (initial_max_active == 0 || initial_max_active > TOOS_TYPE_ACTIVE_CAPACITY) return false;
+typedef struct {
+    ToosTypeSentence *pool;
+    uint32_t pool_capacity;
+    uint32_t pool_count;
+    uint64_t seen_count;
+    uint64_t rng_state;
+} ReservoirCollector;
 
-    // 2. Fallible calculation (에러 나면 기존 상태 완벽 보존)
-    uint64_t next_spawn_ms = 0;
-    if (!make_deadline(new_game_start_ms, initial_interval_ms, &next_spawn_ms)) {
+//[패치 2] 64-bit 난수를 사용하여 확률 붕괴 차단
+static bool pool_collect_callback(const ToosTypeSentence *sentence, void *user_data) {
+    if (!sentence || !user_data) return false;
+    ReservoirCollector *collector = (ReservoirCollector *)user_data;
+
+    if (collector->seen_count == UINT64_MAX) return false;
+
+    collector->seen_count++;
+
+    if (collector->pool_count < collector->pool_capacity) {
+        collector->pool[collector->pool_count] = *sentence;
+        collector->pool_count++;
+    } else {
+        uint64_t j = bounded_rand64(&collector->rng_state, collector->seen_count);
+        if (j < (uint64_t)collector->pool_capacity) {
+            collector->pool[(size_t)j] = *sentence;
+        }
+    }
+    return true;
+}
+
+bool ToosTypeSpawnEngine_build_deck(ToosTypeSpawnEngine *engine, sqlite3 *db, ToosTypeLanguage language) {
+    if (!engine || !db) return false;
+    if (engine->loaded) return false;
+
+    ToosTypeSentence *temp_pool = (ToosTypeSentence *)calloc(TOOS_TYPE_MAX_POOL_SIZE, sizeof(ToosTypeSentence));
+    if (!temp_pool) return false;
+
+    ReservoirCollector collector;
+    collector.pool = temp_pool;
+    collector.pool_capacity = TOOS_TYPE_MAX_POOL_SIZE;
+    collector.pool_count = 0;
+    collector.seen_count = 0;
+    collector.rng_state = engine->rng_state;
+
+    // [패치 1] 단 하나의 에러라도 발생 시 임시 메모리 반환 및 상태 보존(Failure Atomicity)
+    for (uint8_t diff = 1; diff <= 3; ++diff) {
+        uint64_t seen_before = collector.seen_count;
+        uint32_t pool_before = collector.pool_count;
+
+        LOG_INFO(logger,
+            "[ToosType Spawn] loading difficulty=%u lang=%d",
+            diff,
+            language);
+
+        bool ok = toos_type_sentence_visit_by_difficulty(
+            db,
+            language,
+            diff,
+            pool_collect_callback,
+            &collector);
+
+        LOG_INFO(logger,
+            "[ToosType Spawn] difficulty=%u result=%d "
+            "seen_before=%llu seen_after=%llu "
+            "pool_before=%u pool_after=%u",
+            diff,
+            ok ? 1 : 0,
+            (unsigned long long)seen_before,
+            (unsigned long long)collector.seen_count,
+            pool_before,
+            collector.pool_count);
+
+        if (!ok) {
+            LOG_ERROR(logger,
+                "[ToosType Spawn] Repository visit failed at difficulty=%u",
+                diff);
+
+            free(temp_pool);
+            return false;
+        }
+    }
+
+    if (collector.pool_count == 0) {
+        free(temp_pool);
         return false;
     }
 
-    // 3. Commit begins here (실패 불가능)
-    engine->spawn_interval_ms = initial_interval_ms;
-    engine->max_active = initial_max_active;
+    uint32_t *temp_seq = (uint32_t *)malloc(collector.pool_count * sizeof(uint32_t));
+    if (!temp_seq) {
+        free(temp_pool);
+        return false;
+    }
 
-    memset(engine->active_list, 0, sizeof(engine->active_list));
-    engine->pool.head = 0;
+    // --- Commit Phase ---
+    engine->rng_state = collector.rng_state;
+    engine->base_pool = temp_pool;
+    engine->base_count = collector.pool_count;
 
-    shuffle_pool_indices(&engine->pool, &engine->rng_state);
+    engine->sequence = temp_seq;
+    engine->sequence_capacity = collector.pool_count;
+    engine->sequence_count = 0;
 
-    engine->next_spawn_ms = next_spawn_ms;
-    engine->started = true;
-    engine->rematch_required = false;
+    if (!ToosTypeSpawnEngine_ensure_cursor(engine, 0)) {
+        ToosTypeSpawnEngine_deinit(engine);
+        return false;
+    }
+
+    engine->loaded = true;
+    return true;
+}
+
+bool ToosTypeSpawnEngine_ensure_cursor(ToosTypeSpawnEngine *engine, size_t cursor) {
+    if (!engine || engine->base_count == 0) return false;
+
+    if (cursor < engine->sequence_count) {
+        return true;
+    }
+
+    size_t needed_epochs = (cursor / engine->base_count) + 1;
+    size_t needed_capacity = needed_epochs * engine->base_count;
+
+    if (needed_capacity > engine->sequence_capacity) {
+        uint32_t *new_seq = (uint32_t *)realloc(engine->sequence, needed_capacity * sizeof(uint32_t));
+        if (!new_seq) return false;
+
+        engine->sequence = new_seq;
+        engine->sequence_capacity = needed_capacity;
+    }
+
+    while (engine->sequence_count < needed_capacity) {
+        size_t start_idx = engine->sequence_count;
+
+        for (uint32_t i = 0; i < engine->base_count; i++) {
+            engine->sequence[start_idx + i] = i;
+        }
+
+        // 블록 내부 셔플 (32-bit PRNG로 충분)
+        for (uint32_t i = engine->base_count - 1; i > 0; i--) {
+            uint32_t j = bounded_rand(&engine->rng_state, i + 1);
+
+            uint32_t temp = engine->sequence[start_idx + i];
+            engine->sequence[start_idx + i] = engine->sequence[start_idx + j];
+            engine->sequence[start_idx + j] = temp;
+        }
+
+        engine->sequence_count += engine->base_count;
+    }
 
     return true;
 }
 
-bool toos_type_spawn_engine_set_phase(ToosTypeSpawnEngine *engine, uint64_t now_ms, uint32_t new_interval_ms, uint8_t new_max_active) {
-    if (!engine) return false;
-    if (new_interval_ms == 0) return false;
-    if (new_max_active == 0 || new_max_active > TOOS_TYPE_ACTIVE_CAPACITY) return false;
+const ToosTypeSentence* ToosTypeSpawnEngine_sentence_at(const ToosTypeSpawnEngine *engine, size_t cursor) {
+    if (!engine || !engine->loaded || engine->base_count == 0) return NULL;
+    if (cursor >= engine->sequence_count) return NULL;
 
-    if (engine->started) {
-        uint64_t new_next = 0;
-        if (!make_deadline(now_ms, new_interval_ms, &new_next)) return false;
-        engine->next_spawn_ms = new_next;
-    }
-
-    engine->spawn_interval_ms = new_interval_ms;
-    engine->max_active = new_max_active;
-    return true;
-}
-
-bool toos_type_spawn_engine_pop_expired(ToosTypeSpawnEngine *engine, uint64_t now_ms, ToosTypeActiveSentence *out_expired) {
-    if (!engine || !engine->started || !out_expired) return false;
-
-    for (int i = 0; i < TOOS_TYPE_ACTIVE_CAPACITY; i++) {
-        if (engine->active_list[i].is_active && now_ms >= engine->active_list[i].deadline_at_ms) {
-            *out_expired = engine->active_list[i];
-            engine->active_list[i].is_active = false;
-            return true;
-        }
-    }
-    return false;
-}
-
-ToosTypeSpawnResult toos_type_spawn_engine_tick(ToosTypeSpawnEngine *engine, uint64_t now_ms, ToosTypeActiveSentence *out_spawned) {
-    if (!engine || !out_spawned) return TOOS_TYPE_SPAWN_ERROR;
-    if (!engine->started) return TOOS_TYPE_SPAWN_NONE;
-
-    if (now_ms < engine->next_spawn_ms) return TOOS_TYPE_SPAWN_NONE;
-    if (engine->pool.head >= engine->pool.count) return TOOS_TYPE_SPAWN_NONE;
-
-    int active_count = 0;
-    for (int i = 0; i < TOOS_TYPE_ACTIVE_CAPACITY; i++) {
-        if (engine->active_list[i].is_active) active_count++;
-    }
-
-    if (active_count >= engine->max_active) {
-        if (!advance_spawn_schedule(engine, now_ms)) return TOOS_TYPE_SPAWN_ERROR;
-        return TOOS_TYPE_SPAWN_NONE;
-    }
-
-    ToosTypeActiveSentence *spawned = NULL;
-    for (int i = 0; i < TOOS_TYPE_ACTIVE_CAPACITY; i++) {
-        if (!engine->active_list[i].is_active) {
-            spawned = &engine->active_list[i];
-            break;
-        }
-    }
-
-    // 🔴 [수정 1] 불변식 파괴 에러 방어
-    if (!spawned) {
-        fail_stop(engine);
-        return TOOS_TYPE_SPAWN_ERROR;
-    }
-
-    // 🔴 [수정 1] Fallible 로직 모두 fail_stop 연동
-    uint64_t deadline = 0;
-    if (!make_deadline(now_ms, engine->fall_duration_ms, &deadline)) {
-        fail_stop(engine);
-        return TOOS_TYPE_SPAWN_ERROR;
-    }
-
-    uint64_t next_spawn = 0;
-    if (!compute_next_spawn_ms(engine->next_spawn_ms, engine->spawn_interval_ms, now_ms, &next_spawn)) {
-        fail_stop(engine);
-        return TOOS_TYPE_SPAWN_ERROR;
-    }
-
-    // --- Commit ---
-    uint32_t pool_idx = engine->pool.indices[engine->pool.head];
-
-    spawned->sentence_id = engine->pool.sentences[pool_idx].id;
-    spawned->spawned_at_ms = now_ms;
-    spawned->deadline_at_ms = deadline;
-    spawned->pool_index = pool_idx;
-    spawned->is_active = true;
-
-    engine->pool.head++;
-    engine->next_spawn_ms = next_spawn;
-
-    *out_spawned = *spawned;
-
-    return TOOS_TYPE_SPAWNED;
-}
-
-bool toos_type_spawn_engine_find_active(const ToosTypeSpawnEngine *engine, uint64_t sentence_id, ToosTypeActiveSentence *out_active) {
-    if (!engine || !out_active || sentence_id == 0) return false;
-
-    for (uint32_t i = 0; i < TOOS_TYPE_ACTIVE_CAPACITY; i++) {
-        const ToosTypeActiveSentence *active = &engine->active_list[i];
-        if (active->is_active && active->sentence_id == sentence_id) {
-            *out_active = *active;
-            return true;
-        }
-    }
-    return false;
-}
-
-bool toos_type_spawn_engine_retire_shared(ToosTypeSpawnEngine *engine, uint64_t sentence_id) {
-    if (!engine) return false;
-    for (int i = 0; i < TOOS_TYPE_ACTIVE_CAPACITY; i++) {
-        if (engine->active_list[i].is_active && engine->active_list[i].sentence_id == sentence_id) {
-            engine->active_list[i].is_active = false;
-            return true;
-        }
-    }
-    return false;
-}
-
-const ToosTypeSentence* toos_type_spawn_engine_get_sentence(const ToosTypeSpawnEngine *engine, const ToosTypeActiveSentence *active) {
-    if (!engine || !active) return NULL;
-    if (active->pool_index >= engine->pool.count) return NULL;
-    return &engine->pool.sentences[active->pool_index];
+    uint32_t mapped_index = engine->sequence[cursor];
+    return &engine->base_pool[mapped_index];
 }
