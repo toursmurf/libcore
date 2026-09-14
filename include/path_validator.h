@@ -15,7 +15,7 @@ struct PathValidator {
     Object base;
 
     /*
-     * 🚀 validate: 경로 유효성 검증 및 정규화(Canonicalize)
+     *  validate: 경로 유효성 검증 및 정규화(Canonicalize)
      *
      * [호출자 버퍼 가이드]
      * out_size는 최소 (MAX_PATH_LEN + 1) 이상을 권장함.

@@ -19,7 +19,7 @@ static BTreeNode* create_node(int t, bool is_leaf) {
     return node;
 }
 
-// 🚀 내부 노드 파괴 시 완벽한 RELEASE 연쇄 폭발!
+//내부 노드 파괴 시 완벽한 RELEASE 연쇄 폭발!
 static void BTree_free_node(BTree *self, BTreeNode *node) {
     if (!node) return;
 
@@ -132,7 +132,7 @@ static Object* impl_search(BTree *self, Object *key) {
     return NULL;
 }
 
-// 🚀 [버그 3 수정 완료] clear 후 root NULL 체크 방어막 전개!
+//[버그 3 수정 완료] clear 후 root NULL 체크 방어막 전개!
 static void impl_clear(BTree *self) {
     pthread_mutex_lock(&self->lock);
     if (self->root) {

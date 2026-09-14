@@ -5,7 +5,7 @@
 #include "arraylist.h"
 #include "string_obj.h"
 #include "http_message.h"
-#include "path_validator.h" /* 🚀 [v1.6.0] PathValidator 방어 모듈 임포트 */
+#include "path_validator.h" /*  [v1.6.0] PathValidator 방어 모듈 임포트 */
 
 /* =========================================================
  * [1]  HTTP 핸들러 시그니처 (함수 포인터)
@@ -39,14 +39,14 @@ struct Router {
     /* ✨✨ [OWNED] 단일 인스턴스 공유 (매 요청 시 재사용) ✨✨ */
     PathValidator* pv; 
 
-    /* 🚀 Express.js 스타일 직관적 라우팅 VTable */
+    /*  Express.js 스타일 직관적 라우팅 VTable */
     void (*addRoute)(Router* self, HttpMethod method, const char* path, HttpHandler handler);
     void (*GET)(Router* self, const char* path, HttpHandler handler);
     void (*POST)(Router* self, const char* path, HttpHandler handler);
     void (*PUT)(Router* self, const char* path, HttpHandler handler);
     void (*DELETE)(Router* self, const char* path, HttpHandler handler);
 
-    /* 🚀 심장부: 패킷을 받아 알맞은 핸들러로 꽂아주는 디스패처 */
+    /*  심장부: 패킷을 받아 알맞은 핸들러로 꽂아주는 디스패처 */
     void (*dispatch)(Router* self, HttpRequest* req, HttpResponse* res);
 };
 

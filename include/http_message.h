@@ -29,7 +29,7 @@ typedef struct HttpRequest {
     HashMap* headers;
     HashMap* query;
 
-    /* 🚀 [v1.7.1 신규] Express.js 스타일 동적 라우팅 파라미터 (예: /board/:id) */
+    /*  [v1.7.1 신규] Express.js 스타일 동적 라우팅 파라미터 (예: /board/:id) */
     HashMap* params;
 
     JSONNode* json;
@@ -56,7 +56,7 @@ struct HttpResponse {
     int status_code;
     HashMap* headers;
 
-    /* 🚀 Express.js 완벽 대응 VTable */
+    /*  Express.js 완벽 대응 VTable */
     void (*setStatus)(HttpResponse* self, int code);
     void (*sendStatus)(HttpResponse* self, int code);
     void (*sendText)(HttpResponse* self, const char* text);

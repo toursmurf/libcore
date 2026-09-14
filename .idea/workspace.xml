@@ -376,7 +376,7 @@
   </component>
   <component name="SelectedDebugProfileService"><![CDATA[{
   "profileIdByStamp": [],
-  "modificationCount": 26522
+  "modificationCount": 27124
 }]]></component>
   <component name="SharedIndexes">
     <attachedChunks>
@@ -409,7 +409,7 @@
       <workItem from="1789172936317" duration="20463000" />
       <workItem from="1789273513377" duration="7337000" />
       <workItem from="1789287039254" duration="1984000" />
-      <workItem from="1789394374067" duration="384000" />
+      <workItem from="1789394374067" duration="603000" />
     </task>
     <task id="LOCAL-00001" summary="not null 필드의 null 수정">
       <option name="closed" value="true" />

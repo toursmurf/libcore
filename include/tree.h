@@ -10,7 +10,7 @@
 extern const Class treeClass;
 extern const Class treeIteratorClass;
 
-// 🚀 언더바(_) 소각 완료!
+//  언더바(_) 소각 완료!
 typedef struct TreeNode TreeNode;
 struct TreeNode {
     Object* data;
@@ -20,15 +20,15 @@ struct TreeNode {
 // 비교 콜백 (Object 기반)
 typedef int (*CompareFunc)(Object* a, Object* b);
 
-// 🚀 충돌 방지: 범용 Stack과 겹치지 않게 Tree 전용 명시!
+//  충돌 방지: 범용 Stack과 겹치지 않게 Tree 전용 명시!
 struct TreeStackNode;
 
-// 🚀 언더바(_) 소각 완료!
+//  언더바(_) 소각 완료!
 typedef struct TreeIterator TreeIterator;
 struct TreeIterator {
     Object base; // [상속] 메모리 누수 방지용
 
-    struct TreeStackNode* stack; // 🚀 이름 변경 반영
+    struct TreeStackNode* stack; //  이름 변경 반영
     TreeNode* current;
 
     bool    (*hasNext)(TreeIterator* self);

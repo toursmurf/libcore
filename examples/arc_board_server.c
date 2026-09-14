@@ -85,7 +85,7 @@ int main(void) {
         goto fail_db;
     }
 
-    /* 🚨 3. BoardHandler 생성 (DB 정합성을 위해 base_dir 과 상대경로들, 그리고 max_upload_size 분리 주입!) 🚨 */
+    /* 3. BoardHandler 생성 (DB 정합성을 위해 base_dir 과 상대경로들, 그리고 max_upload_size 분리 주입!) */
     BoardHandler* bh = new_BoardHandler(db, pv, base_dir, upload_dir, tpl_dir, max_upload_size);
     if (!bh) {
         LOG_ERROR(logger, "BoardHandler 실패");

@@ -275,7 +275,7 @@ examples: $(EXAMPLE_BINS)
 	@echo "-----------------------------------------"
 	@echo " Examples: $(EX_COUNT) 개 빌드 완료"
 	@echo "-----------------------------------------"
-	@echo "🚀 모든 예제 컴파일 완벽 성공!"
+	@echo " 모든 예제 컴파일 완벽 성공!"
 
 $(EXAMPLE_DIR)/%: $(EXAMPLE_DIR)/%.c $(LIB_DIR)/libcore.a
 	@echo "🛠️  Building 예제: $@"
@@ -299,7 +299,7 @@ check_valgrind:
 ci-asan: check_asan clean_soft
 	@date +%s > .ci_asan_timer
 	@echo "=========================================================="
-	@echo " 🚀 [ASan 모드] 빌드 및 메모리 침범 쾌속 사냥 가동"
+	@echo "  [ASan 모드] 빌드 및 메모리 침범 쾌속 사냥 가동"
 	@echo "=========================================================="
 	@rm -rf $(BIN_DIR)/asan
 	@mkdir -p $(BIN_DIR)/asan

@@ -6,7 +6,7 @@
 
 extern const Class linkedListClass;
 
-// 🚀 충돌 방지: Node -> LinkedListNode
+//  충돌 방지: Node -> LinkedListNode
 typedef struct LinkedListNode LinkedListNode;
 struct LinkedListNode {
     Object* data;       // RETAIN/RELEASE 대상!
@@ -18,7 +18,7 @@ typedef struct LinkedList LinkedList;
 struct LinkedList {
     Object base;
 
-    LinkedListNode* head; // 🚀 타입 변경 적용
+    LinkedListNode* head; //  타입 변경 적용
     int size;
 
     pthread_mutex_t lock;

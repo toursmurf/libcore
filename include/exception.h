@@ -2,7 +2,7 @@
 #define EXCEPTION_H
 
 #include "object.h"
-#include "string_obj.h" // 🚀 [ARC 규격] String 객체 헤더 인클루드
+#include "string_obj.h" //  [ARC 규격] String 객체 헤더 인클루드
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -43,7 +43,7 @@ typedef enum ErrorCode {
     // Config
     ERR_CONFIG = 500,
 
-    // 🚀 [챕터 10 패치] 소켓 에러 코드 (2000번대)
+    //  [챕터 10 패치] 소켓 에러 코드 (2000번대)
     ERR_SOCK_CREATE  = 2001,
     ERR_SOCK_BIND    = 2002,
     ERR_SOCK_LISTEN  = 2003,

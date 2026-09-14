@@ -60,7 +60,7 @@ arc_mysql_test.c: MySQL/MariaDB 클라이언트 연동, SQL 쿼리 실행 및 �
 
 arc_regex_test.c: String 객체 내부의 정규표현식 매칭 기능 테스트입니다.
 
-🚀 종합 데모 및 클라이언트 (Integration & Clients)
+ 종합 데모 및 클라이언트 (Integration & Clients)
 
 all_test_v2.c: libcore 프레임워크의 모든 40여 개 모듈을 엮어 무결성 및 메모리 누수(Valgrind)를 검증하는 가장 거대한 통합 테스트 스위트입니다.
 

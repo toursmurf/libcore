@@ -25,7 +25,7 @@ struct Vector {
     // 메서드 인터페이스
     void (*push_back)(Vector *self, Object *item);
     Object* (*at)(Vector *self, int index);
-    Object* (*pop_back)(Vector *self); // 🚀 반환형 변경 (소유권 이전)
+    Object* (*pop_back)(Vector *self); //  반환형 변경 (소유권 이전)
     int (*get_size)(Vector *self);
     
     // Thread 수동 잠금 제어
@@ -45,7 +45,7 @@ void it_next(VectorIterator *it);
 Object* it_get(VectorIterator *it);
 int it_neq(VectorIterator a, VectorIterator b);
 
-// 🚀 [ARC 호환 매크로] Object 캐스팅 내장
+//  [ARC 호환 매크로] Object 캐스팅 내장
 #define VECTOR_FOREACH(vec, type, var) \
     for (VectorIterator _it_##var = (vec)->begin(vec); \
          it_neq(_it_##var, (vec)->end(vec)); \

@@ -2,14 +2,14 @@
 #define THREADPOOL_H
 
 #include "object.h"
-#include "thread.h"   // 🚀 여기서 Runnable (void* (*)(void*)) 이미 정의됨
+#include "thread.h"   //  여기서 Runnable (void* (*)(void*)) 이미 정의됨
 #include "queue.h"
 #include "semaphore_obj.h"
 #include "arraylist.h"
 #include <pthread.h>
 #include <stdbool.h>
 
-// 🚀 언더바(_) 전면 폐지 및 타입 일치
+//  언더바(_) 전면 폐지 및 타입 일치
 typedef struct ThreadPool ThreadPool;
 typedef struct Task Task;
 
@@ -45,7 +45,7 @@ struct ThreadPool {
     int  (*getPendingCount)(ThreadPool* self);
 };
 
-// 🚀 생성자 명칭 통일 (Standard v8.0)
+//  생성자 명칭 통일 (Standard v8.0)
 ThreadPool* new_ThreadPool(int num_threads, int max_resources);
 
 #endif

@@ -7,7 +7,7 @@
 
 extern const Class listClass;
 
-// 🚀 언더바(_) 소각 완료
+//  언더바(_) 소각 완료
 typedef struct ListNode ListNode;
 struct ListNode {
     Object *data;
@@ -15,7 +15,7 @@ struct ListNode {
     ListNode *next;
 };
 
-// 🚀 언더바(_) 소각 완료
+//  언더바(_) 소각 완료
 typedef struct List List;
 struct List {
     Object base;

@@ -28,7 +28,7 @@ struct TextEncoder {
     ByteBuffer* (*base64Decode)(TextEncoder* self, const char* input);
 
     /* ---------------------------------------------------------
-     * [2] 성능 극대화 API (Zero-Allocation API) 🚀
+     * [2] 성능 극대화 API (Zero-Allocation API) 
      * - 외부에서 주입된 StringBuilder나 ByteBuffer에 결과만 덧붙임(Append).
      * - 힙 할당(malloc) 오버헤드 0! 게시판 렌더링 속도의 핵심!
      * --------------------------------------------------------- */

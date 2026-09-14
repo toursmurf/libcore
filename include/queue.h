@@ -25,7 +25,7 @@ struct Queue {
 
     void (*forEach)(Queue* self, void (*action)(Object*));
 
-    // 🚀 [복구 완료] 이터레이터 메서드
+    //  [복구 완료] 이터레이터 메서드
     ArrayListIterator* (*iterator)(Queue* self);
 };
 

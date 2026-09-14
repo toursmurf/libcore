@@ -12,7 +12,7 @@ extern const Class hashtableIteratorClass;
 
 typedef struct Hashtable Hashtable;
 typedef struct HashtableIterator HashtableIterator;
-// 🚀 충돌 방지: Entry -> HashtableEntry
+//  충돌 방지: Entry -> HashtableEntry
 typedef struct HashtableEntry HashtableEntry;
 
 typedef void (*BiConsumer)(Object *key, Object *value);
@@ -21,15 +21,15 @@ struct HashtableEntry {
     Object *key;
     Object *value;
     size_t hash;
-    struct HashtableEntry *next; // 🚀 타입 변경 적용
+    struct HashtableEntry *next; //  타입 변경 적용
 };
 
 struct HashtableIterator {
     Object base;
     Hashtable *ht;
     size_t currentBucketIndex;
-    HashtableEntry *currentEntry; // 🚀 타입 변경 적용
-    HashtableEntry *lastReturned; // 🚀 타입 변경 적용
+    HashtableEntry *currentEntry; //  타입 변경 적용
+    HashtableEntry *lastReturned; //  타입 변경 적용
     size_t expectedModCount;
 
     bool (*hasNext)(HashtableIterator *self);
@@ -40,7 +40,7 @@ struct HashtableIterator {
 struct Hashtable {
     Object base;
 
-    HashtableEntry **table; // 🚀 타입 변경 적용
+    HashtableEntry **table; //  타입 변경 적용
     int capacity;
     int count;
     int threshold;
