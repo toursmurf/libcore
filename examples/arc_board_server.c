@@ -19,7 +19,6 @@ static void on_signal(int sig) {
     (void)sig;
     if (g_server) g_server->stop(g_server);
 }
-
 /* ── main ── */
 int main(void) {
     signal(SIGPIPE, SIG_IGN);
@@ -34,13 +33,13 @@ int main(void) {
 
     int         port       = cfg->getInt   (cfg, "port",       8080);
 
-    /* 🚨 1. 설정에서 절대/상대 경로 분리 로드! 🚨 */
+    /* 1. 설정에서 절대/상대 경로 분리 로드! */
     const char* base_dir   = cfg->getString(cfg, "base_dir",   ".");
     const char* upload_dir = cfg->getString(cfg, "upload_dir", "uploads");
     const char* tpl_dir    = cfg->getString(cfg, "tpl_dir",    "templates");
     const char* log_file   = cfg->getString(cfg, "log_file",   "logs/board.log");
 
-    /* ✅ 추가: 최대 파일 업로드 용량 설정 로드 (기본값 10MB) */
+    /*추가: 최대 파일 업로드 용량 설정 로드 (기본값 10MB) */
     size_t max_upload_size = (size_t)cfg->getInt(cfg, "max_upload_size", 10485760);
 
     const char* db_host    = cfg->getString(cfg, "db_host",    "127.0.0.1");
@@ -58,7 +57,7 @@ int main(void) {
     } else {
         snprintf(resolved_db, sizeof(resolved_db), "%s", db_name);
     }
-    /* 🚨 2. 로거 초기화 (절대경로 합성) 🚨 */
+    /* 2. 로거 초기화 (절대경로 합성) */
     char abs_log[1024];
     snprintf(abs_log, sizeof(abs_log), "%s/%s", base_dir, log_file);
 
