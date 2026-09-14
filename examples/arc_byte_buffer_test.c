@@ -29,7 +29,7 @@ int main() {
     memset(dummy, 'A', 60);
     buf->write(buf, dummy, 60); // 여기서 compact()가 호출되어 read_pos가 0이 됩니다.
     
-    printf("    -> 🚨 Compact 실행 후 ReadPos: %zu (0이어야 정상)\n", buf->read_pos);
+    printf("    ->  Compact 실행 후 ReadPos: %zu (0이어야 정상)\n", buf->read_pos);
     assert(buf->read_pos == 0); 
 
     // [4] readSlice 테스트 (이제 ReadPos는 0인 상태에서 시작)
@@ -38,7 +38,7 @@ int main() {
     ByteBuffer* slice = buf->readSlice(buf, 10);
     
     printf("    -> 10바이트 readSlice 실행 후 ReadPos: %zu\n", buf->read_pos);
-    // 🚨 수정된 검증식: compact로 리셋된 0에서 10을 더한 값이 10이어야 함
+    //  수정된 검증식: compact로 리셋된 0에서 10을 더한 값이 10이어야 함
     assert(buf->read_pos == current_pos + 10); 
     printf("    -> ✅ 소유권 이전 및 중복 처리 방어 확인!\n\n");
 

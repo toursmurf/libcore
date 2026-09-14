@@ -93,7 +93,7 @@ static void _init_base_methods(DBClient *db) {
     db->schema_cache = NULL;
     db->option_count = 0;
 
-    /* 🚨 [FINAL] 일반 뮤텍스를 Recursive 뮤텍스로 교체! (데드락 방지) */
+    /*  [FINAL] 일반 뮤텍스를 Recursive 뮤텍스로 교체! (데드락 방지) */
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);

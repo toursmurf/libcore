@@ -13,7 +13,7 @@
 
 int main() {
     const char* sock_path = "/tmp/arc_ipc.sock";
-    printf("🚀 [UNIX Client] 로컬 IPC 타격 준비...\n");
+    printf(" [UNIX Client] 로컬 IPC 타격 준비...\n");
 
     // [1] 파일 경로를 타겟으로 조준하여 비동기 접속 시도
     UnixSocket* client = new_UnixClient(sock_path);
@@ -25,13 +25,13 @@ int main() {
     const char* msg = "인동 이사님, 빛의 속도로 IPC 타격 완료!";
     printf("🔥 [UNIX Client] 발사: %s\n", msg);
 
-    // [🚨 통합]: send_all 대신 통합 send() 사용 (TCP와 동일한 문법!)
+    // [ 통합]: send_all 대신 통합 send() 사용 (TCP와 동일한 문법!)
     client->base.send(&client->base, msg, strlen(msg), NULL, 0);
 
     char buf[4096];
     int retry = 0;
     while (retry < 5000) {
-        // [🚨 통합]: recv() 호출 (주소 정보 불필요 시 NULL, NULL)
+        // [ 통합]: recv() 호출 (주소 정보 불필요 시 NULL, NULL)
         ssize_t n = client->base.recv(&client->base, buf, sizeof(buf) - 1, NULL, NULL);
 
         if (n > 0) {

@@ -61,7 +61,7 @@ static void tb_append(TplBuilder* tb, const char* str, size_t slen) {
     tb->buf[tb->len] = '\0';
 }
 
-/* 🚨 XSS 방어 + embedded NUL 처리 */
+/*  XSS 방어 + embedded NUL 처리 */
 static void tb_append_escaped_len(TplBuilder* tb, const char* str, size_t len) {
     if (!tb || !str) {
         return;

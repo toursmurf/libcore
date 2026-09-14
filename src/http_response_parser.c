@@ -18,7 +18,7 @@ HttpClientResponse* HttpResponseParser_parse_with_status(HttpTransport* transpor
     } else {
         int ret = HttpTransport_recv_line(transport, line, sizeof(line));
 	if (ret <= 0) {
-	    // 🚨 범인 잡는 로그 추가!
+	    //  범인 잡는 로그 추가!
             printf("[DEBUG] 치명적 오류: 상태 줄을 읽을 수 없습니다. (ret: %d)\n", ret);
             RELEASE((Object*)res);
             return NULL;
@@ -82,7 +82,7 @@ HttpClientResponse* HttpResponseParser_parse_with_status(HttpTransport* transpor
       /* 2. 청크 크기 파싱 (16진수) */
       long chunk_size = strtol(line, NULL, 16);
 
-      /* 🚨 3. [핵심 패치] 청크 크기가 0이면 즉시 종료! */
+      /*  3. [핵심 패치] 청크 크기가 0이면 즉시 종료! */
       if (chunk_size == 0) {
         /* 마지막 0 뒤에 따라오는 \r\n (Trailer 헤더들) 소비 */
         while (HttpTransport_recv_line(transport, line, sizeof(line)) > 0) {
@@ -119,7 +119,7 @@ HttpClientResponse* HttpResponseParser_parse_with_status(HttpTransport* transpor
 
     res->body_len = body_buf->write_pos;
 
-    /* 🚨 NULL 방어막 완비: 메모리 부족 시 즉각 파기 */
+    /*  NULL 방어막 완비: 메모리 부족 시 즉각 파기 */
     res->body = (char*)malloc(res->body_len + 1);
     if (!res->body) {
         RELEASE((Object*)body_buf);

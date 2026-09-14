@@ -63,7 +63,7 @@ void Crypto_SHA1(const uint8_t* data, size_t len, uint8_t out_hash[20]) {
     uint64_t bit_len = (uint64_t)len * 8;
     size_t padded_len = (len + 1 + 8 + 63) & ~63;
 
-    // 🚨 NULL 체크 방어 완비!!
+    //  NULL 체크 방어 완비!!
     uint8_t* buf = (uint8_t*)calloc(1, padded_len);
 
     if (!buf) {
@@ -154,7 +154,7 @@ static void Hasher_finalize(Object* obj) {
 
 static Class Hasher_Class = {
     .name = "Hasher",
-    .size = sizeof(Hasher), // 🚨 .size 완비!
+    .size = sizeof(Hasher), //  .size 완비!
     .finalize = Hasher_finalize
 };
 
@@ -255,11 +255,11 @@ static void Cipher_finalize(Object* obj) {
 
 static Class Cipher_Class = {
     .name = "Cipher",
-    .size = sizeof(Cipher), // 🚨 .size 완비!
+    .size = sizeof(Cipher), //  .size 완비!
     .finalize = Cipher_finalize
 };
 
-// 🚨 동적 Key/IV 세팅 로직 완비!!
+//  동적 Key/IV 세팅 로직 완비!!
 static bool Cipher_init(Cipher* self, const uint8_t* key, size_t key_len, const uint8_t* iv, size_t iv_len) {
     if (!self || !key || !iv || key_len > sizeof(self->key) || iv_len > sizeof(self->iv)) {
         return false; // 오버플로우 방어!
@@ -287,7 +287,7 @@ static ByteBuffer* Cipher_encrypt(Cipher* self, const uint8_t* plain_data, size_
 
     EVP_CIPHER_CTX* ctx = (EVP_CIPHER_CTX*)self->ctx;
 
-    // 🚨 저장된 Key/IV 사용!!
+    //  저장된 Key/IV 사용!!
     if (EVP_EncryptInit_ex(ctx, cipher, NULL, self->key, self->iv) != 1) {
         return NULL;
     }
@@ -330,7 +330,7 @@ static ByteBuffer* Cipher_decrypt(Cipher* self, const uint8_t* encrypted_data, s
 
     EVP_CIPHER_CTX* ctx = (EVP_CIPHER_CTX*)self->ctx;
 
-    // 🚨 저장된 Key/IV 사용!!
+    //  저장된 Key/IV 사용!!
     if (EVP_DecryptInit_ex(ctx, cipher, NULL, self->key, self->iv) != 1) {
         return NULL;
     }
@@ -383,7 +383,7 @@ Cipher* new_Cipher(const char* algo) {
         return NULL;
     }
 
-    // 🚨 기본 초기화 (보안상 0 초기화)
+    //  기본 초기화 (보안상 0 초기화)
     memset(self->key, 0, sizeof(self->key));
     memset(self->iv, 0, sizeof(self->iv));
     self->key_len = 0;
@@ -397,7 +397,7 @@ Cipher* new_Cipher(const char* algo) {
 }
 
 // ==========================================
-// 3. Base64 OpenSSL 래퍼 (🚀 보안 패치 완료 구간!)
+// 3. Base64 OpenSSL 래퍼 ( 보안 패치 완료 구간!)
 // ==========================================
 char* Base64_encode(const uint8_t* data, size_t len) {
     if (!data || len == 0) {
@@ -429,7 +429,7 @@ uint8_t* Base64_decode(const char* base64_str, size_t* out_len) {
         return NULL;
     }
 
-    // 🚀 [보안 패치] 패딩(=) 처리 중 EVP_DecodeBlock의 임시 버퍼 초과 방지!
+    //  [보안 패치] 패딩(=) 처리 중 EVP_DecodeBlock의 임시 버퍼 초과 방지!
     // 정확한 길이 계산 공식에 +4 바이트를 더해 힙 스매싱 원천 차단!
     size_t max_out_len = ((len / 4) * 3) + 4;
     uint8_t* out = (uint8_t*)malloc(max_out_len);
@@ -439,7 +439,7 @@ uint8_t* Base64_decode(const char* base64_str, size_t* out_len) {
         return NULL;
     }
 
-    // 🚀 [보안 패치] 리턴값 검증 및 Silent Fail 방지 (메모리 릭 차단)
+    //  [보안 패치] 리턴값 검증 및 Silent Fail 방지 (메모리 릭 차단)
     int decoded_len = EVP_DecodeBlock(out, (const unsigned char*)base64_str, (int)len);
 
     if (decoded_len < 0) {

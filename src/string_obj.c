@@ -119,7 +119,7 @@ static String* impl_trim(String* self) {
     return new_s;
 }
 
-// 🚀 [보안 패치] impl_append: Silent Fail 방지, 오버플로우 가드, memcpy 최적화 적용
+//  [보안 패치] impl_append: Silent Fail 방지, 오버플로우 가드, memcpy 최적화 적용
 static void impl_append(String* self, const char* str) {
     if (!self || !str) return;
     size_t len = strlen(str);
@@ -151,7 +151,7 @@ static String* impl_replace(String* self, const char* target, const char* replac
     return new_obj;
 }
 
-// 🚀 [긴급 수정] strtok_r 교체 완료! (Thread-Safety 확보)
+//  [긴급 수정] strtok_r 교체 완료! (Thread-Safety 확보)
 static ArrayList* impl_split(String* self, const char* delimiter) {
     ArrayList* list = new_ArrayList(5);
     if (!list) return NULL;
@@ -224,7 +224,7 @@ static void impl_toUpperCase(String* self) {
     for(int i = 0; self->value[i]; i++) self->value[i] = (char)toupper((unsigned char)self->value[i]);
 }
 
-// 🚀 [긴급 수정] 포인터 주소 비교로 타입 안정성 및 성능 극대화!
+//  [긴급 수정] 포인터 주소 비교로 타입 안정성 및 성능 극대화!
 static int impl_toInt(Object *obj) {
     if (!obj || obj->type != &stringClass) return 0;
     String *s = (String*)obj;
@@ -384,7 +384,7 @@ String* new_StringN(const char* str, size_t len) {
     return s;
 }
 
-// 🚀 [보안 패치] string_join: 정수 오버플로우 방어 및 안전한 memcpy 적용
+//  [보안 패치] string_join: 정수 오버플로우 방어 및 안전한 memcpy 적용
 char* string_join(const char* delimiter, const char** str_array, int count) {
     if (!delimiter || !str_array || count <= 0) return NULL;
 

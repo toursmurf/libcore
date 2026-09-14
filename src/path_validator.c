@@ -28,7 +28,7 @@ static bool rule_02_check_utf8(const unsigned char *s) {
     return true;
 }
 
-/* 🚀 [단일 루프 메인 파이프라인] 디코드 + 화이트리스트 + 세그먼트 동시 검증 */
+/*  [단일 루프 메인 파이프라인] 디코드 + 화이트리스트 + 세그먼트 동시 검증 */
 static bool PathValidator_validate(PathValidator* self, const char* raw_path, char* out_canonical, size_t out_size) {
     (void)self;
     if (!raw_path || !out_canonical || out_size == 0) return false;

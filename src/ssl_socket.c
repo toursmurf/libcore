@@ -26,11 +26,11 @@ static void SslSocket_close_impl(Socket* s) {
         int ret = SSL_shutdown(self->ssl);
         if (ret == 0) SSL_shutdown(self->ssl);
 
-        /* 🚀 SSL_free는 내부적으로 BIO를 통해 fd를 닫습니다. */
+        /*  SSL_free는 내부적으로 BIO를 통해 fd를 닫습니다. */
         SSL_free(self->ssl);
         self->ssl = NULL;
 
-        /* 🚨 Double Free 폭탄 제거: fd가 이미 닫혔으므로 즉시 무효화! */
+        /*  Double Free 폭탄 제거: fd가 이미 닫혔으므로 즉시 무효화! */
         s->fd = -1;
     }
     if (self->ctx) {

@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <errno.h>
 
-/* 🚀 [패치] macOS의 깐깐한 세마포어 Deprecated 경고 완전 묵살! */
+/*  [패치] macOS의 깐깐한 세마포어 Deprecated 경고 완전 묵살! */
 #ifdef __APPLE__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"

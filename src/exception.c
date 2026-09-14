@@ -1,5 +1,5 @@
 #include "exception.h"
-#include "string_obj.h" // 🚀 [ARC 규격] String 객체 헤더
+#include "string_obj.h" //  [ARC 규격] String 객체 헤더
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -33,7 +33,7 @@ const char* ErrorCode_toString(ErrorCode code) {
 
         case ERR_CONFIG: return "CONFIG_ERROR";
 
-        // 🚀 [챕터 10] 네트워크 에러 2000번대 완벽 매핑
+        //  [챕터 10] 네트워크 에러 2000번대 완벽 매핑
         case ERR_SOCK_CREATE:  return "SOCK_CREATE_FAIL";
         case ERR_SOCK_BIND:    return "SOCK_BIND_FAIL";
         case ERR_SOCK_LISTEN:  return "SOCK_LISTEN_FAIL";
@@ -81,12 +81,12 @@ static void Exception_printStackTrace(Exception* self) {
     Exception* cur = self;
 
     while (cur) {
-        // 🚀 String 객체의 내부 value를 안전하게 꺼내어 출력 (NULL 방어막 탑재)
+        //  String 객체의 내부 value를 안전하게 꺼내어 출력 (NULL 방어막 탑재)
         printf("[%s:%d] (%s/errno:%d) %s\n",
             (cur->fileName && cur->fileName->value) ? cur->fileName->value : "unknown",
             cur->lineNumber,
             ErrorCode_toString(cur->code),
-            cur->sys_errno,  // 🚀 플랫폼 원본 에러 코드 출력
+            cur->sys_errno,  //  플랫폼 원본 에러 코드 출력
             (cur->message && cur->message->value) ? cur->message->value : ""
         );
         cur = cur->cause;
@@ -100,11 +100,11 @@ static void Exception_printStackTrace(Exception* self) {
 static void Exception_finalize(Object* obj) {
     Exception* self = (Exception*)obj;
 
-    // 🚀 더 이상 free()는 없습니다! String 객체 연쇄 소각
+    //  더 이상 free()는 없습니다! String 객체 연쇄 소각
     if (self->message)  RELEASE((Object*)self->message);
     if (self->fileName) RELEASE((Object*)self->fileName);
 
-    // 🚀 원인(Cause) Exception 체인 연쇄 폭발
+    //  원인(Cause) Exception 체인 연쇄 폭발
     if (self->cause) {
         RELEASE((Object*)self->cause);
     }
@@ -129,7 +129,7 @@ static const Class Exception_Class = {
 
 Exception* new_Exception(
     ErrorCode code,
-    int sys_errno,      // 🚀 sys_errno 파라미터 탑재
+    int sys_errno,      //  sys_errno 파라미터 탑재
     const char* msg,
     Exception* cause,
     const char* file,
@@ -143,12 +143,12 @@ Exception* new_Exception(
     self->code = code;
     self->sys_errno = sys_errno;
 
-    // 🚀 char* 문자열을 String* 객체로 승격 (ARC의 품으로!)
+    //  char* 문자열을 String* 객체로 승격 (ARC의 품으로!)
     self->message  = new_String(msg ? msg : "");
     self->fileName = new_String(file ? file : "unknown");
     self->lineNumber = line;
 
-    // 🚀 Cause 체인 RETAIN (소유권 확보)
+    //  Cause 체인 RETAIN (소유권 확보)
     if (cause) {
         RETAIN((Object*)cause);
         self->cause = cause;

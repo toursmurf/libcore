@@ -204,7 +204,7 @@ static void AsyncFile_stop(AsyncFile* self) {
 static void AsyncFile_finalize(Object* obj) {
     AsyncFile* self = (AsyncFile*)obj;
 
-    // 🚀 [보안 패치] 진행 중인 비동기 작업 즉시 중단
+    //  [보안 패치] 진행 중인 비동기 작업 즉시 중단
     AsyncFile_stop(self);
 
     if (self->queue != NULL) {

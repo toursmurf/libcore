@@ -49,7 +49,7 @@ typedef struct HttpResponse HttpResponse;
 struct HttpResponse {
     Object base;
 
-    /* 🚨 [BORROWED] 절대 RELEASE 금지! HttpConnection이 소유함 */
+    /*  [BORROWED] 절대 RELEASE 금지! HttpConnection이 소유함 */
     Socket* socket;
     struct HttpConnection* conn; /* [BORROWED] append_out_buf+flush 경로용 */
 

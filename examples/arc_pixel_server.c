@@ -181,7 +181,7 @@ int main(void) {
     }
 
     LOG_INFO(logger, "ToosPixel Server Phase 2 시작 (0.0.0.0:%d)", port);
-    printf("🚀 ToosPixel Server (Zero Defect Final) running on ws://0.0.0.0:%d/ws\n", port);
+    printf(" ToosPixel Server (Zero Defect Final) running on ws://0.0.0.0:%d/ws\n", port);
     printf("Press Ctrl+C to stop gracefully.\n");
 
     event_loop_run(loop);

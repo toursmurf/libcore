@@ -1,5 +1,5 @@
 // ============================================================================
-// 🚨 TARGET OS: 64-bit Linux Only (32-bit not supported) 🚨
+//  TARGET OS: 64-bit Linux Only (32-bit not supported) 
 // ============================================================================
 #include "ws_protocol.h"
 /* MAX_WS_PAYLOAD_SIZE: ws_protocol.h 에서 선언됨 */
@@ -47,7 +47,7 @@ size_t ws_build_text_frame(const char* msg, uint8_t* out_buf, size_t max_len) {
         out_buf[2] = (msg_len >> 8) & 0xFF;
         out_buf[3] = msg_len & 0xFF;
     } else {
-        // 🚨 64비트 시프트 연산 (32비트 OS에서는 경고/오류 발생 가능)
+        //  64비트 시프트 연산 (32비트 OS에서는 경고/오류 발생 가능)
         out_buf[1] = 127;
         out_buf[2] = (msg_len >> 56) & 0xFF;
         out_buf[3] = (msg_len >> 48) & 0xFF;

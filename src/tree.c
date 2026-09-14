@@ -117,7 +117,7 @@ static TreeNode* createNode(Object* data) {
     return n;
 }
 
-// 🚀 [보안 패치] 가장 확실한 재귀적 노드 소각!!!!
+//  [보안 패치] 가장 확실한 재귀적 노드 소각!!!!
 static void _freeNodesRecursive(TreeNode* node) {
     if (!node) {
         return;
@@ -257,7 +257,7 @@ static TreeNode* _deleteRec(TreeNode* root, Object* key, CompareFunc cmp, int de
         root->right = _deleteRec(root->right, key, cmp, depth + 1);
     }
     else {
-        // 🚀 [패치] Raw Struct 해제 방식으로 변경 (RELEASE 후 free)
+        //  [패치] Raw Struct 해제 방식으로 변경 (RELEASE 후 free)
         if (!root->left) {
             TreeNode* temp;
             temp = root->right;

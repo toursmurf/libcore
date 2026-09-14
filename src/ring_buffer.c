@@ -122,7 +122,7 @@ static void rb_finalize(Object* obj) {
     pthread_cond_destroy(&self->not_empty);
 }
 
-// 🚨 런타임 사이즈 완벽 주입!!
+//  런타임 사이즈 완벽 주입!!
 static const Class _rbClass = {
     .name = "RingBuffer",
     .size = sizeof(RingBuffer),
@@ -137,7 +137,7 @@ RingBuffer* new_RingBuffer(size_t capacity) {
 
     Object_Init((Object*)self, &_rbClass);
 
-    // 🚨 배열 할당 및 방어 로직 (NULL 체크 후 메모리 반환) 완비!!
+    //  배열 할당 및 방어 로직 (NULL 체크 후 메모리 반환) 완비!!
     self->items = (void**)calloc(capacity, sizeof(void*));
     if (!self->items) {
         free(self);

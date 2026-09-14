@@ -11,9 +11,9 @@
 #include "libcore.h"
 
 int main() {
-    printf("🚀 [UDP Client] 정밀 타격 준비...\n");
+    printf(" [UDP Client] 정밀 타격 준비...\n");
 
-    // 🚨 연결(connect) 없이 발신용 객체만 즉시 생성
+    //  연결(connect) 없이 발신용 객체만 즉시 생성
     UdpSocket* client = new_UdpClient();
     if (!client) return 1;
 
@@ -23,7 +23,7 @@ int main() {
 
     printf("🔥 [UDP Client] 발사: %s\n", msg);
 
-    // 🚨 다형성 3: 사전 연결 없이 목적지 지정 타격 (send_to)
+    //  다형성 3: 사전 연결 없이 목적지 지정 타격 (send_to)
     client->base.send(&client->base, msg, strlen(msg), target_ip, target_port);
 
     char buf[4096];
@@ -32,7 +32,7 @@ int main() {
 
     int retry = 0;
     while (retry < 5000) { // 타임아웃 5초 설정 (5000 * 1ms)
-        // 🚨 응답 대기
+        //  응답 대기
         ssize_t n = client->base.recv(&client->base, buf, sizeof(buf) - 1, server_ip, &server_port);
 
         if (n > 0) {

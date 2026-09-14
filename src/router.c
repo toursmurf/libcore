@@ -29,7 +29,7 @@ void Router_sendError(HttpResponse* res, int status, const char* error_code, con
         "  <title>%d Error - Tus IT Engine</title>\n"
         "</head>\n"
         "<body style=\"background-color: #1e1e1e; color: #00ff00; font-family: 'Courier New', Courier, monospace; padding: 40px;\">\n"
-        "  <h1 style=\"color: #ff5555;\">🚨 %d %s</h1>\n"
+        "  <h1 style=\"color: #ff5555;\"> %d %s</h1>\n"
         "  <p style=\"color: #cccccc; font-size: 16px;\">Tus IT Engine API Error Encountered.</p>\n"
         "  <div style=\"background-color: #2d2d2d; padding: 20px; border-radius: 5px; border-left: 5px solid #ff5555; margin-top: 20px;\">\n"
         "    <pre style=\"color: #e0e0e0; font-size: 14px; margin: 0;\">\n"
@@ -141,7 +141,7 @@ static int split_segments(const char* path, char* segments[], int max_segs) {
             break;
         }
         
-        /* 🚨 [Fail Fast 패치] strdup 실패 시 즉시 분할 중단 */
+        /*  [Fail Fast 패치] strdup 실패 시 즉시 분할 중단 */
         char* dup = strdup(token);
         if (!dup) {
             break;
@@ -176,7 +176,7 @@ static bool route_match(const char* route_path,
     /* 1패스: 정적 라우트 검사 (완전 일치) */
     if (match && !is_param_pass) {
         for (int i = 0; i < r_count; i++) {
-            /* 🚨 [NPD 패치] 포인터가 NULL이면 즉시 매칭 실패 처리 */
+            /*  [NPD 패치] 포인터가 NULL이면 즉시 매칭 실패 처리 */
             if (!r_segs[i] || !q_segs[i]) {
                 match = false;
                 break;
@@ -195,7 +195,7 @@ static bool route_match(const char* route_path,
     /* 2패스: 동적 라우트 검사 (:param 매칭) */
     if (match && is_param_pass) {
         for (int i = 0; i < r_count; i++) {
-            /* 🚨 [NPD 패치] 포인터가 NULL이면 즉시 매칭 실패 처리 */
+            /*  [NPD 패치] 포인터가 NULL이면 즉시 매칭 실패 처리 */
             if (!r_segs[i] || !q_segs[i]) {
                 match = false;
                 break;
@@ -212,7 +212,7 @@ static bool route_match(const char* route_path,
     /* 2패스 매칭 성공 시 파라미터 추출 및 주입 */
     if (match && is_param_pass && params) {
         for (int i = 0; i < r_count; i++) {
-            /* 🚨 [NPD 패치] 포인터 유효성 재검증 */
+            /*  [NPD 패치] 포인터 유효성 재검증 */
             if (!r_segs[i] || !q_segs[i]) {
                 continue;
             }
@@ -242,7 +242,7 @@ static bool route_match(const char* route_path,
     return match;
 }
 
-/* 🚀 ③ 심장부: 2-Pass 패킷 디스패처 (PathValidator 검증 융합 완료) */
+/*  ③ 심장부: 2-Pass 패킷 디스패처 (PathValidator 검증 융합 완료) */
 static void impl_dispatch(Router* self, HttpRequest* req, HttpResponse* res) {
     if (!self || !req || !res) return;
 

@@ -24,14 +24,14 @@ typedef struct JsonValue {
         double number;
         char *string;
     };
-    /* 🚨 [Diff] 파싱 시점의 정확한 바이트 길이 (Embedded NUL 방어용) */
+    /*  [Diff] 파싱 시점의 정확한 바이트 길이 (Embedded NUL 방어용) */
     size_t string_exact_size;
 } JsonValue;
 
 extern const Class jsonValueClass;
 
 JsonValue* new_json_string(const char *s);
-/* 🚨 [Diff] 정확한 길이를 각인하며 소유권을 이전받는 신규 생성자 */
+/*  [Diff] 정확한 길이를 각인하며 소유권을 이전받는 신규 생성자 */
 JsonValue* new_json_string_exact(char *s, size_t exact_size);
 JsonValue* new_json_number(double d);
 JsonValue* new_json_bool(int b);
@@ -56,7 +56,7 @@ struct JSONNode {
     Object* (*get)(JSONNode *self, const char *key);
     const char* (*getString)(JSONNode *self, const char *key);
 
-    /* 🚨 [Diff] 길이를 함께 반환하는 VTable 신설 */
+    /*  [Diff] 길이를 함께 반환하는 VTable 신설 */
     const char* (*getStringLen)(JSONNode *self, const char *key, size_t *out_len);
 
     int (*getInt)(JSONNode *self, const char *key);
@@ -74,7 +74,7 @@ JSONNode* new_JSON_Array(void);
 JsonValue* json_as_value(Object* obj);
 JSONNode*  json_as_node (Object* obj);
 /*  [추가] ToosTalk(TT-1) 호환용 문자열 노드 래퍼
- * 🚨 주의: 내부적으로 JsonValue를 반환하므로 HashMap put/ArrayList add 인자로만 사용!!
+ *  주의: 내부적으로 JsonValue를 반환하므로 HashMap put/ArrayList add 인자로만 사용!!
  * 절대 반환값에 대해 JSONNode 메서드(getString 등) 호출 금지 (쓰레기 포인터 점프 위험) */
 JSONNode* new_JSON_String(const char* s);
 

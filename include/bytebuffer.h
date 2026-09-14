@@ -7,7 +7,7 @@
 #include <sys/types.h>
 #include "object.h"
 
-// 🚨 정책: 최대 버퍼 용량 16MB 제한 (메모리 폭주 방지)
+//  정책: 최대 버퍼 용량 16MB 제한 (메모리 폭주 방지)
 #define BB_MAX_CAPACITY (1024 * 1024 * 16)
 
 typedef struct ByteBuffer ByteBuffer;

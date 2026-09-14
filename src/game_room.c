@@ -68,7 +68,7 @@ static bool _GameRoom_force_reset(GameRoom *room, uint16_t w, uint16_t h, uint16
     room->duration_ms = 0;
     room->ends_at_ms = 0;
 
-    /* 🚨 서버 공식 설정 기억 반영 */
+    /*  서버 공식 설정 기억 반영 */
     room->configured_brush_size = brush;
     room->configured_duration_ms = duration_ms;
 
@@ -190,7 +190,7 @@ GameRoomRemoveResult GameRoom_remove_player(GameRoom *room, uint8_t player_idx) 
         if (room->player_sessions[i] != 0) remaining++;
     }
 
-    /* 🚨 방이 완전히 비었을 때의 리셋 순서 보정 (Failure Atomicity 강화) */
+    /*  방이 완전히 비었을 때의 리셋 순서 보정 (Failure Atomicity 강화) */
     if (remaining == 0) {
         if (room->state != ROOM_WAITING) {
             if (!_GameRoom_force_reset(room, room->board->width, room->board->height, room->configured_brush_size, room->configured_duration_ms)) {
@@ -225,7 +225,7 @@ bool GameRoom_reset(GameRoom *room, uint64_t requester_session, uint16_t w, uint
     return _GameRoom_force_reset(room, w, h, brush, duration_ms);
 }
 
-/* 🚨 서버가 기억하는 configured 설정으로 타이머 개전 */
+/*  서버가 기억하는 configured 설정으로 타이머 개전 */
 bool GameRoom_start(GameRoom *room, uint64_t now_ms) {
     if (!room) return false;
     if (!GameRoom_can_start(room)) return false;

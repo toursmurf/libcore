@@ -9,7 +9,7 @@
 
 /* =========================================================
  * [1]  HTTP 핸들러 시그니처 (함수 포인터)
- * 🚨 특징: 전역 변수 철폐! user_ctx를 통해 DB/Config 무한 주입 가능!
+ *  특징: 전역 변수 철폐! user_ctx를 통해 DB/Config 무한 주입 가능!
  * ========================================================= */
 typedef void (*HttpHandler)(HttpRequest* req, HttpResponse* res, void* user_ctx);
 

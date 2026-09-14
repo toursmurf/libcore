@@ -146,7 +146,7 @@ static ErrorCode sendGetNext_impl(CoreSnmp* self, const char* ip, const char* oi
     return ERR_NET_TIMEOUT;
 }
 
-/* 🚨 재시도 루프 완전 제거 적용 완료! */
+/*  재시도 루프 완전 제거 적용 완료! */
 static ErrorCode sendGetBulk_impl(CoreSnmp* self, const char* ip, const char* oid, int non_repeaters, int max_repetitions, ArrayList* out_varbinds) {
     if (!self || !self->snmp_sender || !ip || !oid) {
         return ERR_INVALID;

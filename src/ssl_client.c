@@ -87,7 +87,7 @@ SslSocket* new_SslClient(const char* host, int port) {
     SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
 #endif
 
-    /* 🚀 macOS Root CA 이슈 우회 */
+    /*  macOS Root CA 이슈 우회 */
     SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
     SSL_CTX_set_default_verify_paths(ctx);
 
@@ -101,7 +101,7 @@ SslSocket* new_SslClient(const char* host, int port) {
     if (SSL_set_fd(ssl, fd) != 1) {
         SSL_free(ssl);
         SSL_CTX_free(ctx);
-        /* 🚨 Double Free 방지: SSL_free가 이미 fd를 닫음! close(fd) 제거 */
+        /*  Double Free 방지: SSL_free가 이미 fd를 닫음! close(fd) 제거 */
         return NULL;
     }
 
@@ -116,7 +116,7 @@ SslSocket* new_SslClient(const char* host, int port) {
     if (SSL_connect(ssl) <= 0) {
         SSL_free(ssl);
         SSL_CTX_free(ctx);
-        /* 🚨 Double Free 방지: SSL_free가 이미 fd를 닫음! close(fd) 제거 */
+        /*  Double Free 방지: SSL_free가 이미 fd를 닫음! close(fd) 제거 */
         return NULL;
     }
 

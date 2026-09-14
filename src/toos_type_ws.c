@@ -17,7 +17,7 @@ static bool get_current_ms(uint64_t *out_ms) {
     return true;
 }
 
-// 🚨 [패치 3] 완벽한 4-State 스위치 매퍼!
+//  [패치 3] 완벽한 4-State 스위치 매퍼!
 static const char *state_to_string(ToosTypeState s) {
     switch (s) {
         case TOOS_TYPE_STATE_WAITING:   return "WAITING";
@@ -273,7 +273,7 @@ static void on_ws_close(HttpConnection *conn) {
     if (!g_ctx) return;
 
     uint64_t now_ms = 0;
-    // 🚨 [패치 3] 시계 실패 시 return 생략! 무조건 0을 넘겨 연결을 떼어내고(dangling 방지) Fallback 유도
+    //  [패치 3] 시계 실패 시 return 생략! 무조건 0을 넘겨 연결을 떼어내고(dangling 방지) Fallback 유도
     if (!get_current_ms(&now_ms)) {
         LOG_ERROR(logger, "[ToosType WS] clock failed; using GameContext fallback.");
         now_ms = 0;

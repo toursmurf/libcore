@@ -77,7 +77,7 @@ static void Broadcast_To_Room(HttpServer* server, GameRoom* room, const char* bu
     }
 }
 
-/* 🚨 단일 연결에 현재 방 상태를 직격으로 꽂아주는 전용 송신기 */
+/*  단일 연결에 현재 방 상태를 직격으로 꽂아주는 전용 송신기 */
 static void Send_Room_Status(HttpConnection *conn, GameRoom *room) {
     if (!conn || !room) return;
 
@@ -335,7 +335,7 @@ static void GameRoomHandler_on_ws_open(HttpConnection *conn) {
     if (!session) return;
     conn->ws_user_data = session;
 
-    /* 🚨 핵심 패치: 웹소켓이 열리는 즉시(JOIN 전이라도) 현재 방 상태 및 설정을 즉시 전송하여 동기화 지연 제거 */
+    /*  핵심 패치: 웹소켓이 열리는 즉시(JOIN 전이라도) 현재 방 상태 및 설정을 즉시 전송하여 동기화 지연 제거 */
     Send_Room_Status(conn, g_active_room);
 }
 

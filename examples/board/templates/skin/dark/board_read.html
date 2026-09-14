@@ -25,7 +25,7 @@
             border: 1px solid #333; padding: 30px; margin-bottom: 20px;
         }
 
-        /* 🚨 핵심 로직: 모드에 따른 엘리먼트 토글 */
+        /*  핵심 로직: 모드에 따른 엘리먼트 토글 */
         .mode-read .modify-only { display: none !important; }
         .mode-modify .read-only { display: none !important; }
 
@@ -97,7 +97,7 @@
 <body class="{{mode_class}}">
 
 <div class="header">
-    <h1>Libcore 게시판 데모 🚀</h1>
+    <h1>Libcore 게시판 데모 </h1>
     <p>Native libcore TemplateEngine SSR (Dark Skin - Read & Modify)</p>
 </div>
 
@@ -113,7 +113,7 @@
         <textarea name="content" class="content-input" {{readonly_attr}} required>{{content}}</textarea>
 
         <!-- ========================================== -->
-        <!-- 🚨 1. 첨부파일 영역 (READ 모드 / 상세보기) 🚨 -->
+        <!--  1. 첨부파일 영역 (READ 모드 / 상세보기)  -->
         <!-- ========================================== -->
         <!-- JS 파싱 이슈 원천 차단! 순수 SSR 조건부 렌더링 -->
         {{#attachments}}
@@ -132,7 +132,7 @@
         {{/attachments}}
 
         <!-- ========================================== -->
-        <!-- 🚨 2. 첨부파일 영역 (MODIFY 모드 / 수정화면) 🚨 -->
+        <!--  2. 첨부파일 영역 (MODIFY 모드 / 수정화면)  -->
         <!-- ========================================== -->
         <div class="modify-only" style="margin-top: 20px; padding: 15px; border: 1px solid #444; background: #252525; border-radius: 6px;">
             <label style="font-weight: bold; color: #e0e0e0; display: block; margin-bottom: 10px;">첨부파일 관리</label>

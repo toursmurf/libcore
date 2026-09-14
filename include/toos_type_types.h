@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 #define TOOS_TYPE_MAX_ROOM_PLAYERS 8
-#define TOOS_TYPE_MIN_ROOM_PLAYERS 2    // 🚨 [패치 1] 혼자 시작 금지
+#define TOOS_TYPE_MIN_ROOM_PLAYERS 2    //  [패치 1] 혼자 시작 금지
 #define TOOS_TYPE_MAX_PHASES 4
 
 typedef enum {

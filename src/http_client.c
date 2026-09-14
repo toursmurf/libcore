@@ -11,7 +11,7 @@
 #include <ctype.h>
 
 /* =========================================================
- * 🚨 ARC 객체 파괴자
+ *  ARC 객체 파괴자
  * ========================================================= */
 static void HttpMultipartFile_finalize(Object* obj) {
     HttpMultipartFile* self = (HttpMultipartFile*)obj;
@@ -38,7 +38,7 @@ HttpMultipartFile* new_HttpMultipartFile(const char* filename, const char* conte
 
     if (data && size > 0) {
         self->data = malloc(size);
-        if (!self->data) { /* 🚨 NULL 방어막 완비 */
+        if (!self->data) { /*  NULL 방어막 완비 */
             RELEASE((Object*)self);
             return NULL;
         }
@@ -138,7 +138,7 @@ static void impl_setBearerToken(HttpClient* self, const char* token) {
 }
 
 /* =========================================================
- * 🚨 [V1.5] 지능형 쿠키 정책
+ *  [V1.5] 지능형 쿠키 정책
  * ========================================================= */
 static void update_cookie_jar(ArrayList* jar, HttpCookie* new_c) {
     if (!jar || !new_c) return;
@@ -169,7 +169,7 @@ static bool cookie_matches(HttpCookie* c, const char* host, const char* path) {
 }
 
 /* =========================================================
- * 🚨 [V1.5] 통합 오케스트레이터 엔진
+ *  [V1.5] 통합 오케스트레이터 엔진
  * ========================================================= */
 static HttpClientResponse* impl_execute(HttpClient* self, HttpClientRequest* req) {
     if (!self || !req || !req->url) return NULL;

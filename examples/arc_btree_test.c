@@ -58,7 +58,7 @@ int main(void) {
 
     // ARC 소각로 가동!
     printf("\n[3] ARC 소각로 가동. RELEASE(tree) 호출!\n");
-    RELEASE((Object*)tree); // 🚀 정품 RELEASE 매크로가 트리를 완벽 소각!
+    RELEASE((Object*)tree); //  정품 RELEASE 매크로가 트리를 완벽 소각!
 
     printf("\n==================================================\n");
     printf("✅ 모든 테스트 완료! (Make sure to run with Valgrind)\n");

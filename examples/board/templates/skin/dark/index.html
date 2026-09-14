@@ -177,7 +177,7 @@
 <body>
 
 <div class="header">
-    <h1>Libcore 게시판 데모 🚀</h1>
+    <h1>Libcore 게시판 데모 </h1>
     <p>Native libcore TemplateEngine SSR (Dark Skin)</p>
 </div>
 
@@ -208,7 +208,7 @@
 
     <button type="submit">🔍 검색</button>
 </form>
-<!-- 🚨 [추가] 페이지당 목록 수 조절 콤보박스 🚨 -->
+<!--  [추가] 페이지당 목록 수 조절 콤보박스  -->
 <div class="list-options" style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
     <label for="page-limit" style="margin-right: 8px; font-weight: bold;">페이지당 목록 수:</label>
     <select id="page-limit" onchange="changeLimit(this.value)" style="padding: 5px; border-radius: 4px; border: 1px solid #ccc; cursor: pointer;">
@@ -259,7 +259,7 @@
 </div>
 
 <div class="pagination-info">
-    <!-- 🚨 [추가] 완벽한 페이징 네비게이션 블록 🚨 -->
+    <!--  [추가] 완벽한 페이징 네비게이션 블록  -->
     <div class="pagination-container" style="text-align: center; margin: 30px 0;">
         {{#has_prev}}
         <a href="/board/list?page={{prev_page}}&search_type={{search_type_val}}&keyword={{keyword}}" class="page-btn">◀ 이전</a>

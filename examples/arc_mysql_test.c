@@ -11,17 +11,17 @@
 #include "db.h"
 #include "hashmap.h"
 #include "arraylist.h"
-#include "string.h" // 🚀 파일명 변경 반영!
+#include "string.h" //  파일명 변경 반영!
 
 //오리지널 RTTI 매크로
 #define GET_CLASS(obj) ( *( (const Class**) (obj) ) )
 
 int main() {
     printf("==================================================\n");
-    printf("  DB 엔진 [17연성 테스트] 🚀\n");
+    printf("  DB 엔진 [17연성 테스트] \n");
     printf("==================================================\n\n");
 
-    // 🚀 코딩표준 8호 적용 생성자
+    //  코딩표준 8호 적용 생성자
     DBClient *db = new_DBClient();
     if (db == NULL) {
         printf("[WARN] DB 접속 정보(Config)가 없거나 객체 생성에 실패했습니다.\n");
@@ -60,7 +60,7 @@ int main() {
         snprintf(name_buf, sizeof(name_buf), "User_%02d", i);
         snprintf(score_buf, sizeof(score_buf), "%d", 50 + (i * 5));
 
-        // 🚀 String 및 new_String으로 명칭 통일 완료!
+        //  String 및 new_String으로 명칭 통일 완료!
         String *name = new_String(name_buf);
         String *score = new_String(score_buf);
 
@@ -104,7 +104,7 @@ int main() {
             String *s_val = (String *)row->get(row, "score");
             printf("    [%d] 이름: %-10s | 점수: %s\n", j + 1, n_val->value, s_val->value);
         }
-        RELEASE(multi_records); // 🚀 17연성의 핵심: 리스트 하나만 쏴도 전체 데이터 소각!
+        RELEASE(multi_records); //  17연성의 핵심: 리스트 하나만 쏴도 전체 데이터 소각!
     }
 
     printf("\n[5] DB 연결 종료 및 ARC 최종 소각...\n");

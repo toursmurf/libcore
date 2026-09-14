@@ -56,7 +56,7 @@ static int compare_pgroups(const void* a, const void* b) {
     return p2->count - p1->count;
 }
 
-/* 🚨 [패치] strncpy -> snprintf 로 교체하여 -Wstringop-truncation 경고 원천 차단 */
+/*  [패치] strncpy -> snprintf 로 교체하여 -Wstringop-truncation 경고 원천 차단 */
 static void clean_process_name(char* name, const char* cmd_full) {
     if (cmd_full[0] == '[') {
         snprintf(name, 256, "%s", cmd_full);
@@ -114,7 +114,7 @@ static int collect_processes(ProcInfo* procs, int max, const char* filter) {
 
         clean_process_name(p.name, cmd_full);
 
-        /* 🚨 [패치] gcc 경고 지점: snprintf로 교체 */
+        /*  [패치] gcc 경고 지점: snprintf로 교체 */
         snprintf(p.cmd, sizeof(p.cmd), "%s", cmd_full);
 
         if (filter && *filter) {
@@ -167,7 +167,7 @@ static char* build_process_json(ProcInfo* procs, int count, struct timeval* star
             }
         }
         if (!found && pg_count < MAX_PROCS) {
-            /* 🚨 [패치] strncpy -> snprintf 로 교체 */
+            /*  [패치] strncpy -> snprintf 로 교체 */
             snprintf(pg[pg_count].name, sizeof(pg[pg_count].name), "%s", procs[i].name);
             pg[pg_count].count = 1;
             pg_count++;
@@ -321,7 +321,7 @@ static void handler_status(HttpRequest* req, HttpResponse* res, void* ctx) {
                     while (*p == ' ' || *p == '\t') p++;
                     char* nl = strchr(p, '\n');
                     if (nl) *nl = '\0';
-                    /* 🚨 [패치] strncpy -> snprintf 교체 */
+                    /*  [패치] strncpy -> snprintf 교체 */
                     snprintf(cpu_model, sizeof(cpu_model), "%s", p);
                     break;
                 }
@@ -555,7 +555,7 @@ static void handler_process_by_pid(HttpRequest* req, HttpResponse* res, void* ct
                    p.user, &p.pid, &p.cpu, &p.mem, p.status, cmd_full) >= 5) {
             clean_process_name(p.name, cmd_full);
 
-            /* 🚨 [패치] gcc 경고 지점: snprintf로 교체 */
+            /*  [패치] gcc 경고 지점: snprintf로 교체 */
             snprintf(p.cmd, sizeof(p.cmd), "%s", cmd_full);
             found = 1;
         }

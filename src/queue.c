@@ -74,7 +74,7 @@ static void impl_forEach(Queue *self, void (*action)(Object*)) {
     pthread_mutex_unlock(&self->lock);
 }
 
-// 🚀 [복구 완료] 이터레이터 구현부
+//  [복구 완료] 이터레이터 구현부
 static ArrayListIterator* impl_iterator(Queue *self) {
     pthread_mutex_lock(&self->lock);
     // Queue의 내부 ArrayList 이터레이터를 생성하여 반환

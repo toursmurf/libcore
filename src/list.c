@@ -4,13 +4,13 @@
 #include "list.h"
 
 /* =========================================
- * [내부 구현체] 🚀 데드락 방지용 락(Lock) 없는 핵심 로직!
+ * [내부 구현체]  데드락 방지용 락(Lock) 없는 핵심 로직!
  * ========================================= */
 static void _pushBack_nolock(List *self, Object *data) {
     ListNode *node = (ListNode*)malloc(sizeof(ListNode));
     if (!node) return;
 
-    node->data = RETAIN(data); // 🚀 [수정] 컬렉션이 데이터의 소유권을 획득!
+    node->data = RETAIN(data); //  [수정] 컬렉션이 데이터의 소유권을 획득!
     node->next = NULL;
     node->prev = self->tail;
 
@@ -24,7 +24,7 @@ static void _pushFront_nolock(List *self, Object *data) {
     ListNode *node = (ListNode*)malloc(sizeof(ListNode));
     if (!node) return;
 
-    node->data = RETAIN(data); // 🚀 [수정] 소유권 획득!
+    node->data = RETAIN(data); //  [수정] 소유권 획득!
     node->prev = NULL;
     node->next = self->head;
 
@@ -38,7 +38,7 @@ static Object* _popBack_nolock(List *self) {
     if (!self->tail) return NULL;
 
     ListNode *node = self->tail;
-    Object *data = node->data; // 🚀 반환 시 호출자에게 소유권 이전! (RELEASE 안 함)
+    Object *data = node->data; //  반환 시 호출자에게 소유권 이전! (RELEASE 안 함)
 
     self->tail = node->prev;
     if (self->tail) self->tail->next = NULL;
@@ -114,7 +114,7 @@ static Object* impl_get(List *self, int index) {
     return data; // GET은 BORROWED 개념 (필요시 호출자가 직접 RETAIN)
 }
 
-// 🚀 [수정] insertAt 데드락 완전 해결! _nolock 내부 함수 호출!
+//  [수정] insertAt 데드락 완전 해결! _nolock 내부 함수 호출!
 static void impl_insertAt(List *self, int index, Object *data) {
     pthread_mutex_lock(&self->lock);
 
@@ -194,7 +194,7 @@ static void impl_clear(List *self) {
     ListNode *curr = self->head;
     while (curr) {
         ListNode *next = curr->next;
-        RELEASE(curr->data); // 🚀 [수정] 노드 파괴 시 내부 데이터 같이 파괴!
+        RELEASE(curr->data); //  [수정] 노드 파괴 시 내부 데이터 같이 파괴!
         free(curr);
         curr = next;
     }

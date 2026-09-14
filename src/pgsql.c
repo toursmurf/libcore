@@ -183,7 +183,7 @@ static int DB_connect_pg(DBClient *self) {
     if (!self) return 0;
     pthread_mutex_lock(&self->lock);
 
-    /* 🚨 TX Guard 복원 */
+    /*  TX Guard 복원 */
     if (self->in_transaction) {
         pthread_mutex_unlock(&self->lock);
         return 0;
@@ -227,7 +227,7 @@ static void DB_disconnect_pg(DBClient *self) {
     if (!self) return;
     pthread_mutex_lock(&self->lock);
 
-    /* 🚨 TX Guard 복원 */
+    /*  TX Guard 복원 */
     if (self->in_transaction) {
         pthread_mutex_unlock(&self->lock);
         return;
@@ -270,7 +270,7 @@ static int DB_reconnect_pg(DBClient *self) {
     if (!self) return 0;
     pthread_mutex_lock(&self->lock);
 
-    /* 🚨 TX Guard (기존 유지) */
+    /*  TX Guard (기존 유지) */
     if (self->in_transaction) {
         pthread_mutex_unlock(&self->lock);
         return 0;
@@ -380,7 +380,7 @@ static int DB_tx_query_pg(DBClient *self, const char *sql) {
 }
 
 /* =========================================================
- * 🚨 [TX Serialization 복원]
+ *  [TX Serialization 복원]
  * ========================================================= */
 static int DB_beginTransaction_pg(DBClient *self) {
     if (!self) return 0;

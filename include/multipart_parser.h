@@ -60,7 +60,7 @@ int Multipart_extract_boundary(const char* ct_header,
  *   반환값: 성공 시 MultipartResult* (RELEASE 책임은 호출자),
  *           파싱 실패 / boundary 없음 시 NULL
  *
- *   🚨 password 등 민감 데이터는 호출자가 OPENSSL_cleanse 후 처리할 것
+ *    password 등 민감 데이터는 호출자가 OPENSSL_cleanse 후 처리할 것
  */
 MultipartResult* Multipart_parse(const void* body, size_t body_len,
                                  const char* boundary);

@@ -22,7 +22,7 @@ static void impl_push_back(Vector *self, Object *item) {
         int new_cap = (self->capacity == 0) ? 4 : self->capacity * 2;
         resize(self, new_cap);
     }
-    // 🚀 [ARC] 소유권 획득! Vector가 요소를 꽉 쥡니다.
+    //  [ARC] 소유권 획득! Vector가 요소를 꽉 쥡니다.
     self->items[self->size++] = RETAIN(item); 
     pthread_mutex_unlock(&self->mutex);
 }
@@ -34,7 +34,7 @@ static Object* impl_at(Vector *self, int index) {
         item = self->items[index];
     }
     pthread_mutex_unlock(&self->mutex);
-    return item; // 🚀 Borrowed Reference (소유권 이전 없음)
+    return item; //  Borrowed Reference (소유권 이전 없음)
 }
 
 static Object* impl_pop_back(Vector *self) {
@@ -46,7 +46,7 @@ static Object* impl_pop_back(Vector *self) {
         self->items[self->size] = NULL; // Dangling Pointer 방지
     }
     pthread_mutex_unlock(&self->mutex);
-    return item; // 🚀 소유권을 호출자에게 넘김 (Count 유지)
+    return item; //  소유권을 호출자에게 넘김 (Count 유지)
 }
 
 static int impl_get_size(Vector *self) {
@@ -80,7 +80,7 @@ static void Vector_ToString(Object *self, char *buffer, size_t len) {
 static void Vector_Finalize(Object *self) {
     Vector *v = (Vector*)self;
     
-    // 🚀 [ARC 연쇄 소각] 내부 아이템들을 모두 RELEASE!
+    //  [ARC 연쇄 소각] 내부 아이템들을 모두 RELEASE!
     for (int i = 0; i < v->size; i++) {
         if (v->items[i]) {
             RELEASE(v->items[i]);

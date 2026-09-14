@@ -214,7 +214,7 @@ HashMap* parse_url(const char* url) {
  * @brief 서버 소켓 생성 마스터 팩토리 (Strict Iron Fortress Mode)
  */
 Socket* createServer(const char* url, Exception** out_err) {
-    // 🚨 [방어막 1] URL 자체 널 체크
+    //  [방어막 1] URL 자체 널 체크
     if (!url) {
         if (out_err) {
             *out_err = throw_Exception(ERR_SOCK_URL, 0, "Server URL is NULL");
@@ -241,21 +241,21 @@ Socket* createServer(const char* url, Exception** out_err) {
 
     Socket* sock = NULL;
 
-    // 🚀 [프로토콜 라우팅 1] TCP Server 분기
+    //  [프로토콜 라우팅 1] TCP Server 분기
     if (strncmp(scheme, "tcp", 16) == 0) {
         const char* host = hashmap_get_str(info, "host");
         const char* port_str = hashmap_get_str(info, "port");
 
         if (host && port_str) {
             int port = atoi(port_str);
-            // 🚨 [방어막 2] 포트 바운더리 체크
+            //  [방어막 2] 포트 바운더리 체크
             if (port <= 0 || port > 65535) {
                 if (out_err) {
                     *out_err = throw_Exception(ERR_SOCK_PORT, 0, "TCP port out of range (1-65535)");
                 }
             } else {
                 sock = (Socket*)new_TcpServer(host, port);
-                // 🚨 [방어막 3] 시스템 바인드/리스 실패 시 errno 낚아채기
+                //  [방어막 3] 시스템 바인드/리스 실패 시 errno 낚아채기
                 if (!sock && out_err) {
                     *out_err = throw_Exception(ERR_SOCK_CREATE, errno, "Failed to initialize TCP Server Socket");
                 }
@@ -266,7 +266,7 @@ Socket* createServer(const char* url, Exception** out_err) {
             }
         }
     }
-    // 🚀 [프로토콜 라우팅 2] UDP Server 분기
+    //  [프로토콜 라우팅 2] UDP Server 분기
     else if (strncmp(scheme, "udp", 16) == 0) {
         const char* host = hashmap_get_str(info, "host");
         const char* port_str = hashmap_get_str(info, "port");
@@ -289,7 +289,7 @@ Socket* createServer(const char* url, Exception** out_err) {
             }
         }
     }
-    // 🚀 [프로토콜 라우팅 3] UNIX Domain Server 분기
+    //  [프로토콜 라우팅 3] UNIX Domain Server 분기
     else if (strncmp(scheme, "unix", 16) == 0) {
         const char* path = hashmap_get_str(info, "path"); // 내부 파서 규격 매핑
 
@@ -304,7 +304,7 @@ Socket* createServer(const char* url, Exception** out_err) {
             }
         }
     }
-    // 🚨 미지원 프로토콜 방어막
+    //  미지원 프로토콜 방어막
     else {
         if (out_err) {
             *out_err = throw_Exception(ERR_SOCK_SCHEME, 0, "Unsupported protocol scheme");
@@ -324,7 +324,7 @@ Socket* createServer(const char* url, Exception** out_err) {
  * @return [OWNED] Socket* (성공 시 소켓 객체 반환, 실패 시 NULL 반환하며 out_err 채움)
  */
 Socket* createClient(const char* url, Exception** out_err) {
-    // 🚨 [방어막 1] URL 자체 널 체크
+    //  [방어막 1] URL 자체 널 체크
     if (!url) {
         if (out_err) {
             *out_err = throw_Exception(ERR_SOCK_URL, 0, "Client URL is NULL");
@@ -351,21 +351,21 @@ Socket* createClient(const char* url, Exception** out_err) {
 
     Socket* sock = NULL;
 
-    // 🚀 [프로토콜 라우팅 1] TCP Client 분기
+    //  [프로토콜 라우팅 1] TCP Client 분기
     if (strncmp(scheme, "tcp", 16) == 0) {
         const char* host = hashmap_get_str(info, "host");
         const char* port_str = hashmap_get_str(info, "port");
 
         if (host && port_str) {
             int port = atoi(port_str);
-            // 🚨 [방어막 2] 포트 바운더리 체크
+            //  [방어막 2] 포트 바운더리 체크
             if (port <= 0 || port > 65535) {
                 if (out_err) {
                     *out_err = throw_Exception(ERR_SOCK_PORT, 0, "TCP port out of range (1-65535)");
                 }
             } else {
                 sock = (Socket*)new_TcpClient(host, port);
-                // 🚨 [방어막 3] 접속 실패 시 errno 낚아채기
+                //  [방어막 3] 접속 실패 시 errno 낚아채기
                 if (!sock && out_err) {
                     *out_err = throw_Exception(ERR_SOCK_CONNECT, errno, "Failed to connect TCP Client");
                 }
@@ -376,7 +376,7 @@ Socket* createClient(const char* url, Exception** out_err) {
             }
         }
     }
-    // 🚀 [프로토콜 라우팅 2] UDP Client 분기
+    //  [프로토콜 라우팅 2] UDP Client 분기
     else if (strncmp(scheme, "udp", 16) == 0) {
         // UDP는 비연결형이므로 host/port 바인딩 불필요 (타격 목표는 send 단에서 지정)
         sock = (Socket*)new_UdpClient();
@@ -384,7 +384,7 @@ Socket* createClient(const char* url, Exception** out_err) {
             *out_err = throw_Exception(ERR_SOCK_CREATE, errno, "Failed to initialize UDP Client Socket");
         }
     }
-    // 🚀 [프로토콜 라우팅 3] UNIX Domain Client 분기
+    //  [프로토콜 라우팅 3] UNIX Domain Client 분기
     else if (strncmp(scheme, "unix", 16) == 0) {
         const char* path = hashmap_get_str(info, "path");
 
@@ -399,7 +399,7 @@ Socket* createClient(const char* url, Exception** out_err) {
             }
         }
     }
-    // 🚨 미지원 프로토콜 방어막
+    //  미지원 프로토콜 방어막
     else {
         if (out_err) {
             *out_err = throw_Exception(ERR_SOCK_SCHEME, 0, "Unsupported protocol scheme");
@@ -416,7 +416,7 @@ Socket* createClient(const char* url, Exception** out_err) {
  * @brief Unix 도메인 소켓 서버 생성 팩토리 (Absolute Compliance)
  */
 Socket* createUnixServer(const char* path, Exception** out_err) {
-    // 🚨 [방어막] 경로 NULL 체크
+    //  [방어막] 경로 NULL 체크
     if (!path) {
         if (out_err) {
             *out_err = throw_Exception(ERR_SOCK_URL, 0, "Unix socket path is NULL");
@@ -424,7 +424,7 @@ Socket* createUnixServer(const char* path, Exception** out_err) {
         return NULL;
     }
 
-    // 🚀 서버 생성 및 에러 캡처 (errno 보존)
+    //  서버 생성 및 에러 캡처 (errno 보존)
     Socket* sock = (Socket*)new_UnixServer(path);
     if (!sock) {
         if (out_err) {
@@ -437,7 +437,7 @@ Socket* createUnixServer(const char* path, Exception** out_err) {
 }
 
 /**
- * @brief Unix 도메인 소켓 클라이언트 전용 생성 팩토리 🚀 [NEW]
+ * @brief Unix 도메인 소켓 클라이언트 전용 생성 팩토리  [NEW]
  */
 Socket* createUnixClient(const char* path, Exception** out_err) {
     if (!path) {
@@ -464,7 +464,7 @@ static void Socket_strip_nonblock(Socket* sock) {
     if (!sock || sock->fd < 0) return;
     int flags = fcntl(sock->fd, F_GETFL, 0);
     if (flags != -1) {
-        fcntl(sock->fd, F_SETFL, flags & ~O_NONBLOCK); // 🚨 논블로킹 플래그 제거!
+        fcntl(sock->fd, F_SETFL, flags & ~O_NONBLOCK); //  논블로킹 플래그 제거!
     }
 }
 

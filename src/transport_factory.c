@@ -24,7 +24,7 @@ static const Class _UrlInfo_Class = {
 };
 
 /* ============================================================
-* [2] 궁극의 URL 파서 (🚀 나초안 방어막 + 클순 마님 잔여 권고 패치)
+* [2] 궁극의 URL 파서 ( 나초안 방어막 + 클순 마님 잔여 권고 패치)
 * ============================================================ */
 UrlInfo* UrlInfo_parse(const char* url_str) {
     if (!url_str) return NULL;
@@ -53,13 +53,13 @@ UrlInfo* UrlInfo_parse(const char* url_str) {
     const char* port_start = strchr(p, ':');
     const char* host_end = path_start ? path_start : (p + strlen(p));
 
-    /* 🚨 [클순 마님 권고 패치 2] 깡통 호스트("https://") 입구컷! */
+    /*  [클순 마님 권고 패치 2] 깡통 호스트("https://") 입구컷! */
     if (p == host_end || (port_start && p == port_start)) {
         RELEASE((Object*)info);
         return NULL; /* Hostname is empty */
     }
 
-    /* 🚨 [클순 마님 권고 패치 1] 포트 유효 범위 강제 검증! */
+    /*  [클순 마님 권고 패치 1] 포트 유효 범위 강제 검증! */
     if (port_start && port_start < host_end) {
         info->host = new_StringN(p, (size_t)(port_start - p));
         if (!info->host) { RELEASE((Object*)info); return NULL; }

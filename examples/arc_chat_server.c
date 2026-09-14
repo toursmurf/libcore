@@ -6,7 +6,7 @@
  */
 
 #include "event_loop.h"
-#include "event_loop_internal.h" /* 🚀 [신규 패치] V1.6.x 3대 OS 통합 이벤트 백엔드 API 인클루드 */
+#include "event_loop_internal.h" /*  [신규 패치] V1.6.x 3대 OS 통합 이벤트 백엔드 API 인클루드 */
 #include "tcp_socket.h"
 #include "logger.h"
 #include "ws_protocol.h"

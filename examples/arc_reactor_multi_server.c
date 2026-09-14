@@ -40,7 +40,7 @@ void client_on_readable(Socket* self, void* loop_ptr) {
 }
 
 // ---------------------------------------------------------
-// 🚨 [방아쇠 2] UDP 서버용 데이터 처리 (통합 인터페이스 버전)
+//  [방아쇠 2] UDP 서버용 데이터 처리 (통합 인터페이스 버전)
 // ---------------------------------------------------------
 void udp_server_on_readable(Socket* self, void* loop_ptr) {
     (void)loop_ptr;

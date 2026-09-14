@@ -8,7 +8,7 @@
 void normalize_path(char* path) {
     if (!path || path[0] == '\0') return;
     char *input = strdup(path);
-    if (!input) return; /* 🚨 NULL 방어막 */
+    if (!input) return; /*  NULL 방어막 */
 
     ArrayList* stack = new_ArrayList(16);
     if (!stack) {
@@ -51,7 +51,7 @@ void normalize_path(char* path) {
 char* url_encode(const char* str) {
     if (!str) return strdup("");
     char* buf = (char*)malloc(strlen(str) * 3 + 1);
-    if (!buf) return NULL; /* 🚨 NULL 방어막 완비! */
+    if (!buf) return NULL; /*  NULL 방어막 완비! */
 
     char* p = buf;
     while (*str) {
@@ -70,7 +70,7 @@ char* url_encode(const char* str) {
 char* json_escape(const char* str) {
     if (!str) return strdup("");
     char* buf = (char*)malloc(strlen(str) * 6 + 1);
-    if (!buf) return NULL; /* 🚨 NULL 방어막 완비! */
+    if (!buf) return NULL; /*  NULL 방어막 완비! */
 
     char* p = buf;
     while (*str) {
@@ -100,7 +100,7 @@ char* json_escape(const char* str) {
 char* multipart_filename_escape(const char* str) {
     if (!str) return strdup("");
     char* buf = (char*)malloc(strlen(str) * 2 + 1);
-    if (!buf) return NULL; /* 🚨 NULL 방어막 완비! */
+    if (!buf) return NULL; /*  NULL 방어막 완비! */
 
     char* p = buf;
     while (*str) {

@@ -60,7 +60,7 @@ void example_snmp_get_and_bulk(void) {
             printf("V3 GetBulk Timeout (Expected status if V3 context is missing on target).\n");
         }
 
-        // 🚨 순수 변수 해제 원칙 고수
+        //  순수 변수 해제 원칙 고수
         RELEASE_NULL(v3_results);
         RELEASE_NULL(snmp_v3);
     }*/
@@ -89,7 +89,7 @@ void example_trap_send_receive(void) {
 }
 
 int main(int argc, char* argv[]) {
-    // 🚨 -Wextra 옵션의 unused parameter 경고 원천 진압!
+    //  -Wextra 옵션의 unused parameter 경고 원천 진압!
     (void)argc;
     (void)argv;
 

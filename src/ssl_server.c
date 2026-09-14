@@ -4,7 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-#include <fcntl.h>   /* 🚀 fcntl 추가 */
+#include <fcntl.h>   /*  fcntl 추가 */
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -12,7 +12,7 @@
 #include <openssl/err.h>
 
 /* ============================================================
- * 🚨 [OpenSSL 1.0.x 레거시 글로벌 초기화 방어막]
+ *  [OpenSSL 1.0.x 레거시 글로벌 초기화 방어막]
  * ============================================================ */
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
 static int g_ssl_initialized = 0;
@@ -57,7 +57,7 @@ SslSocket* new_SslServer(const char* host, int port,
         SSL_CTX_free(ctx); return NULL;
     }
 
-    /* 🚀 [B] TCP 서버 소켓 (macOS 호환 플래그 분기) */
+    /*  [B] TCP 서버 소켓 (macOS 호환 플래그 분기) */
     int fd = -1;
 #if defined(__linux__) || defined(__gnu_linux__)
     fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
@@ -112,7 +112,7 @@ SslSocket* SslSocket_accept(SslSocket* server) {
     struct sockaddr_in cli_addr = {0};
     socklen_t cli_len = sizeof(cli_addr);
 
-    /* 🚀 [A] accept 처리 (Linux는 accept4, macOS는 accept 후 fcntl 주입) */
+    /*  [A] accept 처리 (Linux는 accept4, macOS는 accept 후 fcntl 주입) */
     int cli_fd = -1;
 #if defined(__linux__) || defined(__gnu_linux__)
     cli_fd = accept4(server->base.fd,
@@ -164,7 +164,7 @@ SslSocket* SslSocket_accept(SslSocket* server) {
         return NULL;
     }
 
-    /* 🚨 [V1.6 Tech Debt] 비동기 TLS 핸드셰이크 지원
+    /*  [V1.6 Tech Debt] 비동기 TLS 핸드셰이크 지원
      * 현재 cli_fd는 SOCK_NONBLOCK 상태이므로, SSL_accept 호출 시
      * SSL_ERROR_WANT_READ/WRITE가 발생하며 즉시 실패(NULL) 처리됩니다.
      */

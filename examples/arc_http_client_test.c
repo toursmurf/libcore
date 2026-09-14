@@ -58,7 +58,7 @@ static int test1_get_redirect_cookie(void) {
     c->setHeader(c, "User-Agent", "ToosIT-TestBot/1.6.0");
     c->setHeader(c, "Accept",     "application/json, */*");
 
-    // 🚀 [타겟 변경]: httpbin.org -> postman-echo.com
+    //  [타겟 변경]: httpbin.org -> postman-echo.com
     HttpClientResponse* res =
         c->GET(c, "https://postman-echo.com/cookies/set?session_token=baaaaaaam_12345", NULL);
 
@@ -116,7 +116,7 @@ static int test2_post_raw_json(void) {
     const char* payload =
         "{\"mission\":\"v1.6.0_complete\",\"status\":\"BAAAAAAAM!!!\"}";
 
-    // 🚀 [타겟 변경]: httpbin.org -> postman-echo.com
+    //  [타겟 변경]: httpbin.org -> postman-echo.com
     HttpClientResponse* res = c->POST_RAW(
         c, "https://postman-echo.com/post",
         payload, strlen(payload), "application/json");
@@ -163,7 +163,7 @@ static int test3_cookie_dedup(void) {
     c->setHeader(c, "User-Agent", "ToosIT-TestBot/1.6.0");
 
     /* 1차 세팅 */
-    // 🚀 [타겟 변경]: httpbin.org -> postman-echo.com
+    //  [타겟 변경]: httpbin.org -> postman-echo.com
     HttpClientResponse* r1 =
         c->GET(c, "https://postman-echo.com/cookies/set?session_token=first_value", NULL);
     ASSERT(r1 != NULL, "1차 응답 NULL", t3_fail);
@@ -175,7 +175,7 @@ static int test3_cookie_dedup(void) {
     ASSERT(sz1 == 1, "1차 Jar 크기 != 1", t3_fail);
 
     /* 2차 세팅 — 동일 키, 값 덮어쓰기 */
-    // 🚀 [타겟 변경]: httpbin.org -> postman-echo.com
+    //  [타겟 변경]: httpbin.org -> postman-echo.com
     HttpClientResponse* r2 =
         c->GET(c, "https://postman-echo.com/cookies/set?session_token=second_value", NULL);
     ASSERT(r2 != NULL, "2차 응답 NULL", t3_fail);
@@ -223,7 +223,7 @@ static int test4_cookie_send(void) {
     c->setHeader(c, "Accept",     "application/json");
 
     /* 쿠키 세팅 (302 → /cookies 리다이렉트) */
-    // 🚀 [타겟 변경]: httpbin.org -> postman-echo.com
+    //  [타겟 변경]: httpbin.org -> postman-echo.com
     HttpClientResponse* r_set =
         c->GET(c, "https://postman-echo.com/cookies/set?session_token=send_test", NULL);
     ASSERT(r_set != NULL, "쿠키 세팅 응답 NULL", t4_fail);
@@ -235,7 +235,7 @@ static int test4_cookie_send(void) {
     ASSERT(sz > 0, "쿠키 미수집 — 송신 전제 실패", t4_fail);
 
     /* /cookies 호출 → 서버가 수신한 쿠키 반환 */
-    // 🚀 [타겟 변경]: httpbin.org -> postman-echo.com
+    //  [타겟 변경]: httpbin.org -> postman-echo.com
     HttpClientResponse* r_chk = c->GET(c, "https://postman-echo.com/cookies", NULL);
     ASSERT(r_chk != NULL, "검증 응답 NULL", t4_fail);
 

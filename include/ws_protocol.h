@@ -1,5 +1,5 @@
 // ============================================================================
-// 🚨 TARGET OS: 64-bit Linux Only (32-bit not supported) 🚨
+//  TARGET OS: 64-bit Linux Only (32-bit not supported) 
 // ============================================================================
 #ifndef WS_PROTOCOL_H
 #define WS_PROTOCOL_H

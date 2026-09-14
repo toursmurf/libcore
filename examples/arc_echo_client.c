@@ -14,7 +14,7 @@
 #define TEST_SIZE (1024 * 1024) // 1MB 실탄
 
 int main() {
-    printf("🚀 [Client] 1MB 융단 폭격 준비...\n");
+    printf(" [Client] 1MB 융단 폭격 준비...\n");
     //Non-blocking 클라이언트 생성
     TcpSocket* client = new_TcpClient("127.0.0.1", 8080);
     if (!client) return 1;

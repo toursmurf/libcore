@@ -18,7 +18,7 @@ HttpServer* g_server = NULL;
 ToosTypeGameContext g_game_ctx;
 DBClient* g_db_client = NULL;
 
-// 🚨 [패치 1] 우아한 종료를 위한 Atomic 플래그 (더 이상 여기서 NULL을 치지 않음)
+//  [패치 1] 우아한 종료를 위한 Atomic 플래그 (더 이상 여기서 NULL을 치지 않음)
 static volatile sig_atomic_t g_stop_requested = 0;
 
 static void handle_signal(int sig) {
@@ -35,7 +35,7 @@ static uint64_t get_current_ms(void) {
 static void game_tick_cb(void* user_data) {
     (void)user_data;
 
-    // 🚨 틱 루프 안에서 우아하게 정지 명령 처리 (Valgrind 0바이트를 위한 정석)
+    //  틱 루프 안에서 우아하게 정지 명령 처리 (Valgrind 0바이트를 위한 정석)
     if (g_stop_requested) {
         if (g_server) g_server->stop(g_server);
         if (g_loop) event_loop_stop(g_loop);
@@ -105,7 +105,7 @@ int main() {
     if (!g_db_client || !g_db_client->connect(g_db_client)) goto fail_init;
 
     if (strcmp(db_name, ":memory:") == 0) {
-        // 🚨 [패치 4] 더미 스키마 셋업 실패 시 하드 컷!
+        //  [패치 4] 더미 스키마 셋업 실패 시 하드 컷!
         if (!setup_dummy_schema(g_db_client)) goto fail_init;
     }
 
@@ -127,7 +127,7 @@ int main() {
     if (raw_acc_mult < 0) goto fail_init;
     profile.accuracy_score_multiplier = (uint32_t)raw_acc_mult;
 
-    // 🚨 [패치 4] raw_seed 음수 컷오프 부활!
+    //  [패치 4] raw_seed 음수 컷오프 부활!
     int raw_seed = cfg->getInt(cfg, "random_seed", 0);
     if (raw_seed < 0) goto fail_init;
 

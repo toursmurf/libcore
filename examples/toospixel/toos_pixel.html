@@ -29,7 +29,7 @@
     </style>
 </head>
 <body>
-<h1>🚀 ToosPixel Simulator</h1>
+<h1> ToosPixel Simulator</h1>
 
 <div class="config-box">
     <label>가로 <input type="number" id="w" value="512" disabled></label>
@@ -94,7 +94,7 @@
         document.getElementById("t").disabled = !canResetAction;
         document.getElementById("btnReset").disabled = !canResetAction;
 
-        /* 🚨 START는 참가자(is_joined) 누구나 준비만 되면 누를 수 있음 */
+        /*  START는 참가자(is_joined) 누구나 준비만 되면 누를 수 있음 */
         document.getElementById("btnStart").disabled = !(isWaiting && readyToStart);
 
         document.getElementById("btnRed").disabled = !isWaiting;
@@ -105,7 +105,7 @@
         sendJson({ type: "JOIN_GAME", team: team });
     }
 
-    /* 🚨 RESET_GAME 시 가로, 세로뿐만 아니라 붓 크기와 게임 시간도 함께 전송 */
+    /*  RESET_GAME 시 가로, 세로뿐만 아니라 붓 크기와 게임 시간도 함께 전송 */
     function resetGame() {
         if (!canReset) return;
         const w = parseInt(document.getElementById("w").value);
@@ -115,7 +115,7 @@
         sendJson({ type: "RESET_GAME", width: w, height: h, brushSize: brush, duration: duration });
     }
 
-    /* 🚨 START_GAME은 인자 없이 간소하게 전송 (서버가 configured 설정 사용) */
+    /*  START_GAME은 인자 없이 간소하게 전송 (서버가 configured 설정 사용) */
     function startGame() {
         sendJson({ type: "START_GAME" });
     }
@@ -143,7 +143,7 @@
             const generationChanged = (msg.generation !== activeGeneration);
             activeGeneration = msg.generation;
 
-            /* 🚨 서버가 기억하는 공식 설정값(brushSize, duration)을 후입장자 UI에도 동기화 */
+            /*  서버가 기억하는 공식 설정값(brushSize, duration)을 후입장자 UI에도 동기화 */
             if (generationChanged) {
                 document.getElementById("w").value = msg.width;
                 document.getElementById("h").value = msg.height;

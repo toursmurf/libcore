@@ -691,7 +691,7 @@ static Object* parse_number(ParseContext *ctx) {
         return NULL;
     }
 
-    /* 🚨 [치명 결함 교정] strtod가 식별한 숫자 토큰 범위 [ctx->ptr, end) 내에서만 후행 검사 수행 */
+    /*  [치명 결함 교정] strtod가 식별한 숫자 토큰 범위 [ctx->ptr, end) 내에서만 후행 검사 수행 */
     const char* p = ctx->ptr;
     while (p < end) {
         if (*p == '.') {
@@ -776,7 +776,7 @@ static Object* parse_object(ParseContext *ctx) {
 
         if (*(ctx->ptr) != ':') {
             report_error(ctx, "Expected ':'!");
-            OPENSSL_cleanse(key, key_len + 1); /* 🚨 strlen 제거. 정확한 key_len + 1 소각 */
+            OPENSSL_cleanse(key, key_len + 1); /*  strlen 제거. 정확한 key_len + 1 소각 */
             free(key);
             goto fail;
         }
@@ -786,7 +786,7 @@ static Object* parse_object(ParseContext *ctx) {
         Object *val = parse_value(ctx);
 
         if (!val) {
-            OPENSSL_cleanse(key, key_len + 1); /* 🚨 strlen 제거. 정확한 key_len + 1 소각 */
+            OPENSSL_cleanse(key, key_len + 1); /*  strlen 제거. 정확한 key_len + 1 소각 */
             free(key);
             goto fail;
         }

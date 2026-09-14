@@ -511,7 +511,7 @@ int main(void) {
         seq_total);
     printf("  Parallel   (Act): %.0fms\n",
         total_elapsed);
-    printf("  Time Saved:       %.0fms 🚀\n",
+    printf("  Time Saved:       %.0fms \n",
         seq_total - total_elapsed);
     printf("  ─────────────────────────────────\n");
     printf("  ThreadPool · ArrayList · HashMap\n");

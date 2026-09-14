@@ -67,7 +67,7 @@ void* producer_thread(void* arg) {
             printf("[📥 PUSH] 링버퍼 삽입 성공: ID=%d\n", i);
         } else {
             // EventLoop 블로킹 방지를 위한 즉시 Drop 로직!
-            printf("[🚨 DROP] 링버퍼 FULL! 패킷 드랍: ID=%d\n", i);
+            printf("[ DROP] 링버퍼 FULL! 패킷 드랍: ID=%d\n", i);
             free(pkt); // 큐에 못 들어갔으므로 여기서 소각!
         }
         

@@ -12,7 +12,7 @@
 
 typedef enum {
     HTTP_STATE_READ_HEADER = 0,
-    HTTP_STATE_READ_BODY    /* 🚨 [추가 1] 바디 수신 상태 */
+    HTTP_STATE_READ_BODY    /*  [추가 1] 바디 수신 상태 */
 } HttpConnState;
 
 typedef enum {
@@ -35,14 +35,14 @@ struct HttpConnection {
     HttpConnState state;
     ConnMode mode;
     bool is_closing;
-    bool shutdown_done;     /* 🚨 [추가 2] UAF 방지 플래그 */
+    bool shutdown_done;     /*  [추가 2] UAF 방지 플래그 */
 
     bool keep_alive;
     char header_buf[8192];
     size_t header_len;
-    size_t body_read;       /* 🚨 [추가 3] 바디 수신 상태 필드 */
+    size_t body_read;       /*  [추가 3] 바디 수신 상태 필드 */
 
-    /* 🚨 [핵심] 비동기 송신 큐 및 EPOLLOUT 상태 관리 플래그 */
+    /*  [핵심] 비동기 송신 큐 및 EPOLLOUT 상태 관리 플래그 */
     char* out_buf;
     size_t out_len;
     size_t out_cap;

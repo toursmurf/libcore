@@ -46,7 +46,7 @@ int main() {
 
     // 여러 키워드 중 하나라도 걸리는지 확인 (OR 연산자 | 사용)
     if (log->eregi(log, "critical|error|fail|halt")) {
-        printf(" -> 🚨 경고! 심각한 오류 키워드가 감지되었습니다!\n");
+        printf(" ->  경고! 심각한 오류 키워드가 감지되었습니다!\n");
     } else {
         printf(" -> 🟢 정상 로그입니다.\n");
     }

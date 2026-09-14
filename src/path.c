@@ -101,7 +101,7 @@ static Path* Path_getCanonicalPath(Path* self) {
 }
 
 // ============================================================================
-// 4. 경로 정규화 및 결합 (🚀 strncmp + strncat 철벽 방어)
+// 4. 경로 정규화 및 결합 ( strncmp + strncat 철벽 방어)
 // ============================================================================
 static Path* Path_normalize(Path* self) {
     if (!self || !self->path) return NULL;
@@ -114,7 +114,7 @@ static Path* Path_normalize(Path* self) {
     char* token = strtok_r(copy, "/", &saveptr);
 
     while (token) {
-        // 🚀 [보안 패치] strncmp로 정적 분석 경고까지 원천 차단!
+        //  [보안 패치] strncmp로 정적 분석 경고까지 원천 차단!
         if (strncmp(token, ".", 2) == 0) {
             // 현재 디렉토리는 무시
         } else if (strncmp(token, "..", 3) == 0) {

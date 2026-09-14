@@ -342,7 +342,7 @@ static void test_tree(void) {
     }
     CHECK(sorted, "중위순회 정렬");
 
-    // 🚀 [Zero Leak 방어선 유지]
+    //  [Zero Leak 방어선 유지]
     RELEASE((Object*)it);
     RELEASE((Object*)tree);
 }

@@ -42,13 +42,13 @@
 	    char algo[32];
 	    void* ctx;   // [PRIVATE] OpenSSL EVP_CIPHER_CTX 포인터 은닉
 
-	    // 🚨 SNMPv3 대응: 동적 Key/IV 저장 공간
+	    //  SNMPv3 대응: 동적 Key/IV 저장 공간
 	    uint8_t key[64];
 	    uint8_t iv[64];
 	    size_t key_len;
 	    size_t iv_len;
 
-	    // VTable (🚨 init 시그니처 완벽 동기화 완료!!)
+	    // VTable ( init 시그니처 완벽 동기화 완료!!)
 	    bool (*init)(Cipher* self, const uint8_t* key, size_t key_len, const uint8_t* iv, size_t iv_len);
 	    ByteBuffer* (*encrypt)(Cipher* self, const uint8_t* plain_data, size_t len);
 	    ByteBuffer* (*decrypt)(Cipher* self, const uint8_t* encrypted_data, size_t len);

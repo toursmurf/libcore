@@ -23,7 +23,7 @@ const uint8_t* asn1_decode_length(const uint8_t* ptr, const uint8_t* end, size_t
     uint8_t num = b & 0x7F;
     if (num == 0 || num > sizeof(size_t) || ptr + num > end) return NULL;
 
-    /* 🚨 ③ 의도 명확화: 다중 바이트 길이에서 비최소 표현(Leading Zero) 방어 */
+    /*  ③ 의도 명확화: 다중 바이트 길이에서 비최소 표현(Leading Zero) 방어 */
     if (num > 1 && *ptr == 0x00) return NULL;
 
     *out_len = 0;
@@ -140,7 +140,7 @@ const uint8_t* asn1_decode_oid(const uint8_t* ptr, const uint8_t* end, uint32_t*
     const uint8_t* obj_end = ptr + len;
     *count = 0;
 
-    /* 🚨 ① 2개 동시 저장 대비 안전장치 (126 이하일 때만 허용) */
+    /*  ① 2개 동시 저장 대비 안전장치 (126 이하일 때만 허용) */
     if (ptr < obj_end && *count <= 126) {
         uint8_t first = *ptr++;
         uint32_t x = first / 40;
@@ -307,7 +307,7 @@ uint8_t* asn1_encode_oid(uint8_t* buf, const char* oid_str) {
 
     uint8_t temp[512];
     uint8_t* t_ptr = temp;
-    /* 🚨 ② t_end 포인터 미리 계산하여 가독성 및 속도 확보 */
+    /*  ② t_end 포인터 미리 계산하여 가독성 및 속도 확보 */
     uint8_t* t_end = temp + sizeof(temp);
 
     *t_ptr++ = (oids[0] * 40) + oids[1];

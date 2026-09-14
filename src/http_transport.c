@@ -24,7 +24,7 @@ HttpTransport* HttpTransport_connect(const char* url) {
         return NULL;
     }
 
-    /* 🚀 [이돌이 패치] 포트가 "0"으로 들어오는 경우 80/443 기본 포트로 강제 덮어쓰기! */
+    /*  [이돌이 패치] 포트가 "0"으로 들어오는 경우 80/443 기본 포트로 강제 덮어쓰기! */
     int port = port_str ? atoi(port_str) : 0;
     if (port <= 0) {
         port = (strcasecmp(scheme, "https") == 0) ? 443 : 80;

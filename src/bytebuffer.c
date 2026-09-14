@@ -12,7 +12,7 @@ static int ensure_capacity(ByteBuffer* self, size_t len) {
     if (!self) return -1;
     if (len > SIZE_MAX - self->write_pos) return -1;
 
-    // 🚨 [핵심 로직] 메모리가 부족할 때 무작정 늘리지 않고, 먼저 당기기(compact) 실행!!
+    //  [핵심 로직] 메모리가 부족할 때 무작정 늘리지 않고, 먼저 당기기(compact) 실행!!
     if (self->write_pos + len > self->capacity) {
         if (self->read_pos > 0) self->compact(self);
     }
@@ -117,7 +117,7 @@ static void impl_compact(ByteBuffer* self) {
 #ifdef DEBUG
     memset(self->data + remaining, 0, self->capacity - remaining);
 #endif
-    self->read_pos = 0; // 🚨 읽은 만큼 당기고 리셋 완료!
+    self->read_pos = 0; //  읽은 만큼 당기고 리셋 완료!
     self->write_pos = remaining;
 }
 

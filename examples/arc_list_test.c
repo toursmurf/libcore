@@ -11,7 +11,7 @@
 #include <pthread.h>
 #include "libcore.h"
 
-// 🚀 [ARC 규격에 맞춘 테스트용 IntObject 래퍼 클래스]
+//  [ARC 규격에 맞춘 테스트용 IntObject 래퍼 클래스]
 typedef struct {
     Object base;
     int val;
@@ -58,7 +58,7 @@ int main(void) {
     List* list = new_List();
     printf("[1] 리스트 생성 완료 (초기 Size: %d)\n", list->getSize(list));
 
-    // 🚀 [수정] 단일 스레드 테스트에서도 반드시 ARC 객체를 밀어 넣어야 합니다!
+    //  [수정] 단일 스레드 테스트에서도 반드시 ARC 객체를 밀어 넣어야 합니다!
     printf("\n[2] 단일 스레드 기능 검증 시작...\n");
     IntObject* n1 = new_Int(10);
     IntObject* n2 = new_Int(20);
@@ -86,7 +86,7 @@ int main(void) {
     printf("\n[3] insertAt(1) 후 1번 요소: %d (Size: %d)\n",
             ((IntObject*)list->get(list, 1))->val, list->getSize(list));
 
-    // 🚀 removeAt으로 빼낸 객체는 소유권이 나에게 돌아옴! (반드시 직접 RELEASE 해야 함)
+    //  removeAt으로 빼낸 객체는 소유권이 나에게 돌아옴! (반드시 직접 RELEASE 해야 함)
     Object* removed = list->removeAt(list, 2);
     printf("  - removeAt(2)로 제거된 요소: %d (Size: %d)\n",
             ((IntObject*)removed)->val, list->getSize(list));

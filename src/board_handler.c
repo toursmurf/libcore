@@ -28,7 +28,7 @@ extern Logger* logger;
 #define BOARD_COUNT_SQL_MAX_BYTES  6144
 #define BOARD_LIST_SQL_MAX_BYTES   8192
 
-/* 🚨 C11 stdatomic 대신 pthread_mutex를 이용한 시퀀스 생성 */
+/*  C11 stdatomic 대신 pthread_mutex를 이용한 시퀀스 생성 */
 static pthread_mutex_t file_seq_lock = PTHREAD_MUTEX_INITIALIZER;
 static unsigned int file_seq = 0;
 
@@ -40,7 +40,7 @@ static unsigned int BoardHandler_next_file_seq(void) {
     return value;
 }
 
-/* 🚨 Bounded Strlen (무한 루프 문자열 스캔 방어용) */
+/*  Bounded Strlen (무한 루프 문자열 스캔 방어용) */
 static size_t BoardHandler_bounded_strlen(const char* s, size_t max_len) {
     size_t n = 0;
     if (!s) return 0;
@@ -50,7 +50,7 @@ static size_t BoardHandler_bounded_strlen(const char* s, size_t max_len) {
     return n;
 }
 
-/* 🚨 엄격한 양의 정수 파싱 헬퍼 (PK: id, post_id 등 0 불가 데이터용) */
+/*  엄격한 양의 정수 파싱 헬퍼 (PK: id, post_id 등 0 불가 데이터용) */
 static bool parse_positive_int(const char* s, int* out) {
     if (!s || !out || s[0] == '\0') return false;
 
@@ -77,7 +77,7 @@ static bool parse_positive_int(const char* s, int* out) {
     return true;
 }
 
-/* 🚨 상태값 검증용 엄격한 0 포함 양수 파싱 헬퍼 (view_count, size, depth 등) */
+/*  상태값 검증용 엄격한 0 포함 양수 파싱 헬퍼 (view_count, size, depth 등) */
 static bool parse_nonnegative_int(const char* s, int* out) {
     if (!s || !out || s[0] == '\0') return false;
 
@@ -1762,7 +1762,7 @@ static void BoardHandler_attach(BoardHandler* self, HttpRequest* req, HttpRespon
     }
     safe_mime[mp] = '\0';
 
-    /* 🚨 MIME 빈 값 폴백 처리 (안전장치 완성) */
+    /*  MIME 빈 값 폴백 처리 (안전장치 완성) */
     if (safe_mime[0] == '\0') {
         snprintf(safe_mime, sizeof(safe_mime), "application/octet-stream");
     }

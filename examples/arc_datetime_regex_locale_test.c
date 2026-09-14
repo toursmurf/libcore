@@ -14,7 +14,7 @@
 void test_datetime_module() {
     printf("[TEST] DateTime 모듈 검증 시작...\n");
 
-    // 🚀 [OWNED] 객체 생성 (현재 시각)
+    //  [OWNED] 객체 생성 (현재 시각)
     DateTime* now_utc = new_DateTime_now_utc();
     DateTime* now_local = new_DateTime_now();
 
@@ -32,7 +32,7 @@ void test_datetime_module() {
     printf("  -> 현재 LOCAL 시각  : %s\n", buffer_local);
     printf("  --------------------------------------------------\n");
 
-    // 🚀 [OWNED] 불변성(Immutable) 검증: 5일 뒤의 '새로운' 객체 동시 반환!
+    //  [OWNED] 불변성(Immutable) 검증: 5일 뒤의 '새로운' 객체 동시 반환!
     DateTime* future_utc = now_utc->addDays(now_utc, 5);
     DateTime* future_local = now_local->addDays(now_local, 5); // LOCAL도 5일 연산!
 
@@ -47,9 +47,9 @@ void test_datetime_module() {
     String* rfc_str = future_utc->toRFC1123(future_utc);
     printf("  -> 5일 뒤 RFC1123   : %s\n", rfc_str->value);
 
-    // 🚀 [메모리 해제 철학] 생성된 모든 객체는 역순으로 깔끔하게 반환!
+    //  [메모리 해제 철학] 생성된 모든 객체는 역순으로 깔끔하게 반환!
     RELEASE(rfc_str);
-    RELEASE(future_local); // 🚀 새로 추가한 미래 LOCAL 객체 반환
+    RELEASE(future_local); //  새로 추가한 미래 LOCAL 객체 반환
     RELEASE(future_utc);
     RELEASE(now_local);
     RELEASE(now_utc);
@@ -84,7 +84,7 @@ void test_regex_module() {
         printf("     [%d] 매칭: %s\n", i, match_str->value);
     }
 
-    // 🚀 [메모리 해제 철학] ArrayList를 RELEASE하면 내부 요소들도 연쇄적으로 RELEASE 됨!
+    //  [메모리 해제 철학] ArrayList를 RELEASE하면 내부 요소들도 연쇄적으로 RELEASE 됨!
     RELEASE(matches);
     RELEASE(reg);
 
@@ -119,7 +119,7 @@ void test_locale_module() {
     loc_default->base.type->toString((Object*)loc_default, buffer, sizeof(buffer));
     printf("  -> 시스템 Default Locale: %s\n", buffer);
 
-    // 🚀 [메모리 해제 철학] 생성되거나 반환된 모든 [OWNED] 로케일은 안전하게 해제!
+    //  [메모리 해제 철학] 생성되거나 반환된 모든 [OWNED] 로케일은 안전하게 해제!
     RELEASE(loc_default);
     RELEASE(loc_fallback);
     RELEASE(loc_kr);
@@ -132,7 +132,7 @@ void test_locale_module() {
 // ==========================================
 int main() {
     printf("==========================================\n");
-    printf("🚀 libcore v1.x Datetime, Regex, Locale 통합 QA 시작\n");
+    printf(" libcore v1.x Datetime, Regex, Locale 통합 QA 시작\n");
     printf("==========================================\n\n");
 
     test_datetime_module();

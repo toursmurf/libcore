@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <sys/un.h>
 #include <errno.h>
-#include <fcntl.h> /* 🚀 [패치] fcntl 추가 */
+#include <fcntl.h> /*  [패치] fcntl 추가 */
 
 // [1] 시그니처 수정: Object* 로 고정 (경고 해결)
 static void UnixSocket_finalize(Object* obj) {
@@ -67,11 +67,11 @@ static int UnixSocket_connect_impl(Socket* s, const char* path, int port) {
 static UnixSocket* UnixSocket_accept_impl(UnixSocket* self, char* path) {
     if (!self) return NULL;
 
-    // 🚨 [수정 1]: Valgrind 경고 방어를 위해 메모리 공간 0으로 초기화!
+    //  [수정 1]: Valgrind 경고 방어를 위해 메모리 공간 0으로 초기화!
     struct sockaddr_un addr = {0};
     socklen_t addr_len = sizeof(addr);
 
-    /* 🚀 [패치] macOS 호환성을 위한 accept 분기 처리 */
+    /*  [패치] macOS 호환성을 위한 accept 분기 처리 */
     int c_fd = -1;
 #if defined(__linux__) || defined(__gnu_linux__)
     c_fd = accept4(self->base.fd, (struct sockaddr*)&addr, &addr_len, SOCK_NONBLOCK | SOCK_CLOEXEC);
@@ -85,7 +85,7 @@ static UnixSocket* UnixSocket_accept_impl(UnixSocket* self, char* path) {
     if (c_fd < 0) return NULL;
 
     if (path) {
-        // 🚨 [수정 2]: 클라이언트가 bind를 안 해서 이름이 없는 경우(unnamed) 방어
+        //  [수정 2]: 클라이언트가 bind를 안 해서 이름이 없는 경우(unnamed) 방어
         if (addr_len > sizeof(sa_family_t)) {
             size_t len = strlen(addr.sun_path);
 
@@ -125,7 +125,7 @@ UnixSocket* new_UnixSocket_from_fd(int fd) {
 }
 
 UnixSocket* new_UnixServer(const char* path) {
-    /* 🚀 [패치] macOS 호환성을 위한 socket 분기 처리 */
+    /*  [패치] macOS 호환성을 위한 socket 분기 처리 */
     int fd = -1;
 #if defined(__linux__) || defined(__gnu_linux__)
     fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
@@ -150,7 +150,7 @@ UnixSocket* new_UnixServer(const char* path) {
 }
 
 UnixSocket* new_UnixClient(const char* path) {
-    /* 🚀 [패치] macOS 호환성을 위한 socket 분기 처리 */
+    /*  [패치] macOS 호환성을 위한 socket 분기 처리 */
     int fd = -1;
 #if defined(__linux__) || defined(__gnu_linux__)
     fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);

@@ -5,7 +5,7 @@
 
 extern const Class threadClass;
 
-// 🚀 [수술 1] ARC 마법: 스스로 소유권을 내려놓는 안락사 로직
+//  [수술 1] ARC 마법: 스스로 소유권을 내려놓는 안락사 로직
 static void* internal_thread_entry(void* arg) {
     Thread* self = (Thread*)arg;
     
@@ -31,7 +31,7 @@ static void impl_start(Thread* self) {
     if (self->is_running) return;
     self->is_running = true;
     
-    // 🚀 [수술 2] ARC 마법: OS 스레드가 끝날 때까지 내 몸통이 증발하지 않도록 RETAIN!
+    //  [수술 2] ARC 마법: OS 스레드가 끝날 때까지 내 몸통이 증발하지 않도록 RETAIN!
     RETAIN(self); 
     
     if (pthread_create(&self->handle, NULL, internal_thread_entry, (void*)self) != 0) {
@@ -42,7 +42,7 @@ static void impl_start(Thread* self) {
 }
 
 static void* impl_join(Thread* self) {
-    // 🚀 [수술 3] 좀비 스레드 방지: is_running과 무관하게 joinable 상태면 무조건 join!
+    //  [수술 3] 좀비 스레드 방지: is_running과 무관하게 joinable 상태면 무조건 join!
     // (핸들이 0이 아니면 join을 시도하고, 완료 후 0으로 초기화)
     if (self->handle != 0) {
         pthread_join(self->handle, &self->return_value);
@@ -69,7 +69,7 @@ static void Thread_ToString(Object* self, char* buffer, size_t len) {
 
 static void Thread_Finalize(Object* self) {
     Thread* t = (Thread*)self;
-    // 🚀 객체가 진짜 소멸될 때, 아직 스레드 핸들이 남아있다면 분리(detach)하여 고아 스레드 방지
+    //  객체가 진짜 소멸될 때, 아직 스레드 핸들이 남아있다면 분리(detach)하여 고아 스레드 방지
     if (t->handle != 0) {
         pthread_detach(t->handle);
     }

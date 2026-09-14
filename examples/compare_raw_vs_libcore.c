@@ -14,7 +14,7 @@
 #include <fcntl.h>
 #include <time.h>
 #include <pthread.h>
-#include <signal.h>      /* 🚀 [패치 1] SIGPIPE 방어용 헤더 추가 */
+#include <signal.h>      /*  [패치 1] SIGPIPE 방어용 헤더 추가 */
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/utsname.h>
@@ -22,7 +22,7 @@
 #include <netinet/in.h>
 #include <sys/resource.h>
 
-/* 🚀 [OS 분기] 리눅스면 epoll, macOS(Apple)/BSD면 kqueue 장전! */
+/*  [OS 분기] 리눅스면 epoll, macOS(Apple)/BSD면 kqueue 장전! */
 #if defined(__linux__) || defined(__gnu_linux__)
 #include <sys/epoll.h>
 #else
@@ -42,7 +42,7 @@ static long        lc_tcp = 0, lc_udp = 0, lc_unx = 0;
 static EventLoop* loop   = NULL;
 extern Logger* logger;
 
-/* 🚨 벤치마크 결과 저장용 전역 변수 */
+/*  벤치마크 결과 저장용 전역 변수 */
 static double      raw_time_val = 0.0;
 static double      lib_time_val = 0.0;
 static long        raw_mem_kb   = 0;
@@ -76,10 +76,10 @@ static void print_system_banner(void) {
     char buf[256];
     printf("\n");
     printf("╔═════════════════════════════════════════════════════════════╗\n");
-    printf("║          🚀 투스it홀딩스 - Iron Fortress v1.1 벤치마크          ║\n");
+    printf("║           투스it홀딩스 - Iron Fortress v1.1 벤치마크          ║\n");
     printf("╚═════════════════════════════════════════════════════════════╝\n");
 
-/* 🚀 [패치 3] macOS 전용 CPU 사양 추출! */
+/*  [패치 3] macOS 전용 CPU 사양 추출! */
 #if defined(__APPLE__)
     FILE* f = popen("sysctl -n machdep.cpu.brand_string 2>/dev/null", "r");
 #else
@@ -103,11 +103,11 @@ static void print_final_report(void) {
     int total_lines = 0, raw_lines = 0, lib_lines = 0;
     FILE* f;
 
-    /* 🚨 gcc 경고 회피를 위해 리턴값 체크 */
+    /*  gcc 경고 회피를 위해 리턴값 체크 */
     snprintf(cmd, sizeof(cmd), "wc -l %s 2>/dev/null | awk '{print $1}'", __FILE__);
     if ((f = popen(cmd, "r"))) { if (fscanf(f, "%d", &total_lines) != 1) total_lines = 0; pclose(f); }
 
-    /* 🚨 [핵심 버그 수정] 문자열 분리 트릭으로 awk의 오작동(Self-Reference) 원천 차단!!!! */
+    /*  [핵심 버그 수정] 문자열 분리 트릭으로 awk의 오작동(Self-Reference) 원천 차단!!!! */
     snprintf(cmd, sizeof(cmd), "awk '/BEGIN_RAW_" "CORE/{flag=1; next} /END_RAW_" "CORE/{flag=0} flag {count++} END {print count+0}' %s 2>/dev/null", __FILE__);
     if ((f = popen(cmd, "r"))) { if (fscanf(f, "%d", &raw_lines) != 1) raw_lines = 0; pclose(f); }
 
@@ -128,11 +128,11 @@ static void print_final_report(void) {
         printf(" ⏱️  수행 시간          : RAW(%.3fs) vs LIBCORE(%.3fs)\n", raw_time_val, lib_time_val);
 
         if (time_diff < 0) {
-            printf(" 🚀 속도 차이          : RAW가 %.3fs 더 빠름 (프레임워크 오버헤드)\n", -time_diff);
+            printf("  속도 차이          : RAW가 %.3fs 더 빠름 (프레임워크 오버헤드)\n", -time_diff);
         } else if (time_diff > 0) {
-            printf(" 🚀 속도 차이          : libcore가 %.3fs 더 빠름!!!! (추상화의 기적)\n", time_diff);
+            printf("  속도 차이          : libcore가 %.3fs 더 빠름!!!! (추상화의 기적)\n", time_diff);
         } else {
-            printf(" 🚀 속도 차이          : 완벽한 동률 (0.000s 차이)!!!!\n");
+            printf("  속도 차이          : 완벽한 동률 (0.000s 차이)!!!!\n");
         }
 
         printf(" 💾 최대 메모리 (RSS)  : RAW(%ld MB) vs LIBCORE(%ld MB)\n\n", raw_mem_kb / 1024, lib_mem_kb / 1024);
@@ -231,7 +231,7 @@ static void raw_main(void) {
     bind(xfd, (struct sockaddr*)&xaddr, sizeof(xaddr));
     listen(xfd, 128);
 
-/* 🚀 OS별 Event API 셋업 */
+/*  OS별 Event API 셋업 */
 #if defined(__linux__) || defined(__gnu_linux__)
     int epfd = epoll_create1(0);
     struct epoll_event ev;
@@ -250,7 +250,7 @@ static void raw_main(void) {
 #endif
 
     while (t_c < TARGET || x_c < TARGET || u_c < TARGET * 0.95) {
-/* 🚀 OS별 Wait 처리 */
+/*  OS별 Wait 처리 */
 #if defined(__linux__) || defined(__gnu_linux__)
         int n = epoll_wait(epfd, events, MAX_EVENTS, 1000);
 #else
@@ -260,7 +260,7 @@ static void raw_main(void) {
         if (n <= 0) break;
 
         for (int i = 0; i < n; i++) {
-/* 🚀 OS별 File Descriptor 식별 */
+/*  OS별 File Descriptor 식별 */
 #if defined(__linux__) || defined(__gnu_linux__)
             int fd = events[i].data.fd;
 #else
@@ -271,7 +271,7 @@ static void raw_main(void) {
                 if (c >= 0) {
                     fcntl(c, F_SETFL, fcntl(c, F_GETFL, 0) | O_NONBLOCK);
                     sock_type[c] = (fd == tfd) ? 1 : 2; /* 족보 기록 */
-/* 🚀 OS별 소켓 등록 */
+/*  OS별 소켓 등록 */
 #if defined(__linux__) || defined(__gnu_linux__)
                     ev.events = EPOLLIN;
                     ev.data.fd = c;
@@ -295,7 +295,7 @@ static void raw_main(void) {
                     }
                 }
                 if (r == 0) {
-/* 🚀 OS별 소켓 해제 */
+/*  OS별 소켓 해제 */
 #if defined(__linux__) || defined(__gnu_linux__)
                     epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
 #else
@@ -350,7 +350,7 @@ static void on_read(Socket* s, void* ctx) {
         }
     }
     if (lc_tcp >= TARGET && lc_unx >= TARGET && lc_udp >= TARGET * 0.95) {
-        /* 🚀 [패치] 신규 EventLoop 글로벌 API 적용 */
+        /*  [패치] 신규 EventLoop 글로벌 API 적용 */
         event_loop_stop(loop);
     }
 }
@@ -363,7 +363,7 @@ static void on_accept(Socket* s, void* ctx) {
     if (c) {
         c->on_readable = on_read;
         loop->addSocket(loop, c, EV_READ);
-        /* 🚨 [패치 2] RELEASE((Object*)c); 제거!! (EventLoop가 끝날 때까지 생존 보장) */
+        /*  [패치 2] RELEASE((Object*)c); 제거!! (EventLoop가 끝날 때까지 생존 보장) */
     }
 }
 static void libcore_main(void) {
@@ -372,7 +372,7 @@ static void libcore_main(void) {
     pthread_create(&tid, NULL, client_load, NULL);
     double start = now_sec();
     
-    /* 🚀 [패치] 신규 EventLoop 생성 API 적용 */
+    /*  [패치] 신규 EventLoop 생성 API 적용 */
     loop = event_loop_create();
 
     Exception* err = NULL;
@@ -380,10 +380,10 @@ static void libcore_main(void) {
     snprintf(tcp_url, sizeof(tcp_url), "tcp://0.0.0.0:%d", TCP_PORT);
     snprintf(udp_url, sizeof(udp_url), "udp://0.0.0.0:%d", UDP_PORT);
 
-    /* 🚀 [패치 3] RAW 모드가 남긴 소켓 찌꺼기 완벽 청소! */
+    /*  [패치 3] RAW 모드가 남긴 소켓 찌꺼기 완벽 청소! */
     unlink(UNIX_PATH);
 
-    /* 🚀 클순 부장님 지적 사항 완벽 반영: Exception NULL 체크 방어막 가동! */
+    /*  클순 부장님 지적 사항 완벽 반영: Exception NULL 체크 방어막 가동! */
     Socket* ts = createServer(tcp_url, &err);
     if (err) { printf("\n[FATAL] TCP Server 소켓 생성 실패!\n"); exit(1); }
 
@@ -404,7 +404,7 @@ static void libcore_main(void) {
     loop->addSocket(loop, us, EV_READ);
     loop->addSocket(loop, xs, EV_READ);
 
-    /* 🚀 [패치] 신규 EventLoop 실행 글로벌 API 적용 */
+    /*  [패치] 신규 EventLoop 실행 글로벌 API 적용 */
     event_loop_run(loop);
     
     pthread_join(tid, NULL);
@@ -424,10 +424,10 @@ static void libcore_main(void) {
  * MAIN
  * ───────────────────────────────────────────── */
 int main(int argc, char* argv[]) {
-    /* 🚀 [패치 1] 파이프 깨짐(SIGPIPE)으로 인한 프로세스 폭사 완벽 방어! */
+    /*  [패치 1] 파이프 깨짐(SIGPIPE)으로 인한 프로세스 폭사 완벽 방어! */
     signal(SIGPIPE, SIG_IGN); 
 
-    logger = new_Logger(LOG_LEVEL_ERROR); /* 🚀 노이즈 캔슬링 장착 완료 */
+    logger = new_Logger(LOG_LEVEL_ERROR); /*  노이즈 캔슬링 장착 완료 */
     print_system_banner();
 
     int run_raw_flag = 0, run_lib_flag = 0;

@@ -10,11 +10,11 @@ static void LinkedList_ToString(Object *self, char *buffer, size_t len) {
     snprintf(buffer, len, "LinkedList(size=%d)", list->size);
 }
 
-// 🚀 [ARC 핵심] 기존 free_list를 대체하는 완벽한 연쇄 소각!
+//  [ARC 핵심] 기존 free_list를 대체하는 완벽한 연쇄 소각!
 static void LinkedList_Finalize(Object *self) {
     LinkedList *list = (LinkedList*)self;
-    LinkedListNode* curr = list->head; // 🚀 Node -> LinkedListNode 변경
-    LinkedListNode* next;              // 🚀 Node -> LinkedListNode 변경
+    LinkedListNode* curr = list->head; //  Node -> LinkedListNode 변경
+    LinkedListNode* next;              //  Node -> LinkedListNode 변경
 
     while (curr != NULL) {
         next = curr->next;
@@ -44,15 +44,15 @@ const Class linkedListClass = {
 static void impl_add_node(LinkedList* self, void* data) {
     pthread_mutex_lock(&self->lock);
 
-    LinkedListNode* new_node = (LinkedListNode*)malloc(sizeof(LinkedListNode)); // 🚀 변경
+    LinkedListNode* new_node = (LinkedListNode*)malloc(sizeof(LinkedListNode)); //  변경
     new_node->data = (Object*)data;
-    RETAIN(new_node->data); // 🚀 [ARC] 리스트가 소유권 확보!
+    RETAIN(new_node->data); //  [ARC] 리스트가 소유권 확보!
     new_node->next = NULL;
 
     if (self->head == NULL) {
         self->head = new_node;
     } else {
-        LinkedListNode* temp = self->head; // 🚀 변경
+        LinkedListNode* temp = self->head; //  변경
         while (temp->next != NULL) {
             temp = temp->next;
         }
@@ -67,8 +67,8 @@ static void impl_add_node(LinkedList* self, void* data) {
 static void impl_delete_node(LinkedList* self, void* data, int (*compare)(Object*, Object*)) {
     pthread_mutex_lock(&self->lock);
 
-    LinkedListNode* curr = self->head; // 🚀 변경
-    LinkedListNode* prev = NULL;       // 🚀 변경
+    LinkedListNode* curr = self->head; //  변경
+    LinkedListNode* prev = NULL;       //  변경
 
     while (curr != NULL) {
         if (compare(curr->data, (Object*)data) == 0) {
@@ -77,7 +77,7 @@ static void impl_delete_node(LinkedList* self, void* data, int (*compare)(Object
             } else {
                 prev->next = curr->next;
             }
-            // 🚀 [ARC] 리스트에서 빠져나가므로 소유권 즉시 해제!
+            //  [ARC] 리스트에서 빠져나가므로 소유권 즉시 해제!
             RELEASE_NULL(curr->data);
             free(curr);
             self->size--;
@@ -95,7 +95,7 @@ static void impl_delete_node(LinkedList* self, void* data, int (*compare)(Object
 // 리스트 출력
 static void impl_print_list(LinkedList* self, void (*display)(Object*)) {
     pthread_mutex_lock(&self->lock);
-    LinkedListNode* curr = self->head; // 🚀 변경
+    LinkedListNode* curr = self->head; //  변경
     while (curr != NULL) {
         display(curr->data);
         curr = curr->next;

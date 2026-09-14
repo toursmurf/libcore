@@ -51,7 +51,7 @@ bool ToosTypeRoom_start_countdown(ToosTypeRoom *self, uint64_t now_ms) {
     return true;
 }
 
-// 🚨 [패치 완료] 다른 상태에서 무단 취소 방지 및 시간값 완벽 초기화
+//  [패치 완료] 다른 상태에서 무단 취소 방지 및 시간값 완벽 초기화
 void ToosTypeRoom_cancel_countdown(ToosTypeRoom *self, uint64_t now_ms) {
     if (!self) return;
     if (self->state != TOOS_TYPE_STATE_COUNTDOWN) return;

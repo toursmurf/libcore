@@ -12,7 +12,7 @@
 #include <sys/file.h>
 #include <errno.h>
 #include <stdio.h>
-#include <openssl/evp.h> /* 🚨 [패치] MD5/SHA256 대신 범용 EVP API 사용! */
+#include <openssl/evp.h> /*  [패치] MD5/SHA256 대신 범용 EVP API 사용! */
 
 // ----------------------------------------------------
 // 전방 선언 (Forward Declarations)
@@ -83,7 +83,7 @@ bool File_Init(File* self, const char* path) {
     return true;
 }
 
-// 🚀 [보안 패치] 레거시 File_Deinit 완전히 삭제됨 (이중 해제 위험 차단!)
+//  [보안 패치] 레거시 File_Deinit 완전히 삭제됨 (이중 해제 위험 차단!)
 
 // ============================================================================
 // 2. finalize (ARC 전담)
@@ -280,7 +280,7 @@ static String* File_readAllText(File* self) {
         return NULL;
     }
 
-    // 🚀 [보안 패치] 원본 ByteBuffer 변형을 막고 명시적 안전 메모리 할당!
+    //  [보안 패치] 원본 ByteBuffer 변형을 막고 명시적 안전 메모리 할당!
     char* safe_str = (char*)malloc(buf->write_pos + 1);
 
     if (!safe_str) {
@@ -472,7 +472,7 @@ static void File_unlock(File* self) {
     }
 }
 
-/* 🚨 [패치] MD5() 대신 최신 EVP API 사용 */
+/*  [패치] MD5() 대신 최신 EVP API 사용 */
 static String* File_md5(File* self) {
     ByteBuffer* buf = File_readAllBytes(self);
 
@@ -501,7 +501,7 @@ static String* File_md5(File* self) {
     return new_String(out);
 }
 
-/* 🚨 [패치] SHA256() 대신 최신 EVP API 사용 */
+/*  [패치] SHA256() 대신 최신 EVP API 사용 */
 static String* File_sha256(File* self) {
     ByteBuffer* buf = File_readAllBytes(self);
 

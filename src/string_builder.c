@@ -16,7 +16,7 @@ static int sb_ensure_capacity(StringBuilder* self, size_t required) {
 
     size_t new_cap = current_cap ? current_cap : 64;
     while (new_cap < required) {
-        // 🚨 [지적 ② 반영]: bytebuffer.h에 정의된 BB_MAX_CAPACITY(16MB) 실존 확인 완료 및 오버플로우 방어
+        //  [지적 ② 반영]: bytebuffer.h에 정의된 BB_MAX_CAPACITY(16MB) 실존 확인 완료 및 오버플로우 방어
         if (new_cap > BB_MAX_CAPACITY / 2) return 0;
         new_cap *= 2;
     }
@@ -88,7 +88,7 @@ static StringBuilder* StringBuilder_appendLong(StringBuilder* self, long value) 
 
 static StringBuilder* StringBuilder_appendDouble(StringBuilder* self, double value) {
     char buf[64];
-    // 🚨 [지적 ① 반영]: 실용성을 위해 소수점 정밀도를 "%.2f"로 변경하여 버퍼 출력 최적화
+    //  [지적 ① 반영]: 실용성을 위해 소수점 정밀도를 "%.2f"로 변경하여 버퍼 출력 최적화
     int len = snprintf(buf, sizeof(buf), "%.2f", value);
     if (len > 0) sb_commit_write(self, buf, len);
     return self;
@@ -110,7 +110,7 @@ static StringBuilder* StringBuilder_appendFormat(StringBuilder* self, const char
             int written = vsnprintf((char*)self->buffer->data + current, (size_t)len + 1, fmt, args);
             va_end(args);
 
-            // 🚨 [지적 ③ 반영]: 정상 케이스는 written == len 임.
+            //  [지적 ③ 반영]: 정상 케이스는 written == len 임.
             // > len 은 불가능하나, 안전 차원에서 <= len 으로 방어벽 유지.
             if (written >= 0 && written <= len) {
                 self->buffer->write_pos += written;

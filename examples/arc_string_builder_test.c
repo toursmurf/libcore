@@ -119,7 +119,7 @@ void test_string_builder_stress() {
 }
 
 int main() {
-    printf("\n🚀 libcore StringBuilder v1.6.0 Test Bench\n\n");
+    printf("\n libcore StringBuilder v1.6.0 Test Bench\n\n");
 
     test_string_builder_text();
     test_string_builder_binary();

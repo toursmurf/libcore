@@ -21,7 +21,7 @@ struct ServiceRegistry {
 
 ServiceRegistry* new_ServiceRegistry();
 
-// 🚨 매크로: 타입 안전 조회 ✅
+//  매크로: 타입 안전 조회 ✅
 #define REG_GET(reg, TYPE) \
     ((TYPE*) (reg)->get((reg), &TYPE##_Class))
 

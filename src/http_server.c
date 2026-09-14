@@ -413,7 +413,7 @@ void WsUpgrade_handler(HttpRequest* req, HttpResponse* res, void* user_ctx) {
     free(accept_key);
 }
 
-/* 🚨 URL 디코드 유틸 추가 (의장님 지시사항) */
+/*  URL 디코드 유틸 추가 (의장님 지시사항) */
 static int hex_value(unsigned char c) {
     if (c >= '0' && c <= '9') {
         return c - '0';
@@ -568,7 +568,7 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
                 return;
             }
 
-            /* 🚨 포인터 연산 기반 헤더/URL 파서로 전면 교체 (Truncate 완전 차단) */
+            /*  포인터 연산 기반 헤더/URL 파서로 전면 교체 (Truncate 완전 차단) */
             const char* line_end = strstr((char*)conn->header_buf, "\r\n");
             const char* first_space = strchr((char*)conn->header_buf, ' ');
 

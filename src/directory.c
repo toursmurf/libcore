@@ -33,7 +33,7 @@ static bool safe_path_strict(const char* path) {
     if (strncmp(path, "..", sizeof("..")) == 0) return false;
 
     // 2. 시스템 디렉토리 하위 접근 전체 차단
-    // 🚀 [수정] 테스트 및 임시 파일 삭제를 위해 /tmp 경로는 예외적으로 허용합니다!!!!
+    //  [수정] 테스트 및 임시 파일 삭제를 위해 /tmp 경로는 예외적으로 허용합니다!!!!
     // if (strncmp(path, "/tmp/", 5) == 0 || strncmp(path, "/tmp", sizeof("/tmp")) == 0) return false;
 
     if (strncmp(path, "/usr/", 5) == 0 || strncmp(path, "/usr", sizeof("/usr")) == 0) return false;
@@ -245,7 +245,7 @@ static bool Directory_deleteRecursive(Directory* self) {
         return false;
     }
 
-    // 🚀 수정된 safe_path_strict가 여기서 /tmp를 통과시켜 줍니다!!!!
+    //  수정된 safe_path_strict가 여기서 /tmp를 통과시켜 줍니다!!!!
     if (!safe_path_strict(self->dirPath->path)) {
         return false;
     }

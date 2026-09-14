@@ -4,7 +4,7 @@
 #include <string.h>
 #include <unistd.h> 
 #include <arpa/inet.h>
-#include <fcntl.h> /* 🚀 [패치] fcntl 추가 */
+#include <fcntl.h> /*  [패치] fcntl 추가 */
 
 static void UdpSocket_finalize(Object* obj) { // 👈 void* -> Object*
     Socket_finalize(obj);
@@ -48,7 +48,7 @@ UdpSocket* new_UdpSocket_from_fd(int fd) {
 }
 
 UdpSocket* new_UdpServer(const char* host, int port) {
-    /* 🚀 [패치] macOS 호환성을 위한 socket 분기 처리 */
+    /*  [패치] macOS 호환성을 위한 socket 분기 처리 */
     int fd = -1;
 #if defined(__linux__) || defined(__gnu_linux__)
     fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
@@ -71,7 +71,7 @@ UdpSocket* new_UdpServer(const char* host, int port) {
 }
 
 UdpSocket* new_UdpClient(void) {
-    /* 🚀 [패치] macOS 호환성을 위한 socket 분기 처리 */
+    /*  [패치] macOS 호환성을 위한 socket 분기 처리 */
     int fd = -1;
 #if defined(__linux__) || defined(__gnu_linux__)
     fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);

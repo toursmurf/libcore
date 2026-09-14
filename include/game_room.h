@@ -58,10 +58,10 @@ struct GameRoom {
     GameRoomGameOverCallback on_game_over_cb;
     void *on_game_over_ctx;
 
-    /* 🚨 최초 접속자(Initializer) 세션 ID */
+    /*  최초 접속자(Initializer) 세션 ID */
     uint64_t initializer_session;
 
-    /* 🚨 서버가 기억하는 공식 게임 설정 (후입장자 공유 및 START 시 활용) */
+    /*  서버가 기억하는 공식 게임 설정 (후입장자 공유 및 START 시 활용) */
     uint16_t configured_brush_size;
     uint64_t configured_duration_ms;
 
@@ -79,10 +79,10 @@ GameRoomRemoveResult GameRoom_remove_player(GameRoom *room, uint8_t player_idx);
 
 bool GameRoom_can_start(GameRoom *room);
 
-/* 🚨 수정: RESET 시 붓 크기와 게임 시간 설정값도 함께 확정 */
+/*  수정: RESET 시 붓 크기와 게임 시간 설정값도 함께 확정 */
 bool GameRoom_reset(GameRoom *room, uint64_t requester_session, uint16_t w, uint16_t h, uint16_t brush, uint64_t duration_ms);
 
-/* 🚨 수정: START는 서버가 기억하는 configured 설정으로 즉시 개전 */
+/*  수정: START는 서버가 기억하는 configured 설정으로 즉시 개전 */
 bool GameRoom_start(GameRoom *room, uint64_t now_ms);
 
 GameRoomPaintResult GameRoom_paint(GameRoom *room, uint8_t player_idx, uint64_t req_generation, uint16_t x, uint16_t y, uint64_t now_ms);

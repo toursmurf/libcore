@@ -265,7 +265,7 @@ bool ToosTypeGameContext_join(ToosTypeGameContext *ctx, void *conn_ptr) {
     ev.payload.join.is_host = (p->player_no == ctx->room.host_player_no);
     emit_event(ctx, &ev);
 
-    // 🚨 [패치 5] 중복 전송 제거 (1명일 때 브로드캐스트 하던 부분 삭제)
+    //  [패치 5] 중복 전송 제거 (1명일 때 브로드캐스트 하던 부분 삭제)
     emit_room_config(ctx, conn_ptr);
 
     return true;
@@ -421,7 +421,7 @@ bool ToosTypeGameContext_disconnect(ToosTypeGameContext *ctx, void *conn_ptr, ui
         memset(p, 0, sizeof(*p));
         ctx->active_player_count--;
 
-        // 🚨 [패치 2] WAITING / COUNTDOWN 때만 방장 재선출
+        //  [패치 2] WAITING / COUNTDOWN 때만 방장 재선출
         recalculate_host(ctx);
 
         if (old_host != ctx->room.host_player_no) emit_room_config(ctx, NULL);
@@ -463,7 +463,7 @@ bool ToosTypeGameContext_disconnect(ToosTypeGameContext *ctx, void *conn_ptr, ui
         update_player_stats(ctx, p, now_ms);
     }
 
-    // 🚨 [패치 2] 게임 시작 후엔 방장 재선출 없음! (recalculate_host 삭제)
+    //  [패치 2] 게임 시작 후엔 방장 재선출 없음! (recalculate_host 삭제)
     return true;
 }
 

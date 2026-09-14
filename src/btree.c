@@ -89,7 +89,7 @@ static void BTree_insert_non_full(BTree *self, BTreeNode *node, Object *key, Obj
             node->values[i + 1] = node->values[i];
             i--;
         }
-        // 🚀 [버그 2 수정 완료] 소유권(RETAIN) 완벽 획득!
+        //  [버그 2 수정 완료] 소유권(RETAIN) 완벽 획득!
         node->keys[i + 1] = RETAIN(key);
         node->values[i + 1] = RETAIN(value);
         node->num_keys++;
