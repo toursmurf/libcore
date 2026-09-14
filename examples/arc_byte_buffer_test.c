@@ -1,8 +1,5 @@
 /**
  * @file arc_byte_buffer_test.c
- * @brief 🇰🇷 Java NIO 스타일의 ByteBuffer를 활용한 바이너리 조작 및 엔디안(Endian) 처리 테스트입니다.
- * 🇬🇧 Binary manipulation and Endian processing test using Java NIO-style ByteBuffer.
- * @note  This example strictly follows the ARC memory management rules.
  */
 
 #include <stdio.h>
@@ -40,15 +37,15 @@ int main() {
     printf("    -> 10바이트 readSlice 실행 후 ReadPos: %zu\n", buf->read_pos);
     //  수정된 검증식: compact로 리셋된 0에서 10을 더한 값이 10이어야 함
     assert(buf->read_pos == current_pos + 10); 
-    printf("    -> ✅ 소유권 이전 및 중복 처리 방어 확인!\n\n");
+    printf("    ->  소유권 이전 및 중복 처리 방어 확인!\n\n");
 
     // [5] 보안 테스트
     int res = buf->write(buf, "attack", (size_t)-1);
     assert(res == -1);
-    printf("    -> ✅ 오버플로우 방어 확인!\n\n");
+    printf("    ->  오버플로우 방어 확인!\n\n");
 
     RELEASE(slice);
     RELEASE(buf);
-    printf("✅ 모든 지옥의 검증 시나리오를 '진짜' 통과했습니다.\n");
+    printf(" 모든 지옥의 검증 시나리오를 '진짜' 통과했습니다.\n");
     return 0;
 }
