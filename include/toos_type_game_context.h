@@ -4,7 +4,8 @@
 #include "toos_type_judge.h"
 #include "toos_type_sentence.h"
 
-typedef struct {
+typedef struct
+{
     bool occupied;
     uint32_t player_no;
     uint64_t join_seq;
@@ -12,9 +13,10 @@ typedef struct {
     bool connected;
     bool ready;
 
-    size_t sentence_cursor;
+    size_t phase_cursor[TOOS_TYPE_MAX_PHASES];
 
     uint64_t active_sentence_id;
+    uint32_t active_phase;
     uint64_t sentence_spawn_ms;
     uint64_t sentence_deadline_ms;
 
@@ -40,7 +42,8 @@ typedef struct {
     void *conn_ptr;
 } ToosTypePlayerState;
 
-typedef enum {
+typedef enum
+{
     TOOS_TYPE_EVENT_JOIN_ACK,
     TOOS_TYPE_EVENT_ROOM_CONFIG,
     TOOS_TYPE_EVENT_GAME_STATE,
@@ -54,7 +57,8 @@ typedef enum {
     TOOS_TYPE_EVENT_ERROR
 } ToosTypeEventType;
 
-typedef struct {
+typedef struct
+{
     uint32_t rank;
     uint32_t player_no;
     ToosTypeFinishStatus status;
@@ -67,50 +71,66 @@ typedef struct {
     uint32_t wpm;
 } ToosTypeRankingEntry;
 
-typedef struct {
+typedef struct
+{
     ToosTypeEventType type;
     void *target_conn;
-    union {
-        struct {
+    union
+    {
+        struct
+        {
             uint32_t player_no;
             bool is_host;
         } join;
 
-        //[패치 완료] room_id, state 포함 완벽 동기화!
-        struct {
+        struct
+        {
             uint64_t room_id;
             ToosTypeState state;
             ToosTypeLanguage lang;
             bool locked;
             uint32_t host_no;
+
+            uint32_t game_duration_ms;
+            uint32_t connected_count;
+            uint32_t ready_count;
+            bool all_ready;
         } room;
 
-        struct {
+        struct
+        {
             ToosTypeState state;
             uint32_t current_phase;
             uint64_t game_remaining_ms;
         } state;
 
-        struct {
+        struct
+        {
             uint64_t countdown_remaining_ms;
         } countdown;
 
-        struct {
+        struct
+        {
             uint32_t phase;
             uint64_t phase_timeout_ms;
             uint64_t game_remaining_ms;
         } phase_changed;
-        struct {
+
+        struct
+        {
             uint64_t sentence_id;
             const char *text;
             uint64_t sentence_remaining_ms;
         } drop;
-        struct {
+
+        struct
+        {
             uint64_t sentence_id;
             ToosTypeJudgeResult result;
         } result;
 
-        struct {
+        struct
+        {
             uint32_t pno;
             uint64_t sid;
             uint32_t play;
@@ -121,16 +141,19 @@ typedef struct {
             uint32_t wpm;
         } score;
 
-        struct {
+        struct
+        {
             const char *reason;
         } game_over;
 
-        struct {
+        struct
+        {
             uint32_t count;
             ToosTypeRankingEntry entries[TOOS_TYPE_MAX_ROOM_PLAYERS];
         } ranking;
 
-        struct {
+        struct
+        {
             const char *message;
         } error;
 
@@ -139,7 +162,8 @@ typedef struct {
 
 typedef void (*ToosTypeEventDispatcher)(const ToosTypeEvent *ev, void *user_data);
 
-typedef struct {
+typedef struct
+{
     ToosTypeRoom room;
     sqlite3 *db;
     ToosTypeSpawnEngine spawn;
@@ -159,7 +183,14 @@ void ToosTypeGameContext_deinit(ToosTypeGameContext *ctx);
 
 bool ToosTypeGameContext_join(ToosTypeGameContext *ctx, void *conn_ptr);
 bool ToosTypeGameContext_set_language(ToosTypeGameContext *ctx, void *conn_ptr, ToosTypeLanguage lang);
+bool ToosTypeGameContext_set_duration(ToosTypeGameContext *ctx, void *conn_ptr, uint32_t minutes);
 bool ToosTypeGameContext_set_ready(ToosTypeGameContext *ctx, void *conn_ptr, uint64_t now_ms);
+
+// [패치] 3단 START 트랜잭션 분리 신설!
+bool ToosTypeGameContext_prepare_start(ToosTypeGameContext *ctx, void *conn_ptr);
+void ToosTypeGameContext_abort_start(ToosTypeGameContext *ctx);
+bool ToosTypeGameContext_start_game(ToosTypeGameContext *ctx, void *conn_ptr, uint64_t now_ms);
+
 bool ToosTypeGameContext_submit(ToosTypeGameContext *ctx, void *conn_ptr, uint64_t sentence_id, const char *input, size_t len, uint64_t now_ms);
 bool ToosTypeGameContext_disconnect(ToosTypeGameContext *ctx, void *conn_ptr, uint64_t now_ms);
 

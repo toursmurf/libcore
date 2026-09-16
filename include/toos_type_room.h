@@ -1,6 +1,9 @@
 #pragma once
 #include "toos_type_types.h"
 
+#define TOOS_TYPE_MIN_GAME_MINUTES 1u
+#define TOOS_TYPE_MAX_GAME_MINUTES 5u
+
 typedef struct {
     uint32_t duration_ms;
     uint32_t input_timeout_ms;
@@ -39,12 +42,18 @@ typedef struct ToosTypeRoom {
     uint32_t current_phase;
 } ToosTypeRoom;
 
-void ToosTypeRoom_init(ToosTypeRoom *self, uint64_t room_id, const ToosTypeGameProfile *profile);
-
+void ToosTypeRoom_init(ToosTypeRoom *self,  uint64_t room_id,  const ToosTypeGameProfile *profile);
 uint32_t ToosTypeRoom_phase_at(const ToosTypeRoom *self, uint64_t now_ms);
 uint64_t ToosTypeRoom_sentence_timeout_ms(const ToosTypeRoom *self, uint64_t now_ms);
+uint64_t ToosTypeRoom_total_duration_ms(const ToosTypeRoom *self);
 
+/*
+ * WAITING 상태에서만 변경 가능.
+ * 1~5분을 3개의 Phase에 동일하게 배분한다.
+ *
+ * Host 권한 및 READY 상태 검증은 GameContext/WS 계층의 책임.
+ */
+bool ToosTypeRoom_set_duration_minutes(ToosTypeRoom *self,  uint32_t minutes);
 bool ToosTypeRoom_start_countdown(ToosTypeRoom *self, uint64_t now_ms);
-//[컴파일 에러 해결] 카운트다운 취소 함수 선언 추가!
-void ToosTypeRoom_cancel_countdown(ToosTypeRoom *self, uint64_t now_ms);
+void ToosTypeRoom_cancel_countdown(ToosTypeRoom *self,  uint64_t now_ms);
 ToosTypeRoomTickResult ToosTypeRoom_tick(ToosTypeRoom *self, uint64_t now_ms);

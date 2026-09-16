@@ -73,7 +73,7 @@
             border: 1px solid var(--line);
             border-radius: 999px;
             color: var(--muted);
-            background: rgba(255,255,255,.025);
+            background: rgba(255, 255, 255, .025);
             font-size: 12px;
             white-space: nowrap;
         }
@@ -97,7 +97,7 @@
         .card {
             border: 1px solid var(--line);
             border-radius: 12px;
-            background: linear-gradient(180deg, rgba(255,255,255,.018), transparent), var(--panel);
+            background: linear-gradient(180deg, rgba(255, 255, 255, .018), transparent), var(--panel);
             box-shadow: 0 10px 30px var(--shadow);
             overflow: hidden;
         }
@@ -165,8 +165,8 @@
         .btn-primary { background: var(--accent); color: #06100d; }
         .btn-secondary { background: #1b2633; color: var(--text); border-color: #314155; }
         .btn-warn { background: var(--warn); color: #1a1204; }
-        .btn-danger { background: transparent; color: var(--danger); border-color: rgba(255,107,114,.45); }
-
+        .btn-danger { background: transparent; color: var(--danger); border-color: rgba(255, 107, 114, .45); }
+        .btn-start { background: var(--accent-2); color: #06111f; }
         .btn-wide { width: 100%; }
 
         .kv {
@@ -209,8 +209,8 @@
             border-radius: 12px;
             padding: 22px;
             background:
-                    linear-gradient(rgba(102,163,255,.035) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(102,163,255,.035) 1px, transparent 1px),
+                    linear-gradient(rgba(102, 163, 255, .035) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(102, 163, 255, .035) 1px, transparent 1px),
                     #090d12;
             background-size: 22px 22px;
             display: flex;
@@ -219,11 +219,7 @@
             gap: 18px;
         }
 
-        .status-line {
-            color: var(--muted);
-            text-align: center;
-            min-height: 20px;
-        }
+        .status-line { color: var(--muted); text-align: center; min-height: 20px; }
 
         .countdown-big {
             display: none;
@@ -252,11 +248,7 @@
             min-height: 14px;
         }
 
-        #typingInput {
-            font-size: 17px;
-            padding: 13px 14px;
-        }
-
+        #typingInput { font-size: 17px; padding: 13px 14px; }
         #typingInput.correct-flash { border-color: var(--ok); }
         #typingInput.wrong-flash { border-color: var(--danger); }
 
@@ -279,12 +271,18 @@
             padding: 10px 8px;
             border: 1px solid var(--line);
             border-radius: 9px;
-            background: rgba(255,255,255,.02);
+            background: rgba(255, 255, 255, .02);
             text-align: center;
         }
 
         .stat .name { color: var(--muted); font-size: 10px; white-space: nowrap; }
-        .stat .num { margin-top: 5px; font-size: 18px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; }
+        .stat .num {
+            margin-top: 5px;
+            font-size: 18px;
+            font-weight: 800;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         .stat.total .num { color: var(--accent); }
 
         .notice {
@@ -292,13 +290,26 @@
             margin-bottom: 12px;
             padding: 10px 12px;
             border-radius: 9px;
-            border: 1px solid rgba(255,107,114,.35);
-            background: rgba(255,107,114,.07);
+            border: 1px solid rgba(255, 107, 114, .35);
+            background: rgba(255, 107, 114, .07);
             color: #ffc2c5;
             font-size: 13px;
         }
 
         .ranking-card { margin-top: 14px; display: none; }
+
+        .ranking-summary {
+            margin-bottom: 14px;
+            padding: 13px 15px;
+            border: 1px solid rgba(57, 230, 176, .35);
+            border-radius: 9px;
+            background: rgba(57, 230, 176, .06);
+            color: var(--accent);
+            font-size: clamp(15px, 3vw, 20px);
+            font-weight: 900;
+            text-align: center;
+        }
+
         .table-wrap { overflow-x: auto; }
 
         table {
@@ -316,9 +327,11 @@
 
         th:first-child, td:first-child,
         th:nth-child(2), td:nth-child(2),
-        th:nth-child(3), td:nth-child(3) { text-align: left; }
+        th:nth-child(3), td:nth-child(3) {
+            text-align: left;
+        }
 
-        tr.me { background: rgba(57,230,176,.07); }
+        tr.me { background: rgba(57, 230, 176, .07); }
         .rank-cell { font-weight: 900; color: var(--warn); }
 
         details.log-card { margin-top: 14px; }
@@ -377,6 +390,7 @@
     </style>
 </head>
 <body>
+
 <div class="app">
     <div class="topbar">
         <div class="brand">
@@ -418,6 +432,9 @@
                         <span class="k">Host</span><span class="v" id="hostInfo">-</span>
                         <span class="k">Language</span><span class="v" id="languageInfo">NONE</span>
                         <span class="k">Language Lock</span><span class="v" id="lockInfo">NO</span>
+                        <span class="k">Duration</span><span class="v" id="durationInfo">3 min</span>
+                        <span class="k">Players</span><span class="v" id="playerCountInfo">0 / 8</span>
+                        <span class="k">Ready</span><span class="v" id="readyCountInfo">0 / 0</span>
                     </div>
 
                     <div>
@@ -431,8 +448,23 @@
                         </div>
                     </div>
 
+                    <div>
+                        <label for="durationSelect">Game Duration</label>
+                        <div class="row">
+                            <select id="durationSelect" disabled>
+                                <option value="1">1 min</option>
+                                <option value="2">2 min</option>
+                                <option value="3" selected>3 min</option>
+                                <option value="4">4 min</option>
+                                <option value="5">5 min</option>
+                            </select>
+                            <button id="durationBtn" class="btn-secondary" type="button" disabled>APPLY</button>
+                        </div>
+                    </div>
+
                     <button id="readyBtn" class="btn-warn btn-wide" type="button" disabled>READY</button>
-                    <div class="hint">첫 READY 시 언어가 잠깁니다. 2명 이상이 접속하고 전원이 READY가 되면 서버가 Countdown을 시작합니다.</div>
+                    <button id="startBtn" class="btn-start btn-wide" type="button" disabled>START GAME</button>
+                    <div class="hint">Host가 언어와 경기 시간을 설정합니다. 첫 READY 시 설정이 잠기며, 2명 이상 전원이 READY가 된 뒤 Host가 START GAME을 눌러야 Countdown이 시작됩니다.</div>
                 </div>
             </section>
         </aside>
@@ -448,7 +480,7 @@
                         </div>
                         <div class="clock-box">
                             <div class="clock-label">GAME TIME</div>
-                            <div id="gameTimeDisplay" class="clock-value game-time">05:00.0</div>
+                            <div id="gameTimeDisplay" class="clock-value game-time">03:00.0</div>
                         </div>
                         <div class="clock-box">
                             <div class="clock-label">SENTENCE TIME</div>
@@ -479,16 +511,19 @@
 
             <section id="rankingCard" class="card ranking-card">
                 <div class="card-head">Final Ranking</div>
-                <div class="card-body table-wrap">
-                    <table>
-                        <thead>
-                        <tr>
-                            <th>Rank</th><th>Player</th><th>Status</th><th>Played</th>
-                            <th>Play</th><th>Phase</th><th>Accuracy</th><th>Acc.Score</th><th>Total</th><th>WPM</th>
-                        </tr>
-                        </thead>
-                        <tbody id="rankingBody"></tbody>
-                    </table>
+                <div class="card-body">
+                    <div id="rankingSummary" class="ranking-summary">FINAL RANKING</div>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>Rank</th><th>Player</th><th>Status</th><th>Played</th>
+                                <th>Play</th><th>Phase</th><th>Accuracy</th><th>Acc.Score</th><th>Total</th><th>WPM</th>
+                            </tr>
+                            </thead>
+                            <tbody id="rankingBody"></tbody>
+                        </table>
+                    </div>
                 </div>
             </section>
         </main>
@@ -514,11 +549,16 @@
         let hostPlayerNo = 0;
         let joined = false;
         let readySent = false;
+        let startPending = false;
 
         let roomId = null;
         let roomState = 'IDLE';
         let language = 'NONE';
         let languageLocked = false;
+        let gameDurationMs = 180000;
+        let connectedCount = 0;
+        let readyCount = 0;
+        let allReady = false;
         let currentPhase = 0;
 
         let currentSentenceId = null;
@@ -555,8 +595,8 @@
             const el = $('notice');
             el.textContent = message;
             el.style.display = 'block';
-            el.style.borderColor = kind === 'ok' ? 'rgba(93,240,165,.35)' : 'rgba(255,107,114,.35)';
-            el.style.background = kind === 'ok' ? 'rgba(93,240,165,.07)' : 'rgba(255,107,114,.07)';
+            el.style.borderColor = kind === 'ok' ? 'rgba(93, 240, 165, .35)' : 'rgba(255, 107, 114, .35)';
+            el.style.background = kind === 'ok' ? 'rgba(93, 240, 165, .07)' : 'rgba(255, 107, 114, .07)';
             el.style.color = kind === 'ok' ? '#b8ffd8' : '#ffc2c5';
             clearTimeout(noticeTimer);
             noticeTimer = setTimeout(() => { el.style.display = 'none'; }, 4200);
@@ -574,8 +614,15 @@
         }
 
         function playerLabel(no) {
-            if (!Number.isInteger(Number(no)) || Number(no) <= 0) return '-';
-            return `P${String(Number(no)).padStart(4, '0')}`;
+            const n = Number(no);
+            if (!Number.isInteger(n) || n <= 0) return '-';
+            return `P${String(n).padStart(4, '0')}`;
+        }
+
+        function durationMinutes() {
+            const minutes = Math.round(gameDurationMs / 60000);
+            if (minutes < 1 || minutes > 5) return 3;
+            return minutes;
         }
 
         function setGameAnchor(ms) {
@@ -599,7 +646,7 @@
         }
 
         function formatGameTime(ms) {
-            ms = Math.max(0, ms || 0);
+            ms = Math.max(0, Number(ms) || 0);
             const totalTenths = Math.ceil(ms / 100);
             const min = Math.floor(totalTenths / 600);
             const sec = Math.floor((totalTenths % 600) / 10);
@@ -623,23 +670,34 @@
             updateControls();
 
             if (roomState === 'WAITING') {
+                startPending = false;
                 currentPhase = 0;
                 gameAnchorMs = null;
                 sentenceAnchorMs = null;
                 countdownAnchorMs = null;
                 currentSentenceId = null;
                 submissionPending = false;
+
                 $('phaseDisplay').textContent = '-';
-                $('gameTimeDisplay').textContent = '05:00.0';
+                $('gameTimeDisplay').textContent = formatGameTime(gameDurationMs);
                 $('sentenceTimeDisplay').textContent = '--.-';
                 $('countdownBig').style.display = 'none';
+                $('countdownBig').textContent = '';
                 $('typingInput').disabled = true;
                 $('typingInput').value = '';
                 $('sentenceIdText').textContent = '';
-                $('sentenceText').textContent = joined
-                    ? (readySent ? 'READY 완료 — 다른 참가자를 기다리는 중...' : '언어 확인 후 READY를 눌러 주세요.')
-                    : 'JOIN을 눌러 방에 참가해 주세요.';
+
+                if (!joined) {
+                    $('sentenceText').textContent = 'JOIN을 눌러 방에 참가해 주세요.';
+                } else if (readySent) {
+                    $('sentenceText').textContent = allReady
+                        ? '전원 READY — Host의 START를 기다리는 중...'
+                        : 'READY 완료 — 다른 참가자를 기다리는 중...';
+                } else {
+                    $('sentenceText').textContent = '설정을 확인한 뒤 READY를 눌러 주세요.';
+                }
             } else if (roomState === 'COUNTDOWN') {
+                startPending = false;
                 currentSentenceId = null;
                 submissionPending = false;
                 $('typingInput').disabled = true;
@@ -647,10 +705,12 @@
                 $('sentenceIdText').textContent = '';
                 $('sentenceText').textContent = '게임 시작 준비 중...';
             } else if (roomState === 'PLAYING') {
+                startPending = false;
                 countdownAnchorMs = null;
                 $('countdownBig').style.display = 'none';
                 if (currentSentenceId === null) $('sentenceText').textContent = '첫 문장 수신 중...';
             } else if (roomState === 'RESULT') {
+                startPending = false;
                 countdownAnchorMs = null;
                 sentenceAnchorMs = null;
                 currentSentenceId = null;
@@ -664,15 +724,21 @@
             const isHost = joined && playerNo !== null && Number(hostPlayerNo) === Number(playerNo);
 
             $('serverUrl').disabled = !!ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING);
-            $('joinBtn').disabled = !open || joined || roomState === 'COUNTDOWN' || roomState === 'PLAYING' || roomState === 'RESULT';
+            $('joinBtn').disabled = !open || joined || roomState !== 'WAITING';
 
-            const canLanguage = open && joined && isHost && roomState === 'WAITING' && !languageLocked;
-            $('languageSelect').disabled = !canLanguage;
-            $('languageBtn').disabled = !canLanguage;
+            const canConfigure = open && joined && isHost && roomState === 'WAITING' && !languageLocked;
+            $('languageSelect').disabled = !canConfigure;
+            $('languageBtn').disabled = !canConfigure;
+            $('durationSelect').disabled = !canConfigure;
+            $('durationBtn').disabled = !canConfigure;
 
             const canReady = open && joined && roomState === 'WAITING' && language !== 'NONE' && !readySent;
             $('readyBtn').disabled = !canReady;
             $('readyBtn').textContent = readySent ? 'READY ✓' : 'READY';
+
+            const canStart = open && joined && isHost && roomState === 'WAITING' && connectedCount >= 2 && allReady && !startPending;
+            $('startBtn').disabled = !canStart;
+            $('startBtn').textContent = startPending ? 'STARTING...' : 'START GAME';
 
             $('playerInfo').textContent = playerNo === null ? '-' : playerLabel(playerNo);
             if (isHost) {
@@ -681,13 +747,18 @@
             } else {
                 $('playerInfo').className = 'v';
             }
+
             $('hostInfo').textContent = hostPlayerNo ? playerLabel(hostPlayerNo) : '-';
             $('languageInfo').textContent = language;
             $('lockInfo').textContent = languageLocked ? 'YES' : 'NO';
+            $('durationInfo').textContent = `${durationMinutes()} min`;
+            $('playerCountInfo').textContent = `${connectedCount} / 8`;
+            $('readyCountInfo').textContent = `${readyCount} / ${connectedCount}`;
             $('playerBadge').textContent = playerNo === null ? '-' : playerLabel(playerNo);
             $('roomBadge').textContent = roomId === null ? '-' : String(roomId);
 
             if (language === 'EN' || language === 'KO') $('languageSelect').value = language;
+            $('durationSelect').value = String(durationMinutes());
         }
 
         function resetSessionUI() {
@@ -695,10 +766,15 @@
             hostPlayerNo = 0;
             joined = false;
             readySent = false;
+            startPending = false;
             roomId = null;
             roomState = 'IDLE';
             language = 'NONE';
             languageLocked = false;
+            gameDurationMs = 180000;
+            connectedCount = 0;
+            readyCount = 0;
+            allReady = false;
             currentPhase = 0;
             currentSentenceId = null;
             submissionPending = false;
@@ -710,7 +786,7 @@
             $('stateBadge').textContent = 'IDLE';
             $('playerBadge').textContent = '-';
             $('phaseDisplay').textContent = '-';
-            $('gameTimeDisplay').textContent = '05:00.0';
+            $('gameTimeDisplay').textContent = formatGameTime(gameDurationMs);
             $('sentenceTimeDisplay').textContent = '--.-';
             $('statusLine').textContent = '서버에 연결해 주세요.';
             $('countdownBig').style.display = 'none';
@@ -729,6 +805,7 @@
             $('totalScore').textContent = '0';
             $('wpm').textContent = '0';
 
+            $('rankingSummary').textContent = 'FINAL RANKING';
             $('rankingBody').textContent = '';
             $('rankingCard').style.display = 'none';
             updateControls();
@@ -765,7 +842,10 @@
                 if (ws !== socket) return;
                 $('connectBtn').disabled = false;
                 setConnected(true);
+                roomState = 'WAITING';
+                $('stateBadge').textContent = roomState;
                 $('statusLine').textContent = '연결 완료 — JOIN을 눌러 주세요.';
+                updateControls();
                 log('SYS', 'WebSocket connected');
             };
 
@@ -804,6 +884,7 @@
                     playerNo = Number(msg.playerNo);
                     joined = Number.isInteger(playerNo) && playerNo > 0;
                     readySent = false;
+                    startPending = false;
                     $('statusLine').textContent = `${playerLabel(playerNo)} 참가 완료`;
                     if (msg.isHost) $('statusLine').textContent += ' — HOST';
                     updateControls();
@@ -815,15 +896,38 @@
                     hostPlayerNo = Number(msg.hostPlayerNo) || 0;
                     language = (msg.language === 'EN' || msg.language === 'KO') ? msg.language : 'NONE';
                     languageLocked = !!msg.languageLocked;
+
+                    const duration = Number(msg.gameDurationMs);
+                    if (Number.isFinite(duration) && duration >= 60000 && duration <= 300000) {
+                        gameDurationMs = duration;
+                    }
+
+                    connectedCount = Math.max(0, Number(msg.connectedCount) || 0);
+                    readyCount = Math.max(0, Number(msg.readyCount) || 0);
+                    allReady = !!msg.allReady;
+
                     if (typeof msg.roomState === 'string') setRoomState(msg.roomState);
+
+                    if (roomState === 'WAITING' && gameAnchorMs === null) {
+                        $('gameTimeDisplay').textContent = formatGameTime(gameDurationMs);
+                    }
+
+                    if (joined && readySent && allReady && roomState === 'WAITING') {
+                        const isHost = Number(playerNo) === Number(hostPlayerNo);
+                        $('statusLine').textContent = isHost
+                            ? '전원 READY — START GAME을 눌러 주세요.'
+                            : '전원 READY — Host의 START를 기다리는 중...';
+                    }
+
                     updateControls();
                     break;
                 }
 
                 case 'COUNTDOWN': {
+                    startPending = false;
                     setRoomState('COUNTDOWN');
                     setCountdownAnchor(msg.countdownRemainingMs);
-                    $('statusLine').textContent = '전원 READY — Countdown';
+                    $('statusLine').textContent = 'Countdown';
                     break;
                 }
 
@@ -836,8 +940,9 @@
                         $('statusLine').textContent = 'PLAYING';
                     } else if (msg.state === 'WAITING') {
                         countdownAnchorMs = null;
+                        startPending = false;
                         $('statusLine').textContent = readySent
-                            ? 'Countdown 취소 — READY 상태 유지, 참가자 대기 중'
+                            ? 'Countdown 취소 — READY 유지, Host의 재START 대기'
                             : 'WAITING';
                     }
                     break;
@@ -889,7 +994,6 @@
                             $('sentenceIdText').textContent = '';
                         }
                     } else if (result === 'INCORRECT') {
-                        // v1.3: 같은 문장을 유지하고 retry 허용.
                         $('resultLine').style.color = 'var(--danger)';
                         input.classList.remove('correct-flash');
                         input.classList.add('wrong-flash');
@@ -914,8 +1018,6 @@
                             input.disabled = false;
                             input.focus();
                         }
-                    } else {
-                        $('resultLine').style.color = 'var(--danger)';
                     }
                     break;
                 }
@@ -936,11 +1038,15 @@
                     $('statusLine').textContent = `GAME OVER — ${msg.reason || 'NORMAL_END'}`;
                     $('sentenceText').textContent = '최종 순위를 집계 중...';
                     $('sentenceIdText').textContent = '';
+
+                    $('resultLine').textContent = '-';
+                    $('resultLine').style.color = 'var(--muted)';
                     break;
                 }
 
                 case 'FINAL_RANKING': {
-                    renderRanking(Array.isArray(msg.entries) ? msg.entries : []);
+                    const entries = Array.isArray(msg.entries) ? msg.entries : [];
+                    renderRanking(entries);
                     $('sentenceText').textContent = '게임 종료 — FINAL RANKING';
                     break;
                 }
@@ -949,6 +1055,7 @@
                     const message = String(msg.message || 'UNKNOWN_ERROR');
                     showNotice(message);
                     log('ERR', message);
+                    startPending = false;
                     if (message === 'ERROR_LANGUAGE_NOT_SELECTED') readySent = false;
                     updateControls();
                     break;
@@ -963,9 +1070,25 @@
             const body = $('rankingBody');
             body.textContent = '';
 
+            const me = entries.find((e) => playerNo !== null && Number(e.playerNo) === Number(playerNo));
+
+            if (me) {
+                $('playScore').textContent = String(me.playScore ?? 0);
+                $('phaseScore').textContent = String(me.phaseScore ?? 0);
+                $('accuracyScore').textContent = String(me.accuracyScore ?? 0);
+                $('accuracyPercent').textContent = `${((Number(me.accuracyX100) || 0) / 100).toFixed(2)}%`;
+                $('totalScore').textContent = String(me.totalScore ?? 0);
+                $('wpm').textContent = String(me.wpm ?? 0);
+                $('rankingSummary').textContent = `${playerLabel(me.playerNo)} — RANK ${me.rank} / ${entries.length}`;
+            } else {
+                $('rankingSummary').textContent = `FINAL RANKING — ${entries.length} PLAYERS`;
+            }
+
             for (const e of entries) {
                 const tr = document.createElement('tr');
-                if (playerNo !== null && Number(e.playerNo) === Number(playerNo)) tr.classList.add('me');
+                if (playerNo !== null && Number(e.playerNo) === Number(playerNo)) {
+                    tr.classList.add('me');
+                }
 
                 const values = [
                     e.rank ?? '-',
@@ -1005,6 +1128,15 @@
             send({ type: 'SET_LANGUAGE', language: value });
         }
 
+        function applyDuration() {
+            const minutes = Number($('durationSelect').value);
+            if (!Number.isInteger(minutes) || minutes < 1 || minutes > 5) {
+                showNotice('경기 시간은 1~5분이어야 합니다.');
+                return;
+            }
+            send({ type: 'SET_DURATION', minutes: minutes });
+        }
+
         function readyGame() {
             if (send({ type: 'READY' })) {
                 readySent = true;
@@ -1014,8 +1146,40 @@
             }
         }
 
+        function startGame() {
+            if (startPending) return;
+            if (send({ type: 'START_GAME' })) {
+                startPending = true;
+                $('statusLine').textContent = 'START 요청 — 서버에서 Deck 준비 중...';
+                updateControls();
+            }
+        }
+
+        function blockClipboardCheat(event) {
+            event.preventDefault();
+            showNotice('붙여넣기/드롭 입력은 사용할 수 없습니다.');
+        }
+
+        function blockPasteShortcut(event) {
+            if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 'v') {
+                event.preventDefault();
+                showNotice('붙여넣기는 사용할 수 없습니다.');
+            }
+        }
+
+        function blockBeforeInput(event) {
+            if (event.inputType === 'insertFromPaste' || event.inputType === 'insertFromDrop') {
+                event.preventDefault();
+            }
+        }
+
         function submitTyping(event) {
-            if (event.key !== 'Enter') return;
+            if (event.isComposing || event.keyCode === 229) {
+                return;
+            }
+            if (event.key !== 'Enter') {
+                return;
+            }
             event.preventDefault();
 
             if (roomState !== 'PLAYING' || currentSentenceId === null) return;
@@ -1036,7 +1200,9 @@
 
         function animationLoop() {
             const gameMs = remaining(gameAnchorMs, gameAnchorPerf);
-            if (gameMs !== null) $('gameTimeDisplay').textContent = formatGameTime(gameMs);
+            if (gameMs !== null) {
+                $('gameTimeDisplay').textContent = formatGameTime(gameMs);
+            }
 
             const sentenceMs = remaining(sentenceAnchorMs, sentenceAnchorPerf);
             $('sentenceTimeDisplay').textContent = formatSentenceTime(sentenceMs);
@@ -1055,8 +1221,18 @@
         $('connectBtn').addEventListener('click', connectOrDisconnect);
         $('joinBtn').addEventListener('click', joinGame);
         $('languageBtn').addEventListener('click', applyLanguage);
+        $('durationBtn').addEventListener('click', applyDuration);
         $('readyBtn').addEventListener('click', readyGame);
-        $('typingInput').addEventListener('keydown', submitTyping);
+        $('startBtn').addEventListener('click', startGame);
+
+        const typingInput = $('typingInput');
+        typingInput.addEventListener('paste', blockClipboardCheat);
+        typingInput.addEventListener('drop', blockClipboardCheat);
+        typingInput.addEventListener('dragover', (event) => { event.preventDefault(); });
+        typingInput.addEventListener('beforeinput', blockBeforeInput);
+        typingInput.addEventListener('keydown', blockPasteShortcut);
+        typingInput.addEventListener('keydown', submitTyping);
+
         $('clearLogBtn').addEventListener('click', () => { $('logBox').textContent = ''; });
 
         resetSessionUI();
@@ -1064,5 +1240,6 @@
         requestAnimationFrame(animationLoop);
     })();
 </script>
+
 </body>
 </html>

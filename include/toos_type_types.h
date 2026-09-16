@@ -5,7 +5,7 @@
 
 #define TOOS_TYPE_MAX_ROOM_PLAYERS 8
 #define TOOS_TYPE_MIN_ROOM_PLAYERS 2    //  [패치 1] 혼자 시작 금지
-#define TOOS_TYPE_MAX_PHASES 4
+#define TOOS_TYPE_MAX_PHASES 3
 
 typedef enum {
     TOOS_TYPE_LANG_NONE = 0,

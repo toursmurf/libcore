@@ -18,7 +18,6 @@ HttpServer* g_server = NULL;
 ToosTypeGameContext g_game_ctx;
 DBClient* g_db_client = NULL;
 
-//  [패치 1] 우아한 종료를 위한 Atomic 플래그 (더 이상 여기서 NULL을 치지 않음)
 static volatile sig_atomic_t g_stop_requested = 0;
 
 static void handle_signal(int sig) {
@@ -35,7 +34,6 @@ static uint64_t get_current_ms(void) {
 static void game_tick_cb(void* user_data) {
     (void)user_data;
 
-    //  틱 루프 안에서 우아하게 정지 명령 처리 (Valgrind 0바이트를 위한 정석)
     if (g_stop_requested) {
         if (g_server) g_server->stop(g_server);
         if (g_loop) event_loop_stop(g_loop);
@@ -105,7 +103,6 @@ int main() {
     if (!g_db_client || !g_db_client->connect(g_db_client)) goto fail_init;
 
     if (strcmp(db_name, ":memory:") == 0) {
-        //  [패치 4] 더미 스키마 셋업 실패 시 하드 컷!
         if (!setup_dummy_schema(g_db_client)) goto fail_init;
     }
 
@@ -115,7 +112,8 @@ int main() {
     ToosTypeGameProfile profile;
     memset(&profile, 0, sizeof(profile));
 
-    int raw_countdown = cfg->getInt(cfg, "countdown_ms", 3000);
+    // [패치] 카운트다운 5초 고정
+    int raw_countdown = cfg->getInt(cfg, "countdown_ms", 5000);
     if (raw_countdown <= 0) goto fail_init;
     profile.countdown_ms = (uint32_t)raw_countdown;
 
@@ -127,7 +125,6 @@ int main() {
     if (raw_acc_mult < 0) goto fail_init;
     profile.accuracy_score_multiplier = (uint32_t)raw_acc_mult;
 
-    //  [패치 4] raw_seed 음수 컷오프 부활!
     int raw_seed = cfg->getInt(cfg, "random_seed", 0);
     if (raw_seed < 0) goto fail_init;
 
@@ -138,31 +135,26 @@ int main() {
     }
     profile.random_seed = seed;
 
-    int p_dur[4], p_to[4], p_score[4];
-    p_dur[0] = cfg->getInt(cfg, "phase1_duration_ms", 90000);
-    p_dur[1] = cfg->getInt(cfg, "phase2_duration_ms", 90000);
-    p_dur[2] = cfg->getInt(cfg, "phase3_duration_ms", 60000);
-    p_dur[3] = cfg->getInt(cfg, "phase4_duration_ms", 60000);
+    // [핵심 패치] Phase 4 유령 완전 삭제 및 3 Phase 안전 주입
+    int p_to[TOOS_TYPE_MAX_PHASES];
+    int p_score[TOOS_TYPE_MAX_PHASES];
 
     p_to[0] = cfg->getInt(cfg, "phase1_timeout_ms", 30000);
     p_to[1] = cfg->getInt(cfg, "phase2_timeout_ms", 20000);
     p_to[2] = cfg->getInt(cfg, "phase3_timeout_ms", 15000);
-    p_to[3] = cfg->getInt(cfg, "phase4_timeout_ms", 10000);
 
     p_score[0] = cfg->getInt(cfg, "phase1_score", 1);
     p_score[1] = cfg->getInt(cfg, "phase2_score", 2);
     p_score[2] = cfg->getInt(cfg, "phase3_score", 3);
-    p_score[3] = cfg->getInt(cfg, "phase4_score", 4);
 
-    uint64_t total_game_ms = 0;
-    for (int i = 0; i < 4; i++) {
-        if (p_dur[i] <= 0 || p_to[i] <= 0 || p_score[i] < 0) goto fail_init;
-        profile.phases[i].duration_ms = (uint32_t)p_dur[i];
+    for (uint32_t i = 0; i < TOOS_TYPE_MAX_PHASES; i++) {
+        if (p_to[i] <= 0 || p_score[i] < 0) goto fail_init;
+
+        // 기본 3분 세팅 (60초 x 3)
+        profile.phases[i].duration_ms = 60000;
         profile.phases[i].input_timeout_ms = (uint32_t)p_to[i];
         profile.phases[i].correct_score = (uint32_t)p_score[i];
-        total_game_ms += (uint32_t)p_dur[i];
     }
-    if (total_game_ms != 300000) goto fail_init;
 
     ToosTypeGameContext_init(&g_game_ctx, native_db, 1, &profile);
 
@@ -193,7 +185,6 @@ int main() {
 
     if (g_server->listen(g_server, port) != 0) goto fail_init;
 
-    // "게임 런타임과 네트워크 구조는 libcore 위에서 구성되며, 데이터 저장소로 SQLite를 사용한다."
     LOG_INFO(logger, "[ToosType v1.3] Server successfully started and listening on port %d", port);
 
     int run_rc = event_loop_run(g_loop);
@@ -202,10 +193,18 @@ int main() {
 fail_init:
     ToosTypeGameContext_deinit(&g_game_ctx);
 
-    HttpServer* srv_ptr = g_server; g_server = NULL; if (srv_ptr) RELEASE((Object*)srv_ptr);
-    Router* r_ptr = router; router = NULL; if (r_ptr) RELEASE((Object*)r_ptr);
-    EventLoop* lp_ptr = g_loop; g_loop = NULL; if (lp_ptr) RELEASE((Object*)lp_ptr);
-    DBClient* db_ptr = g_db_client; g_db_client = NULL; if (db_ptr) RELEASE((Object*)db_ptr);
+    HttpServer* srv_ptr = g_server;
+    g_server = NULL;
+    if (srv_ptr) RELEASE((Object*)srv_ptr);
+    Router* r_ptr = router;
+    router = NULL;
+    if (r_ptr) RELEASE((Object*)r_ptr);
+    EventLoop* lp_ptr = g_loop;
+    g_loop = NULL;
+    if (lp_ptr) RELEASE((Object*)lp_ptr);
+    DBClient* db_ptr = g_db_client;
+    g_db_client = NULL;
+    if (db_ptr) RELEASE((Object*)db_ptr);
     if (cfg) RELEASE((Object*)cfg);
     if (logger) RELEASE((Object*)logger);
 
