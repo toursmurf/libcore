@@ -30,3 +30,7 @@ app.conf
 /.idea/misc.xml
 /.idea/vcs.xml
 /.idea/git_toolbox_prj.xml
+/.idea/codestream.xml
+/.idea/dbnavigator.xml
+/.idea/libcore.iml
+/.idea/modules.xml

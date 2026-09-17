@@ -28,6 +28,26 @@ typedef enum {
     #include <sys/types.h>
     #include <sys/event.h>
     #include <sys/time.h>
+/* =========================================================
+ * 🚀 Linux: io_uring Backend 활성화
+ * ========================================================= */
+#elif defined(LIBCORE_ENABLE_IOURING)
+    #define LIBCORE_USE_IOURING
+    #include <liburing.h>
+    #include <poll.h>
+
+    typedef enum {
+        URING_OP_POLL_ADD,
+        URING_OP_POLL_REMOVE,
+        URING_OP_POLL_UPDATE,
+        URING_OP_CANCEL_ALL
+    } UringOpType;
+
+    typedef struct {
+        UringOpType type;
+        void* data;
+    } UringOp;
+/* ========================================================= */
 #else
     #define LIBCORE_USE_EPOLL
     #include <sys/epoll.h>
@@ -44,6 +64,18 @@ typedef struct {
 #ifdef LIBCORE_USE_IOCP
     int pending_io;
     bool closing;
+#endif
+
+#ifdef LIBCORE_USE_IOURING
+    int pending_ops;
+    bool closing;
+
+    bool poll_armed;
+    bool rearm_queued;
+
+    UringOp poll_op;
+    UringOp remove_op;
+    UringOp update_op;
 #endif
 } SocketContext;
 
@@ -65,12 +97,19 @@ struct EventLoopImpl {
     HANDLE iocp_handle;
 #elif defined(LIBCORE_USE_KQUEUE)
     int kq_fd;
+#elif defined(LIBCORE_USE_IOURING)
+    struct io_uring ring;
+    bool ring_initialized;
+    int  uring_pending_total;
+
+    SocketContext** rearm_pending;
+    int  rearm_count;
+    int  rearm_capacity;
 #else
     int epoll_fd;
 #endif
     SocketContext* ctx_map[65536];
 
-    /* 동적 할당되는 지연 해제 큐 (Overflow 방어) */
     Object** defer_pending;
     int      defer_count;
     int      defer_capacity;
