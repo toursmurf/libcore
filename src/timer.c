@@ -83,7 +83,10 @@ Timer* new_TimerNamed(const char* name, long interval_ms, bool repeating, TimerC
 
     Object_Init((Object*)self, &Timer_Class);
     self->tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-    if (self->tfd < 0) { free(self); return NULL; }
+    if (self->tfd < 0) {
+        RELEASE((Object*)self);
+        return NULL;
+    }
 
     self->interval_ms = interval_ms;
     self->repeating = repeating;
