@@ -6,8 +6,10 @@ OS_INFO		:= $(shell if [ -f /etc/os-release ]; then grep '^PRETTY_NAME=' /etc/os
 KERNEL_INFO	:= $(shell uname -r 2>/dev/null || echo "Unknown")
 HAS_URING	:= $(shell pkg-config --exists liburing 2>/dev/null && echo 1 || echo 0)
 OPENSSL_VER	:= $(shell pkg-config --modversion openssl 2>/dev/null || echo "Unknown")
+
+# 🚨 V1.8.0 M1 Lock-in: io_uring 자동 감지 활성화 (epoll 강제 고정 해제)
 # v1.7.2 policy: Linux backend is epoll only
-HAS_URING	:= 0
+# HAS_URING	:= 0
 
 # ==========================================
 # MariaDB / MySQL 동적 판별
@@ -151,7 +153,8 @@ endif
 ifeq ($(UNAME_S), Linux)
     TARGET_OS	= Linux
     ifeq ($(HAS_URING),1)
-        CFLAGS	+= -DHAS_LIBURING
+        # 🚨 V1.8.0 Fix: 소스의 매크로와 완벽 일치하도록 플래그 맵핑 수정
+        CFLAGS	+= -DLIBCORE_ENABLE_IOURING
         LIBS	+= -luring
         BACKEND_STR = io_uring
     else
@@ -223,7 +226,7 @@ endif
 # Banner
 # ==========================================
 $(info =========================================)
-$(info  libcore Build Configuration (v1.7.2))
+$(info  libcore Build Configuration (v1.8.0))
 $(info =========================================)
 $(info  Target OS  : $(TARGET_OS))
 $(info  OS Info    : $(OS_INFO))

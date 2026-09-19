@@ -160,17 +160,15 @@ int event_loop_run(EventLoop* loop) {
     while (loop->running) {
         int n = event_backend_wait(loop, events, 64, 1000);
 
-        //백엔드 대기 실패 시 루프를 종료하고 에러코드(-1)를 반환하여 호출자가 알 수 있게 전파
         if (n < 0) {
             #if !defined(_WIN32) && !defined(_WIN64)
             if (errno == EINTR) {
                 if (!loop->running) {
-                    break;      /* 정상 stop */
+                    break;
                 }
-                continue;       /* 다른 신호면 다시 wait */
+                continue;
             }
             #endif
-
             loop->running = 0;
             return -1;
         }
@@ -219,7 +217,7 @@ int event_loop_run(EventLoop* loop) {
 }
 
 /* =========================================================
- * 🪟 Windows: IOCP Backend (Proactor / Timer is Threaded Fallback)
+ * 🪟 Windows: IOCP Backend
  * ========================================================= */
 #if defined(LIBCORE_USE_IOCP)
 int event_backend_add_timer(EventLoop* loop, Timer* timer) {
@@ -240,7 +238,6 @@ int event_backend_init(EventLoop* loop) {
     loop->impl = calloc(1, sizeof(struct EventLoopImpl));
     if (!loop->impl) goto fail;
 
-    // 할당 체크 위치 최상단 이동
     loop->impl->defer_capacity = 64;
     loop->impl->defer_pending = calloc(loop->impl->defer_capacity, sizeof(Object*));
     if (!loop->impl->defer_pending) goto fail;
@@ -342,7 +339,7 @@ void event_backend_destroy(EventLoop* loop) {
 }
 
 /* =========================================================
- * 🍎 macOS: kqueue Backend (Reactor + Native Timer)
+ * 🍎 macOS: kqueue Backend
  * ========================================================= */
 #elif defined(LIBCORE_USE_KQUEUE)
 
@@ -537,7 +534,539 @@ bool kqueue_update_timer(Timer* timer, bool active) {
 }
 
 /* =========================================================
- * 🐧 Linux: epoll Backend (Reactor + Native Timer)
+ * 🚀 Linux: io_uring Backend (V6.2 ROCKY 준비 완료)
+ * ========================================================= */
+#elif defined(LIBCORE_USE_IOURING)
+
+static int uring_flush(EventLoop* loop) {
+    int ret = io_uring_submit(&loop->impl->ring);
+    if (ret < 0) {
+        errno = -ret;
+        return -1;
+    }
+    return 0;
+}
+
+static int add_to_rearm_queue(EventLoop* loop, SocketContext* ctx) {
+    if (loop->impl->rearm_count >= loop->impl->rearm_capacity) {
+        int new_cap = loop->impl->rearm_capacity == 0 ? 64 : loop->impl->rearm_capacity * 2;
+        SocketContext** new_arr = realloc(loop->impl->rearm_pending, new_cap * sizeof(SocketContext*));
+        if (!new_arr) {
+            errno = ENOMEM;
+            return -1;
+        }
+        loop->impl->rearm_pending = new_arr;
+        loop->impl->rearm_capacity = new_cap;
+    }
+    loop->impl->rearm_pending[loop->impl->rearm_count++] = ctx;
+    return 0;
+}
+
+int event_backend_init(EventLoop* loop) {
+    loop->impl = calloc(1, sizeof(struct EventLoopImpl));
+    if (!loop->impl) goto fail;
+
+    loop->impl->defer_capacity = 64;
+    loop->impl->defer_pending = calloc(loop->impl->defer_capacity, sizeof(Object*));
+    if (!loop->impl->defer_pending) goto fail;
+
+    loop->impl->rearm_capacity = 64;
+    loop->impl->rearm_pending = calloc(loop->impl->rearm_capacity, sizeof(SocketContext*));
+    if (!loop->impl->rearm_pending) goto fail;
+
+    if (io_uring_queue_init(1024, &loop->impl->ring, 0) < 0) {
+        goto fail;
+    }
+
+    loop->impl->ring_initialized = true;
+    loop->impl->uring_pending_total = 0;
+    loop->impl->rearm_count = 0;
+    return 0;
+fail:
+    event_backend_destroy(loop);
+    return -1;
+}
+
+int event_backend_add(EventLoop* loop, Socket* sock, uint32_t mask) {
+    if (!loop || !loop->impl || !sock) return -1;
+    if (sock->fd < 0 || sock->fd >= 65536) return -1;
+
+    if (loop->impl->ctx_map[sock->fd] != NULL) {
+        errno = EEXIST;
+        return -1;
+    }
+
+    SocketContext* ctx = calloc(1, sizeof(SocketContext));
+    if (!ctx) return -1;
+    Object_Init((Object*)ctx, &_SocketContext_Class);
+
+    ctx->sock = sock;
+    ctx->registered_mask = mask;
+    ctx->closing = false;
+    ctx->pending_ops = 0;
+
+    ctx->poll_armed = true;
+    ctx->rearm_queued = false;
+
+    ctx->poll_op.type = URING_OP_POLL_ADD;
+    ctx->poll_op.data = ctx;
+
+    struct io_uring_sqe *sqe = io_uring_get_sqe(&loop->impl->ring);
+    if (!sqe) {
+        RELEASE((Object*)ctx);
+        errno = EAGAIN;
+        return -1;
+    }
+
+    short poll_mask = 0;
+    if (mask & EVENT_READ)  poll_mask |= POLLIN;
+    if (mask & EVENT_WRITE) poll_mask |= POLLOUT;
+
+    io_uring_prep_poll_add(sqe, sock->fd, poll_mask);
+    io_uring_sqe_set_data(sqe, &ctx->poll_op);
+
+    RETAIN((Object*)ctx);
+    ctx->pending_ops++;
+    loop->impl->uring_pending_total++;
+
+    io_uring_submit(&loop->impl->ring);
+
+    loop->impl->ctx_map[sock->fd] = ctx;
+    return 0;
+}
+
+int event_backend_modify(EventLoop* loop, Socket* sock, uint32_t mask) {
+    if (!loop || !loop->impl || !sock) return -1;
+    if (sock->fd < 0 || sock->fd >= 65536) return -1;
+    SocketContext* ctx = loop->impl->ctx_map[sock->fd];
+    if (!ctx || ctx->closing) return -1;
+
+    if (!ctx->poll_armed) {
+        ctx->registered_mask = mask;
+
+        if (mask != 0 && !ctx->rearm_queued) {
+            if (add_to_rearm_queue(loop, ctx) < 0) {
+                return -1;
+            }
+            RETAIN((Object*)ctx);   /* rearm_queue ownership */
+            ctx->rearm_queued = true;
+        }
+        return 0;
+    }
+
+    ctx->update_op.type = URING_OP_POLL_UPDATE;
+    ctx->update_op.data = ctx;
+
+    struct io_uring_sqe *sqe = io_uring_get_sqe(&loop->impl->ring);
+    if (!sqe) {
+        io_uring_submit(&loop->impl->ring);
+        sqe = io_uring_get_sqe(&loop->impl->ring);
+        if (!sqe) {
+            errno = EAGAIN;
+            return -1;
+        }
+    }
+
+    short poll_mask = 0;
+    if (mask & EVENT_READ)  poll_mask |= POLLIN;
+    if (mask & EVENT_WRITE) poll_mask |= POLLOUT;
+
+    io_uring_prep_poll_update(sqe, (__u64)(uintptr_t)&ctx->poll_op, 0, poll_mask, IORING_POLL_UPDATE_EVENTS);
+    io_uring_sqe_set_data(sqe, &ctx->update_op);
+
+    RETAIN((Object*)ctx);
+    ctx->pending_ops++;
+    loop->impl->uring_pending_total++;
+
+    io_uring_submit(&loop->impl->ring);
+    ctx->registered_mask = mask;
+    return 0;
+}
+
+int event_backend_remove(EventLoop* loop, Socket* sock) {
+    if (!loop || !loop->impl || !sock) return -1;
+    if (sock->fd < 0 || sock->fd >= 65536) return -1;
+    SocketContext* ctx = loop->impl->ctx_map[sock->fd];
+    if (!ctx || ctx->closing) return -1;
+
+    if (ctx->poll_armed) {
+        struct io_uring_sqe *sqe = io_uring_get_sqe(&loop->impl->ring);
+        if (!sqe) {
+            io_uring_submit(&loop->impl->ring);
+            sqe = io_uring_get_sqe(&loop->impl->ring);
+        }
+
+        if (!sqe) {
+            errno = EAGAIN;
+            return -1;
+        }
+
+        ctx->remove_op.type = URING_OP_POLL_REMOVE;
+        ctx->remove_op.data = ctx;
+
+        io_uring_prep_poll_remove(sqe, (__u64)(uintptr_t)&ctx->poll_op);
+        io_uring_sqe_set_data(sqe, &ctx->remove_op);
+
+        RETAIN((Object*)ctx);
+        ctx->pending_ops++;
+        loop->impl->uring_pending_total++;
+
+        io_uring_submit(&loop->impl->ring);
+    }
+
+    ctx->closing = true;
+    loop->impl->ctx_map[sock->fd] = NULL;
+    ctx->sock = NULL;
+
+    /*
+     * Drop ctx_map ownership only.
+     * POLL_REMOVE owns a separate RETAIN until its CQE is consumed.
+     * An outstanding POLL_ADD also owns its own RETAIN.
+     */
+    RELEASE((Object*)ctx);
+    return 0;
+}
+
+int event_backend_wait(EventLoop* loop, LibcoreEvent* events, int max_events, int timeout_ms) {
+    if (!loop || !loop->impl || !events || max_events <= 0) return -1;
+
+    int fatal_error = 0;
+
+    if (uring_flush(loop) < 0) {
+        return -1;
+    }
+
+    if (loop->impl->rearm_count > 0) {
+        int r_count = loop->impl->rearm_count;
+        loop->impl->rearm_count = 0;
+
+        for (int i = 0; i < r_count; i++) {
+            SocketContext* ctx = loop->impl->rearm_pending[i];
+            ctx->rearm_queued = false;
+
+            if (!ctx->closing && ctx->registered_mask != 0) {
+                struct io_uring_sqe *sqe = io_uring_get_sqe(&loop->impl->ring);
+                if (!sqe) {
+                    io_uring_submit(&loop->impl->ring);
+                    sqe = io_uring_get_sqe(&loop->impl->ring);
+                }
+
+                if (sqe) {
+                    short poll_mask = 0;
+                    if (ctx->registered_mask & EVENT_READ)  poll_mask |= POLLIN;
+                    if (ctx->registered_mask & EVENT_WRITE) poll_mask |= POLLOUT;
+
+                    io_uring_prep_poll_add(sqe, ctx->is_timer ? ctx->timer->tfd : ctx->sock->fd, poll_mask);
+                    io_uring_sqe_set_data(sqe, &ctx->poll_op);
+
+                    RETAIN((Object*)ctx); /* new POLL_ADD ownership */
+                    ctx->pending_ops++;
+                    loop->impl->uring_pending_total++;
+                    ctx->poll_armed = true;
+                    io_uring_submit(&loop->impl->ring);
+                } else {
+                    /*
+                     * Requeue needs a new queue ownership because
+                     * the old queue ownership is released below.
+                     */
+                    if (add_to_rearm_queue(loop, ctx) == 0) {
+                        RETAIN((Object*)ctx);
+                        ctx->rearm_queued = true;
+                    } else if (!fatal_error) {
+                        fatal_error = ENOMEM;
+                    }
+                }
+            }
+            /* release old rearm_queue ownership */
+            RELEASE((Object*)ctx);
+        }
+    }
+
+    struct io_uring_cqe *cqe;
+    struct __kernel_timespec ts;
+    struct __kernel_timespec *ts_ptr = NULL;
+
+    if (timeout_ms >= 0) {
+        ts.tv_sec = timeout_ms / 1000;
+        ts.tv_nsec = (timeout_ms % 1000) * 1000000LL;
+        ts_ptr = &ts;
+    }
+
+    int ret = io_uring_wait_cqe_timeout(&loop->impl->ring, &cqe, ts_ptr);
+    if (ret < 0 && ret != -ETIME) {
+        if (!fatal_error) {
+            fatal_error = -ret;
+        }
+    }
+
+    uint64_t now = get_current_ms();
+    int consumed_cqes = 0;
+    int event_count = 0;
+    bool needs_submit = false;
+    unsigned head;
+
+    io_uring_for_each_cqe(&loop->impl->ring, head, cqe) {
+        UringOp* op = (UringOp*)io_uring_cqe_get_data(cqe);
+        if (op && op->type == URING_OP_POLL_ADD && event_count >= max_events) {
+            break;
+        }
+
+        consumed_cqes++;
+        loop->impl->uring_pending_total--;
+
+        if (!op) continue;
+
+        SocketContext* ctx = (SocketContext*)op->data;
+        if (!ctx) continue;
+
+        if (op->type == URING_OP_POLL_ADD) {
+            ctx->poll_armed = false;
+
+            if (cqe->res != -ECANCELED && !ctx->closing) {
+                if (ctx->is_timer) {
+                    events[event_count].is_timer = 1;
+                    events[event_count].timer = ctx->timer;
+                    events[event_count].ctx = NULL;
+                } else {
+                    events[event_count].is_timer = 0;
+                    events[event_count].timer = NULL;
+                    events[event_count].ctx = ctx;
+                }
+                events[event_count].mask = 0;
+                events[event_count].timestamp_ms = now;
+
+                if (cqe->res < 0) {
+                    events[event_count].mask |= (EVENT_CLOSE | EVENT_ERROR);
+                } else {
+                    if (cqe->res & POLLIN)  events[event_count].mask |= EVENT_READ;
+                    if (cqe->res & POLLOUT) events[event_count].mask |= EVENT_WRITE;
+                    if (cqe->res & (POLLERR | POLLHUP | POLLNVAL)) {
+                        events[event_count].mask |= (EVENT_CLOSE | EVENT_ERROR);
+                    }
+                }
+                event_count++;
+            }
+
+            ctx->pending_ops--;
+
+            if (!ctx->closing && ctx->registered_mask != 0 && !ctx->rearm_queued) {
+                if (add_to_rearm_queue(loop, ctx) == 0) {
+                    RETAIN((Object*)ctx);
+                    ctx->rearm_queued = true;
+                } else if (!fatal_error) {
+                    fatal_error = ENOMEM;
+                }
+            }
+            /* release completed POLL_ADD ownership */
+            RELEASE((Object*)ctx);
+        }
+        else if (op->type == URING_OP_POLL_UPDATE || op->type == URING_OP_POLL_REMOVE) {
+            ctx->pending_ops--;
+            RELEASE((Object*)ctx);
+        }
+    }
+
+    if (consumed_cqes > 0) {
+        io_uring_cq_advance(&loop->impl->ring, consumed_cqes);
+    }
+
+    if (needs_submit) {
+        io_uring_submit(&loop->impl->ring);
+    }
+
+    if (fatal_error) {
+        errno = fatal_error;
+        return -1;
+    }
+
+    return event_count;
+}
+
+void event_backend_destroy(EventLoop* loop) {
+    if (loop && loop->impl) {
+        if (loop->impl->ring_initialized) {
+
+            /* 🚨 Phase 1: 모든 ctx를 CLOSING 상태로 확정 */
+            for (int i = 0; i < 65536; i++) {
+                SocketContext* ctx = loop->impl->ctx_map[i];
+                if (ctx) ctx->closing = true;
+            }
+
+            /* 🚨 Phase 2: poll_armed 인 것만 POLL_REMOVE 제출 */
+            for (int i = 0; i < 65536; i++) {
+                SocketContext* ctx = loop->impl->ctx_map[i];
+                if (ctx && ctx->poll_armed) {
+                    struct io_uring_sqe *sqe = io_uring_get_sqe(&loop->impl->ring);
+                    if (!sqe) {
+                        io_uring_submit(&loop->impl->ring);
+                        sqe = io_uring_get_sqe(&loop->impl->ring);
+                    }
+                    if (sqe) {
+                        ctx->remove_op.type = URING_OP_POLL_REMOVE;
+                        ctx->remove_op.data = ctx;
+                        io_uring_prep_poll_remove(sqe, (__u64)(uintptr_t)&ctx->poll_op);
+                        io_uring_sqe_set_data(sqe, &ctx->remove_op);
+
+                        RETAIN((Object*)ctx);
+                        ctx->pending_ops++;
+                        loop->impl->uring_pending_total++;
+                    }
+                }
+            }
+            io_uring_submit(&loop->impl->ring);
+
+            /* 🚨 Phase 3: CQ drain */
+            struct io_uring_cqe *cqe;
+            struct __kernel_timespec ts = { .tv_sec = 0, .tv_nsec = 10000000LL }; /* 10ms wait max per iteration */
+
+            uint64_t last_progress_ms = get_current_ms();
+
+            while (loop->impl->uring_pending_total > 0) {
+                int ret = io_uring_wait_cqe_timeout(&loop->impl->ring, &cqe, &ts);
+
+                if (ret == 0) {
+                    loop->impl->uring_pending_total--;
+                    UringOp* op = (UringOp*)io_uring_cqe_get_data(cqe);
+                    if (op && op->data) {
+                        SocketContext* ctx = (SocketContext*)op->data;
+                        ctx->pending_ops--;
+                        if (op->type == URING_OP_POLL_ADD) ctx->poll_armed = false;
+                        RELEASE((Object*)ctx);
+                    }
+                    io_uring_cqe_seen(&loop->impl->ring, cqe);
+                    last_progress_ms = get_current_ms();
+                    continue;
+                }
+
+                if (ret == -ETIME || ret == -EINTR) {
+                    if (get_current_ms() - last_progress_ms >= 1000ULL) {
+                        fprintf(stderr, "[io_uring] destroy drain stalled: pending=%d\n", loop->impl->uring_pending_total);
+                        break;
+                    }
+                    continue;
+                }
+
+                fprintf(stderr, "[io_uring] destroy drain error: %d, pending=%d\n", -ret, loop->impl->uring_pending_total);
+                break;
+            }
+            io_uring_queue_exit(&loop->impl->ring);
+        }
+
+        /* 🚨 Phase 4: rearm_queue refs */
+        for (int i = 0; i < loop->impl->rearm_count; i++) {
+            RELEASE((Object*)loop->impl->rearm_pending[i]);
+        }
+        if (loop->impl->rearm_pending) free(loop->impl->rearm_pending);
+
+        /* 🚨 Phase 5: ctx_map refs
+         * CQ drain above releases operation ownership (POLL_ADD / POLL_UPDATE / POLL_REMOVE).
+         * ctx_map still owns the original context reference, so release that independent ownership here.
+         */
+        for (int i = 0; i < 65536; i++) {
+            if (loop->impl->ctx_map[i]) {
+                RELEASE((Object*)loop->impl->ctx_map[i]);
+                loop->impl->ctx_map[i] = NULL;
+            }
+        }
+        if (loop->impl->defer_pending) free(loop->impl->defer_pending);
+        free(loop->impl);
+        loop->impl = NULL;
+    }
+}
+
+int event_backend_add_timer(EventLoop* loop, Timer* timer) {
+    if (!loop || !loop->impl || !timer) return -1;
+    int fd = timer->tfd;
+    if (fd < 0 || fd >= 65536) return -1;
+
+    if (loop->impl->ctx_map[fd] != NULL) {
+        errno = EEXIST;
+        return -1;
+    }
+
+    SocketContext* ctx = calloc(1, sizeof(SocketContext));
+    if (!ctx) return -1;
+    Object_Init((Object*)ctx, &_SocketContext_Class);
+
+    ctx->is_timer = 1;
+    ctx->timer = timer;
+    ctx->registered_mask = EVENT_READ;
+    ctx->closing = false;
+    ctx->pending_ops = 0;
+
+    ctx->poll_armed = true;
+    ctx->rearm_queued = false;
+
+    ctx->poll_op.type = URING_OP_POLL_ADD;
+    ctx->poll_op.data = ctx;
+
+    struct io_uring_sqe *sqe = io_uring_get_sqe(&loop->impl->ring);
+    if (!sqe) {
+        RELEASE((Object*)ctx);
+        errno = EAGAIN;
+        return -1;
+    }
+
+    io_uring_prep_poll_add(sqe, fd, POLLIN);
+    io_uring_sqe_set_data(sqe, &ctx->poll_op);
+
+    RETAIN((Object*)ctx);
+    ctx->pending_ops++;
+    loop->impl->uring_pending_total++;
+
+    io_uring_submit(&loop->impl->ring);
+
+    loop->impl->ctx_map[fd] = ctx;
+    timer->platform_data = loop;
+    return 0;
+}
+
+int event_backend_remove_timer(EventLoop* loop, Timer* timer) {
+    if (!loop || !loop->impl || !timer) return -1;
+    int fd = timer->tfd;
+    if (fd < 0 || fd >= 65536) return -1;
+
+    SocketContext* ctx = loop->impl->ctx_map[fd];
+    if (!ctx || ctx->closing) return -1;
+
+    if (ctx->poll_armed) {
+        struct io_uring_sqe *sqe = io_uring_get_sqe(&loop->impl->ring);
+        if (!sqe) {
+            io_uring_submit(&loop->impl->ring);
+            sqe = io_uring_get_sqe(&loop->impl->ring);
+        }
+
+        if (!sqe) {
+            errno = EAGAIN;
+            return -1;
+        }
+
+        ctx->remove_op.type = URING_OP_POLL_REMOVE;
+        ctx->remove_op.data = ctx;
+
+        io_uring_prep_poll_remove(sqe, (__u64)(uintptr_t)&ctx->poll_op);
+        io_uring_sqe_set_data(sqe, &ctx->remove_op);
+
+        RETAIN((Object*)ctx);
+        ctx->pending_ops++;
+        loop->impl->uring_pending_total++;
+
+        io_uring_submit(&loop->impl->ring);
+    }
+
+    ctx->closing = true;
+    loop->impl->ctx_map[fd] = NULL;
+
+    /*
+     * Drop ctx_map ownership only.
+     * Outstanding io_uring operations keep their own references.
+     */
+    RELEASE((Object*)ctx);
+    return 0;
+}
+
+/* =========================================================
+ * 🐧 Linux: epoll Backend
  * ========================================================= */
 #else
 
