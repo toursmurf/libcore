@@ -24,61 +24,6 @@
 
 ---
 
-## 이렇게 씁니다 / This Is How You Use It
-
-```c
-/* TCP 에코 서버 / TCP Echo Server */
-#include "libcore.h"
-
-static void on_client(Socket* self, void* loop_ptr) {
-    char buf[1024];
-
-    ssize_t n = self->recv(self, buf, sizeof(buf), NULL, NULL);
-
-    if (n > 0) {
-        self->send(self, buf, n, NULL, 0);
-    } else {
-        EventLoop* loop = (EventLoop*)loop_ptr;
-        loop->delSocket(loop, self);
-        RELEASE((Object*)self);
-    }
-}
-
-static void on_accept(Socket* self, void* loop_ptr) {
-    EventLoop* loop = (EventLoop*)loop_ptr;
-
-    TcpSocket* client =
-        ((TcpSocket*)self)->accept((TcpSocket*)self, NULL, NULL);
-
-    if (client) {
-        client->base.on_readable = on_client;
-        loop->addSocket(loop, (Socket*)client, EV_READ);
-
-        /*
-         * EventLoop owns the registered socket.
-         * Caller releases its own ownership.
-         */
-        RELEASE((Object*)client);
-    }
-}
-
-int main(void) {
-    EventLoop* loop   = event_loop_create();
-    TcpSocket* server = new_TcpServer("0.0.0.0", 8080);
-
-    server->base.on_readable = on_accept;
-
-    loop->addSocket(loop, (Socket*)server, EV_READ);
-
-    loop->run(loop);  /* blocking */
-
-    RELEASE((Object*)server);
-    RELEASE((Object*)loop);
-
-    return 0;
-}
-```
-
 ---
 
 ## 왜 libcore인가 / Why libcore
@@ -187,7 +132,7 @@ into a reusable C99 server runtime.
 git clone https://github.com/toursmurf/libcore.git
 cd libcore
 
-make examples
+make clean examples
 ```
 
 빌드 시 운영체제와 EventLoop backend가 자동으로 선택됩니다.
