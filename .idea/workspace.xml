@@ -12,42 +12,17 @@
   <component name="CMakeProjectFlavorService">
     <option name="flavorId" value="CMakePlainProjectFlavor" />
   </component>
-  <component name="CMakeRunConfigurationManager">
-    <generated>
-      <config projectName="libcore" targetName="Info" />
-      <config projectName="libcore" targetName="OpenSSL" />
-      <config projectName="libcore" targetName="Kernel" />
-      <config projectName="libcore" targetName="MariaDB" />
-      <config projectName="libcore" targetName="HAVE_SQLITE" />
-      <config projectName="libcore" targetName="PostgreSQL" />
-      <config projectName="libcore" targetName="Sanitizer" />
-      <config projectName="libcore" targetName="ci-asan" />
-      <config projectName="libcore" targetName="ci-valgrind" />
-      <config projectName="libcore" targetName="Compiler" />
-      <config projectName="libcore" targetName="Mode" />
-      <config projectName="libcore" targetName="Backend" />
-      <config projectName="libcore" targetName="OS" />
-      <config projectName="libcore" targetName="ci" />
-      <config projectName="libcore" targetName="test" />
-      <config projectName="libcore" targetName="HAVE_PGSQL" />
-      <config projectName="libcore" targetName="SQLite" />
-      <config projectName="libcore" targetName="clean_bin" />
-      <config projectName="libcore" targetName="all" />
-      <config projectName="libcore" targetName="clean_soft" />
-      <config projectName="libcore" targetName="check_asan" />
-      <config projectName="libcore" targetName="Target" />
-      <config projectName="libcore" targetName="check_valgrind" />
-      <config projectName="libcore" targetName="examples" />
-      <config projectName="libcore" targetName="HAVE_MYSQL" />
-    </generated>
-  </component>
   <component name="CMakeSettings">
     <configurations>
       <configuration PROFILE_NAME="Debug" ENABLED="true" CONFIG_NAME="Debug" />
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="15c17e21-9f3d-44d9-aa00-1f0b6183844e" name="변경" comment="Readne 수정" />
+    <list default="true" id="15c17e21-9f3d-44d9-aa00-1f0b6183844e" name="변경" comment="readme 수정">
+      <change afterPath="$PROJECT_DIR$/examples/arc_event_test.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/ws_protocol.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/ws_protocol.h" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -64,43 +39,11 @@
   <component name="EmbeddingIndexingInfo">
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
-  <component name="ExternalProjectsData">
-    <projectState path="$PROJECT_DIR$">
-      <ProjectState />
-    </projectState>
-  </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
   <component name="MacroExpansionManager">
     <option name="directoryName" value="zkUMVuPR" />
-  </component>
-  <component name="MakefileLocalSettings">
-    <option name="availableProjects">
-      <map>
-        <entry>
-          <key>
-            <ExternalProjectPojo>
-              <option name="name" value="libcore" />
-              <option name="path" value="$PROJECT_DIR$" />
-            </ExternalProjectPojo>
-          </key>
-          <value>
-            <list>
-              <ExternalProjectPojo>
-                <option name="name" value="libcore" />
-                <option name="path" value="$PROJECT_DIR$" />
-              </ExternalProjectPojo>
-            </list>
-          </value>
-        </entry>
-      </map>
-    </option>
-    <option name="projectSyncType">
-      <map>
-        <entry key="$PROJECT_DIR$" value="RE_IMPORT" />
-      </map>
-    </option>
   </component>
   <component name="McpProjectServerCommands">
     <commands />
@@ -108,80 +51,72 @@
   </component>
   <component name="NextEditCompletionFeaturesState">
     <decayedCancelled>
-      <entry key="MS100" value="1.0000000000009817" />
-      <entry key="MS500" value="1.0043158755749786" />
-      <entry key="S2" value="1.3876942106065384" />
-      <entry key="S5" value="2.026413495844077" />
-      <entry key="S10" value="2.4301414938602406" />
-      <entry key="S30" value="2.787729940804055" />
-      <entry key="S60" value="2.8907918390087843" />
-      <entry key="M2" value="2.944834084020838" />
-      <entry key="M5" value="3.255463058540342" />
-      <entry key="M10" value="6.08215580054831" />
-      <entry key="M15" value="10.018822271418069" />
-      <entry key="M30" value="21.278896544094206" />
-      <entry key="H1" value="43.42285951927545" />
-      <entry key="H2" value="78.064443073518" />
-      <entry key="H4" value="116.60587660356181" />
-      <entry key="D1" value="266.2682403792879" />
-      <entry key="W1" value="443.54941529193434" />
+      <entry key="MS100" value="1.0000045680647267" />
+      <entry key="MS500" value="1.0940569859192784" />
+      <entry key="S2" value="1.8449179714003259" />
+      <entry key="S5" value="2.4032082965128163" />
+      <entry key="S10" value="2.672476836056769" />
+      <entry key="S30" value="2.883564534889186" />
+      <entry key="S60" value="2.941327577881866" />
+      <entry key="M2" value="2.9928725558182783" />
+      <entry key="M5" value="3.3821914519102103" />
+      <entry key="M10" value="5.6443198738563165" />
+      <entry key="M15" value="9.269854691388705" />
+      <entry key="M30" value="21.582745811299322" />
+      <entry key="H1" value="45.4337376722037" />
+      <entry key="H2" value="83.34487826101805" />
+      <entry key="H4" value="127.10662103663206" />
+      <entry key="D1" value="285.96291917270173" />
+      <entry key="W1" value="467.3120003006036" />
     </decayedCancelled>
     <decayedSelected>
       <entry key="MS100" value="0.0" />
       <entry key="MS500" value="0.0" />
-      <entry key="S2" value="0.0" />
-      <entry key="S5" value="0.0" />
-      <entry key="S10" value="1.7159947573270294E-265" />
-      <entry key="S30" value="5.556977677548437E-89" />
-      <entry key="S60" value="7.454515148728275E-45" />
-      <entry key="M2" value="8.638958104112806E-23" />
-      <entry key="M5" value="1.6119075193765937E-9" />
-      <entry key="M10" value="5.567654378817782E-5" />
-      <entry key="M15" value="0.002088190105007103" />
-      <entry key="M30" value="0.09061385377319249" />
-      <entry key="H1" value="0.6575741437353153" />
-      <entry key="H2" value="1.9514085768736043" />
-      <entry key="H4" value="3.695836783212167" />
-      <entry key="D1" value="8.777281485279483" />
-      <entry key="W1" value="12.90183110935478" />
+      <entry key="S2" value="3.6701946046783463E-301" />
+      <entry key="S5" value="6.696928111117661E-121" />
+      <entry key="S10" value="8.183476101949378E-61" />
+      <entry key="S30" value="9.353610319741197E-21" />
+      <entry key="S60" value="9.671406474624667E-11" />
+      <entry key="M2" value="9.834330925194995E-6" />
+      <entry key="M5" value="0.009933400080723269" />
+      <entry key="M10" value="0.09967020244078549" />
+      <entry key="M15" value="0.21531031499698616" />
+      <entry key="M30" value="0.5005374789232881" />
+      <entry key="H1" value="1.1005100480066887" />
+      <entry key="H2" value="2.383980745298412" />
+      <entry key="H4" value="4.211590278256754" />
+      <entry key="D1" value="9.59861972068582" />
+      <entry key="W1" value="13.865090374818061" />
     </decayedSelected>
     <decayedShown>
-      <entry key="MS100" value="0.952637998044892" />
-      <entry key="MS500" value="0.9946272548046593" />
-      <entry key="S2" value="1.3839789521090626" />
-      <entry key="S5" value="2.0238754504126404" />
-      <entry key="S10" value="2.4285156185523578" />
-      <entry key="S30" value="2.7870793401498504" />
-      <entry key="S60" value="2.8904506500595146" />
-      <entry key="M2" value="2.944659169902019" />
-      <entry key="M5" value="3.2552833546680127" />
-      <entry key="M10" value="6.081504759270235" />
-      <entry key="M15" value="10.019793731366615" />
-      <entry key="M30" value="21.367710743912152" />
-      <entry key="H1" value="44.07807001215728" />
-      <entry key="H2" value="80.0135505935898" />
-      <entry key="H4" value="120.2999934466775" />
-      <entry key="D1" value="275.0449339442151" />
-      <entry key="W1" value="456.45111591846944" />
+      <entry key="MS100" value="0.9526382571858323" />
+      <entry key="MS500" value="1.0469936823189099" />
+      <entry key="S2" value="1.7695863697994287" />
+      <entry key="S5" value="2.358105702251571" />
+      <entry key="S10" value="2.646648668889189" />
+      <entry key="S30" value="2.874137247269748" />
+      <entry key="S60" value="2.936502508216711" />
+      <entry key="M2" value="2.9903742130953668" />
+      <entry key="M5" value="3.3905233853713095" />
+      <entry key="M10" value="5.741514399815613" />
+      <entry key="M15" value="9.482079005445256" />
+      <entry key="M30" value="22.07976355474161" />
+      <entry key="H1" value="46.53077324310737" />
+      <entry key="H2" value="85.7258492735148" />
+      <entry key="H4" value="131.31603413942267" />
+      <entry key="D1" value="295.5608470248881" />
+      <entry key="W1" value="481.1769439238357" />
     </decayedShown>
   </component>
   <component name="PhpWorkspaceProjectConfiguration" interpreter_name="/opt/homebrew/Cellar/php/8.2.7/bin/php" />
-  <component name="ProjectApplicationVersion">
-    <option name="ide" value="CLion" />
-    <option name="majorVersion" value="2026" />
-    <option name="minorVersion" value="2.1" />
-    <option name="productBranch" value="Classic" />
-  </component>
   <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
   &quot;associatedIndex&quot;: 8
 }</component>
-  <component name="ProjectId" id="3IkpBDHIHumFJr4WVM2UZijehJn" />
+  <component name="ProjectId" id="3JXU5Dm3fEh9k29WOWOjxxNLfPZ" />
   <component name="ProjectLevelVcsManager">
     <ConfirmationsSetting value="2" id="Add" />
   </component>
-  <component name="ProjectStatusUIService">{
-  &quot;uiKindId&quot;: &quot;Widget&quot;
-}</component>
   <component name="ProjectViewState">
     <option name="autoscrollToSource" value="true" />
     <option name="hideEmptyMiddlePackages" value="true" />
@@ -232,14 +167,6 @@
     &quot;stardust.markdown.MarkdownSplitEditorSuppressor:keyList&quot;: []
   }
 }</component>
-  <component name="RecentsManager">
-    <key name="CopyFile.RECENT_KEYS">
-      <recent name="$PROJECT_DIR$/docs/images" />
-    </key>
-    <key name="MoveFile.RECENT_KEYS">
-      <recent name="$PROJECT_DIR$/docs/images" />
-    </key>
-  </component>
   <component name="RubyModuleManagerSettings">
     <option name="blackListedRootsPaths">
       <list>
@@ -376,7 +303,7 @@
   </component>
   <component name="SelectedDebugProfileService"><![CDATA[{
   "profileIdByStamp": [],
-  "modificationCount": 27784
+  "modificationCount": 37973
 }]]></component>
   <component name="SharedIndexes">
     <attachedChunks>
@@ -409,7 +336,11 @@
       <workItem from="1789172936317" duration="20463000" />
       <workItem from="1789273513377" duration="7337000" />
       <workItem from="1789287039254" duration="1984000" />
-      <workItem from="1789394374067" duration="2086000" />
+      <workItem from="1789394374067" duration="2433000" />
+      <workItem from="1789518475492" duration="13230000" />
+      <workItem from="1789806722890" duration="1230000" />
+      <workItem from="1789873512444" duration="3636000" />
+      <workItem from="1789883236227" duration="2010000" />
     </task>
     <task id="LOCAL-00001" summary="not null 필드의 null 수정">
       <option name="closed" value="true" />
@@ -699,7 +630,31 @@
       <option name="project" value="LOCAL" />
       <updated>1789289425750</updated>
     </task>
-    <option name="localTasksCounter" value="37" />
+    <task id="LOCAL-00037" summary="주석 수정, 필요없는 파일 수정 및 타자 프로그램 수정">
+      <option name="closed" value="true" />
+      <created>1789544589922</created>
+      <option name="number" value="00037" />
+      <option name="presentableId" value="LOCAL-00037" />
+      <option name="project" value="LOCAL" />
+      <updated>1789544589922</updated>
+    </task>
+    <task id="LOCAL-00038" summary="메모리 해제 수정">
+      <option name="closed" value="true" />
+      <created>1789806978797</created>
+      <option name="number" value="00038" />
+      <option name="presentableId" value="LOCAL-00038" />
+      <option name="project" value="LOCAL" />
+      <updated>1789806978797</updated>
+    </task>
+    <task id="LOCAL-00039" summary="readme 수정">
+      <option name="closed" value="true" />
+      <created>1789875630849</created>
+      <option name="number" value="00039" />
+      <option name="presentableId" value="LOCAL-00039" />
+      <option name="project" value="LOCAL" />
+      <updated>1789875630849</updated>
+    </task>
+    <option name="localTasksCounter" value="40" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -717,8 +672,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="readme 문서 링크 수정" />
-    <MESSAGE value="readme 다시 수정" />
     <MESSAGE value="readme 다시 수정 및 채팅 이미지 추가" />
     <MESSAGE value="readme 맥북  수정" />
     <MESSAGE value="readme 맥북  수정 22" />
@@ -730,7 +683,6 @@
     <MESSAGE value="hashtable release 제거" />
     <MESSAGE value="pixel board 게임 추가" />
     <MESSAGE value="pixel board 설정파일  추가" />
-    <MESSAGE value="readme 수정" />
     <MESSAGE value="toostype 소스 추가" />
     <MESSAGE value="toostype 소스  수정 및 기존의 event_loop, timer, scheduler 등을 수정" />
     <MESSAGE value="중복 해제 오류 수정" />
@@ -742,10 +694,20 @@
     <MESSAGE value="gitignore 수정" />
     <MESSAGE value="타자 게임 수정 및 디비 파일 추가" />
     <MESSAGE value="Readne 수정" />
-    <option name="LAST_COMMIT_MESSAGE" value="Readne 수정" />
+    <MESSAGE value="주석 수정, 필요없는 파일 수정 및 타자 프로그램 수정" />
+    <MESSAGE value="메모리 해제 수정" />
+    <MESSAGE value="readme 수정" />
+    <option name="LAST_COMMIT_MESSAGE" value="readme 수정" />
   </component>
-  <component name="XSLT-Support.FileAssociations.UIState">
-    <expand />
-    <select />
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
+          <url>file://$PROJECT_DIR$/examples/arc_event_test.c</url>
+          <line>125</line>
+          <option name="timeStamp" value="1" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
   </component>
 </project>

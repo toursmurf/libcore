@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <arpa/inet.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <openssl/ssl.h>
@@ -21,6 +22,25 @@ static void init_legacy_ssl(void) {
     }
 }
 #endif
+
+static int ssl_set_peer_name(SSL* ssl, const char* host) {
+    unsigned char buf[sizeof(struct in6_addr)];
+    int is_ip = inet_pton(AF_INET, host, buf) == 1 ||
+                inet_pton(AF_INET6, host, buf) == 1;
+
+#if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 4
+    return is_ip ? SSL_set1_ipaddr(ssl, host)
+                 : SSL_set1_dnsname(ssl, host);
+#else
+    (void)is_ip;
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+    return SSL_set1_host(ssl, host);   /* 1.1.0+ : DNS/IP 자동 판별 */
+#else
+    (void)ssl; (void)host;
+    return 1;
+#endif
+#endif
+}
 
 static int ssl_tcp_connect(const char* host, int port) {
     if (!host || port <= 0 || port > 65535) return -1;
@@ -87,7 +107,7 @@ SslSocket* new_SslClient(const char* host, int port) {
     SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
 #endif
 
-    /*  macOS Root CA 이슈 우회 */
+    /* macOS Root CA 이슈 우회 (원래 설정인 SSL_VERIFY_NONE 유지) */
     SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
     SSL_CTX_set_default_verify_paths(ctx);
 
@@ -101,7 +121,7 @@ SslSocket* new_SslClient(const char* host, int port) {
     if (SSL_set_fd(ssl, fd) != 1) {
         SSL_free(ssl);
         SSL_CTX_free(ctx);
-        /*  Double Free 방지: SSL_free가 이미 fd를 닫음! close(fd) 제거 */
+        /* Double Free 방지: SSL_free가 이미 fd를 닫음! close(fd) 제거 */
         return NULL;
     }
 
@@ -111,12 +131,12 @@ SslSocket* new_SslClient(const char* host, int port) {
         return NULL;
     }
 
-    SSL_set1_host(ssl, host);
+    ssl_set_peer_name(ssl, host);
 
     if (SSL_connect(ssl) <= 0) {
         SSL_free(ssl);
         SSL_CTX_free(ctx);
-        /*  Double Free 방지: SSL_free가 이미 fd를 닫음! close(fd) 제거 */
+        /* Double Free 방지: SSL_free가 이미 fd를 닫음! close(fd) 제거 */
         return NULL;
     }
 
