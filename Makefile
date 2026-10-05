@@ -104,8 +104,18 @@ CI_TESTS	= $(CORE_TESTS) $(HEAVY_TESTS)
 # ==========================================
 # [3] 공통 CFLAGS 및 LIBS
 # ==========================================
+# 경고 = 에러 게이트 (기본 ON). 최신 컴파일러에서 새 경고로 막히면: make WERROR=0
+WERROR		?= 1
+
 CFLAGS		= -Wall -Wextra -Wunused-value -pthread -I$(INC_DIR)
 LIBS		= -lcurl -lssl -lcrypto
+
+ifeq ($(WERROR),1)
+    CFLAGS	+= -Werror
+    WERROR_STR	= ON (-Werror)
+else
+    WERROR_STR	= OFF
+endif
 
 # ==========================================
 # DB backend 컴파일 플래그 주입
@@ -241,6 +251,7 @@ $(info  HAVE_MYSQL : $(HAVE_MYSQL))
 $(info  HAVE_PGSQL : $(HAVE_PGSQL))
 $(info  HAVE_SQLITE: $(HAVE_SQLITE))
 $(info  Sanitizer  : $(SANITIZER_STR))
+$(info  Werror     : $(WERROR_STR))
 $(info  Mode       : $(MODE_STR))
 $(info =========================================)
 $(info )
