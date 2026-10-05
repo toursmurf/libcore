@@ -9,8 +9,11 @@
 #include "board_template_engine.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <ctype.h>
+
+#define TEMPLATE_KEY_MAX 127
 
 /* ── 1. TplBuilder ── */
 typedef struct {
@@ -35,6 +38,12 @@ static void tb_init(TplBuilder* tb) {
 
 static void tb_append(TplBuilder* tb, const char* str, size_t slen) {
     if (tb->failed || !str || slen == 0) {
+        return;
+    }
+
+    /* size_t overflow 방어 */
+    if (slen > SIZE_MAX - tb->len - 1) {
+        tb->failed = 1;
         return;
     }
 
@@ -91,27 +100,7 @@ static char* tb_finish(TplBuilder* tb) {
     return tb->buf;
 }
 
-/* ── 2. 유틸 ── */
-static void trim_key(char* key) {
-    char* p = key;
-    char* l = key + strlen(key);
-
-    while (isspace((unsigned char)*p)) {
-        p++;
-    }
-
-    while (l > p && isspace((unsigned char)*(l - 1))) {
-        l--;
-    }
-
-    *l = '\0';
-
-    if (p > key) {
-        memmove(key, p, (size_t)(l - p) + 1);
-    }
-}
-
-/* ── 3. scalar 렌더링 ── */
+/* ── 2. scalar 렌더링 ── */
 static void TemplateEngine_renderValue(Object* obj, TplBuilder* tb) {
     JsonValue* value = json_as_value(obj);
 
@@ -153,20 +142,25 @@ static void TemplateEngine_renderValue(Object* obj, TplBuilder* tb) {
     }
 }
 
-/* ── 4. section 닫기 탐색 ── */
+/* ── 3. section 닫기 탐색 ── */
 static const char* TemplateEngine_findSectionEnd(
     const char* start,
     const char* end,
     const char* key)
 {
-    char open_tag [128];
-    char close_tag[128];
+    char open_tag [TEMPLATE_KEY_MAX + 6];
+    char close_tag[TEMPLATE_KEY_MAX + 6];
 
-    snprintf(open_tag,  sizeof(open_tag),  "{{#%s}}", key);
-    snprintf(close_tag, sizeof(close_tag), "{{/%s}}", key);
+    int n1 = snprintf(open_tag,  sizeof(open_tag),  "{{#%s}}", key);
+    int n2 = snprintf(close_tag, sizeof(close_tag), "{{/%s}}", key);
 
-    size_t open_len  = strlen(open_tag);
-    size_t close_len = strlen(close_tag);
+    if (n1 < 0 || (size_t)n1 >= sizeof(open_tag) ||
+        n2 < 0 || (size_t)n2 >= sizeof(close_tag)) {
+        return NULL;
+    }
+
+    size_t open_len  = (size_t)n1;
+    size_t close_len = (size_t)n2;
     int    depth     = 0;
     const char* p    = start;
 
@@ -194,7 +188,7 @@ static const char* TemplateEngine_findSectionEnd(
     return NULL;
 }
 
-/* ── 5. 핵심 렌더러 ── */
+/* ── 4. 핵심 렌더러 ── */
 static void TemplateEngine_renderRange(TemplateEngine* self,const char* start,const char* end,JSONNode* ctx,TplBuilder* tb){
     const char* p = start;
 
@@ -228,15 +222,31 @@ static void TemplateEngine_renderRange(TemplateEngine* self,const char* start,co
             continue;
         }
 
-        char   key[128] = {0};
-        size_t key_len  = (size_t)(tag_end - p);
+        /* 명시적 Reject 로직 및 공백 처리 (trim_key 불필요) */
+        const char* key_start = p;
+        const char* key_end   = tag_end;
 
-        if (key_len >= sizeof(key)) {
-            key_len = sizeof(key) - 1;
+        while (key_start < key_end &&
+               isspace((unsigned char)*key_start)) {
+            key_start++;
         }
 
-        strncpy(key, p, key_len);
-        trim_key(key);
+        while (key_end > key_start &&
+               isspace((unsigned char)*(key_end - 1))) {
+            key_end--;
+        }
+
+        size_t key_len = (size_t)(key_end - key_start);
+
+        if (key_len == 0 || key_len > TEMPLATE_KEY_MAX) {
+            tb->failed = 1;
+            return;
+        }
+
+        char key[TEMPLATE_KEY_MAX + 1];
+
+        memcpy(key, key_start, key_len);
+        key[key_len] = '\0';
 
         p = tag_end + 2;
 
@@ -272,7 +282,7 @@ static void TemplateEngine_renderRange(TemplateEngine* self,const char* start,co
                 }
             }
 
-            char   close_tag[128];
+            char   close_tag[TEMPLATE_KEY_MAX + 6];
             int    n = snprintf(close_tag, sizeof(close_tag), "{{/%s}}", key);
 
             if (n < 0 || (size_t)n >= sizeof(close_tag)) {
@@ -292,7 +302,7 @@ static void TemplateEngine_renderRange(TemplateEngine* self,const char* start,co
     }
 }
 
-/* ── 6. render() ── */
+/* ── 5. render() ── */
 static char* TemplateEngine_render(TemplateEngine* self,const char*     template_text,JSONNode* ctx){
     if (!self || !template_text) {
         return NULL;
@@ -307,7 +317,7 @@ static char* TemplateEngine_render(TemplateEngine* self,const char*     template
     return tb_finish(&tb);
 }
 
-/* ── 7. renderFile() ── */
+/* ── 6. renderFile() ── */
 static char* TemplateEngine_renderFile(TemplateEngine* self,const char* file_path,JSONNode* ctx){
     if (!self || !file_path) {
         return NULL;
