@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "ssl_client.h"
+#include <stdio.h>       /* snprintf 직접 사용 */
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -34,7 +35,8 @@ static int ssl_set_peer_name(SSL* ssl, const char* host) {
 #else
     (void)is_ip;
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
-    return SSL_set1_host(ssl, host);   /* 1.1.0+ : DNS/IP 자동 판별 */
+    /* [A-1 Backlog] DNS/IP 검증 계약 정리는 VERIFY_PEER 작업 시 별도 진행 */
+    return SSL_set1_host(ssl, host);
 #else
     (void)ssl; (void)host;
     return 1;
@@ -90,74 +92,95 @@ SslSocket* new_SslClient(const char* host, int port) {
     int fd = ssl_tcp_connect(host, port);
     if (fd < 0) return NULL;
 
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
-    SSL_CTX* ctx = SSL_CTX_new(SSLv23_client_method());
-#else
-    SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
-#endif
-
-    if (!ctx) {
+    /*
+     * TCP connect 성공 후 SslSocket 객체 조기 생성
+     * 객체 생성 전 calloc 실패 시에만 수동 close(fd) (ARC 등록 전)
+     */
+    SslSocket* self = (SslSocket*)calloc(1, sizeof(SslSocket));
+    if (!self) {
         close(fd);
         return NULL;
     }
 
+    /*
+     * 이 시점부터 fd ownership은 SslSocket(self)가 가짐
+     * 이후 모든 실패 경로는 RELEASE(self); return NULL; 로 통일
+     */
+    SslSocket_init_base(self, fd);
+
+    /* [Patch V4] Silent Truncation 원천 차단 (Atomic Reject) */
+    if (host) {
+        int n = snprintf(self->host, sizeof(self->host), "%s", host);
+        if (n < 0 || (size_t)n >= sizeof(self->host)) {
+            RELEASE(self);
+            return NULL;
+        }
+    }
+
+    /* self->ctx 바로 멤버에 저장 */
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
-    SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1);
+    self->ctx = SSL_CTX_new(SSLv23_client_method());
 #else
-    SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
+    self->ctx = SSL_CTX_new(TLS_client_method());
 #endif
 
-    /* macOS Root CA 이슈 우회 (원래 설정인 SSL_VERIFY_NONE 유지) */
-    SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
-    SSL_CTX_set_default_verify_paths(ctx);
-
-    SSL* ssl = SSL_new(ctx);
-    if (!ssl) {
-        SSL_CTX_free(ctx);
-        close(fd);
+    if (!self->ctx) {
+        RELEASE(self);
         return NULL;
     }
 
-    if (SSL_set_fd(ssl, fd) != 1) {
-        SSL_free(ssl);
-        SSL_CTX_free(ctx);
-        /* Double Free 방지: SSL_free가 이미 fd를 닫음! close(fd) 제거 */
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+    SSL_CTX_set_options(self->ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1);
+#else
+    SSL_CTX_set_min_proto_version(self->ctx, TLS1_2_VERSION);
+#endif
+
+    /* VERIFY_PEER는 이번 범위에서 제외 */
+    SSL_CTX_set_verify(self->ctx, SSL_VERIFY_NONE, NULL);
+    SSL_CTX_set_default_verify_paths(self->ctx);
+
+    /* self->ssl 바로 멤버에 저장 */
+    self->ssl = SSL_new(self->ctx);
+    if (!self->ssl) {
+        RELEASE(self);
         return NULL;
     }
 
-    if (SSL_set_tlsext_host_name(ssl, host) != 1) {
-        SSL_free(ssl);
-        SSL_CTX_free(ctx);
+    /*
+     * A-1 계약: SslSocket owns fd / SSL/BIO borrows fd
+     * SSL_set_fd 실패 시 RELEASE
+     */
+    if (SSL_set_fd(self->ssl, fd) != 1) {
+        RELEASE(self);
         return NULL;
     }
 
-    ssl_set_peer_name(ssl, host);
+    /* SNI 실패 시 RELEASE */
+    if (SSL_set_tlsext_host_name(self->ssl, host) != 1) {
+        RELEASE(self);
+        return NULL;
+    }
 
-    if (SSL_connect(ssl) <= 0) {
-        SSL_free(ssl);
-        SSL_CTX_free(ctx);
-        /* Double Free 방지: SSL_free가 이미 fd를 닫음! close(fd) 제거 */
+    /* peer_name 반환값 검사: 1이 아니면 RELEASE */
+    if (ssl_set_peer_name(self->ssl, host) != 1) {
+        RELEASE(self);
+        return NULL;
+    }
+
+    /* Socket_init_base가 O_NONBLOCK을 켬 → 핸드셰이크 동안만 블로킹 */
+    {
+        int fl = fcntl(fd, F_GETFL, 0);
+        if (fl != -1) fcntl(fd, F_SETFL, fl & ~O_NONBLOCK);
+    }
+    /* SSL_connect 실패 시 RELEASE */
+    if (SSL_connect(self->ssl) <= 0) {
+        RELEASE(self);
         return NULL;
     }
 
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags != -1)
         fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-
-    SslSocket* self = (SslSocket*)calloc(1, sizeof(SslSocket));
-    if (!self) {
-        SSL_free(ssl);
-        SSL_CTX_free(ctx);
-        return NULL;
-    }
-
-    SslSocket_init_base(self, fd);
-    self->ctx = ctx;
-    self->ssl = ssl;
-
-    if (host) {
-        snprintf(self->host, sizeof(self->host), "%s", host);
-    }
 
     return self;
 }

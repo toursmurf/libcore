@@ -22,27 +22,36 @@ static void SslSocket_close_impl(Socket* s) {
     if (!s) return;
     SslSocket* self = (SslSocket*)s;
 
+    /*
+     * [Ownership Contract]
+     * SslSocket owns fd.
+     * SSL/BIO does not own the underlying fd. (Borrower)
+     *
+     * Partial-init 상태(ssl==NULL, ctx==NULL, fd==-1)에서도
+     * 언제나 안전하게 순차적으로 정리되도록 보장합니다.
+     */
+
     if (self->ssl) {
+        /* [BACKLOG] finalize에서 SSL_shutdown 수행 여부 / 정상 close 분리 여부 추후 검토 */
         int ret = SSL_shutdown(self->ssl);
         if (ret == 0) SSL_shutdown(self->ssl);
 
-        /*  SSL_free는 내부적으로 BIO를 통해 fd를 닫습니다. */
         SSL_free(self->ssl);
         self->ssl = NULL;
-
-        /*  Double Free 폭탄 제거: fd가 이미 닫혔으므로 즉시 무효화! */
-        s->fd = -1;
+        /* 삭제됨: s->fd = -1; (SSL_free는 fd를 닫지 않으므로 여기서 소유권을 버리면 leak 발생!) */
     }
+
     if (self->ctx) {
         SSL_CTX_free(self->ctx);
         self->ctx = NULL;
     }
 
-    /* 혹시라도 SSL_free를 거치지 않은 순수 Socket의 경우에만 작동합니다. */
+    /* SslSocket이 fd의 유일한 owner이므로 여기서 최종적으로 닫아줌 */
     if (s->fd >= 0) {
         close(s->fd);
-        s->fd      = -1;
+        s->fd = -1;
     }
+
     s->is_open = false;
 }
 
@@ -50,13 +59,11 @@ static ssize_t SslSocket_send_impl(Socket* s, const void* buf, size_t len,
                                    const char* host, int port) {
     (void)host; (void)port;
     if (!s || !buf || len == 0) return -1;
-
     SslSocket* self = (SslSocket*)s;
     if (!self->ssl || !s->is_open) return -1;
 
     size_t total = 0;
     const char* p = (const char*)buf;
-
     while (total < len) {
         size_t remain = len - total;
         if(remain > INT_MAX) remain = INT_MAX;
@@ -83,10 +90,10 @@ static ssize_t SslSocket_recv_impl(Socket* s, void* buf, size_t len,
                                    char* host, int* port) {
     (void)host; (void)port;
     if (!s || !buf || len == 0) return -1;
-
     SslSocket* self = (SslSocket*)s;
     if (!self->ssl || !s->is_open) return -1;
 
+    /* [BACKLOG] len > INT_MAX일 때 직접 cast 위험 -> 이번 커밋 범위 제외 */
     int n = SSL_read(self->ssl, buf, (int)len);
     if (n <= 0) {
         int err = SSL_get_error(self->ssl, n);
@@ -113,15 +120,12 @@ void SslSocket_finalize(Object* obj) {
 
 void SslSocket_init_base(SslSocket* self, int fd) {
     if (!self) return;
-
     Socket_init_base(&self->base, fd, SOCKET_TCP);
     self->base.base.type = &_SslSocket_Class;
-
     self->base.send  = SslSocket_send_impl;
     self->base.recv  = SslSocket_recv_impl;
     self->base.close = SslSocket_close_impl;
     self->base.getFD = SslSocket_getFD_impl;
-
     self->base.bind    = NULL;
     self->base.listen  = NULL;
     self->base.connect = NULL;
