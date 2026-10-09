@@ -57,17 +57,12 @@ struct Object {
 /* =========================================
  * 3. 공통 유틸리티 함수 선언
  * ========================================= */
-
 void Object_Init(Object* obj, const Class* type);
 bool instanceOf(Object* obj, const Class* targetType);
 void toString(Object* obj, char* buffer, size_t len);
 bool equals(Object* obj, Object* other);
 int hashCode(Object* obj);
 void destroy(Object* obj); // [내부용] 실제 메모리 해제 로직
-
-// include/object.h (이걸로 고정!)
-void Object_init(Object* obj, void (*finalize)(void*)); // 소문자 init
-void Object_release(Object* obj);                       // 소문자 release
 
 char* safe_strdup(const char* src, size_t max_len) ;
 #endif // OBJECT_H
