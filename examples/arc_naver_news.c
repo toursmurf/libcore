@@ -39,7 +39,7 @@ static const NaverSection sections[] = {
 #define SECTION_COUNT \
     ((int)(sizeof(sections) / sizeof(sections[0])))
 
-#define MAX_PER_SECTION   150
+#define MAX_PER_SECTION   10
 #define TITLE_MIN_BYTES    5
 #define TITLE_MAX_BYTES  450
 
