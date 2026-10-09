@@ -9,11 +9,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* BB_MAX_CAPACITY를 HTTP_MAX_BODY 상한으로 정확히 동기화 (16MB) */
 #define HTTP_MAX_BODY ((size_t)BB_MAX_CAPACITY)
 #define HTTP_INITIAL_BODY_CAP ((size_t)16 * 1024)
 
-/* 엄격한 Direct Decimal Content-Length 파서 (SP/HTAB OWS만 허용) */
 static bool parse_content_length(const char* s, size_t max_limit, size_t* out) {
     if (!s || !out) return false;
 
@@ -46,7 +44,6 @@ static bool parse_content_length(const char* s, size_t max_limit, size_t* out) {
     return true;
 }
 
-/* 엄격한 Strict Hex Chunk Size 파서 */
 static bool parse_chunk_size(const char* s, size_t* out) {
     if (!s || !*s || !out) return false;
 
@@ -101,6 +98,7 @@ HttpClientResponse* HttpResponseParser_parse_with_options(HttpTransport* transpo
 
     while(1) {
         sscanf(line, "HTTP/1.%*d %d", &res->status_code);
+        if (res->status_code == 101) goto reject; /* [2B-1] 101 Switching Protocols 즉시 거부 */
         if (res->status_code >= 100 && res->status_code < 200) {
             while (HttpTransport_recv_line(transport, line, sizeof(line)) > 0 && strlen(line) > 0);
             if (HttpTransport_recv_line(transport, line, sizeof(line)) <= 0) goto reject;
@@ -112,7 +110,9 @@ HttpClientResponse* HttpResponseParser_parse_with_options(HttpTransport* transpo
     size_t content_length = 0;
     bool has_content_length = false;
     bool content_length_exceeds_body_cap = false;
+    bool content_length_conflict = false; /* [2B-1] 중복 CL 불일치 유예 플래그 */
     int is_chunked = 0;
+    bool has_transfer_encoding = false;
 
     while (HttpTransport_recv_line(transport, line, sizeof(line)) > 0) {
         if (strlen(line) == 0) break;
@@ -141,10 +141,21 @@ HttpClientResponse* HttpResponseParser_parse_with_options(HttpTransport* transpo
                 if (parsed_content_length > HTTP_MAX_BODY) {
                     content_length_exceeds_body_cap = true;
                 }
-                content_length = parsed_content_length;
-                has_content_length = true;
+                if (!has_content_length) {
+                    content_length = parsed_content_length;
+                    has_content_length = true;
+                } else {
+                    if (parsed_content_length != content_length) {
+                        content_length_conflict = true; /* [2B-1] 즉시 거부 대신 플래그 설정 후 유예 */
+                    }
+                }
             }
-            if (strcasecmp(key, "Transfer-Encoding") == 0 && strcasestr(val, "chunked")) is_chunked = 1;
+            if (strcasecmp(key, "Transfer-Encoding") == 0) {
+                has_transfer_encoding = true;
+                if (strcasestr(val, "chunked")) {
+                    is_chunked = 1;
+                }
+            }
         }
     }
 
@@ -157,6 +168,13 @@ HttpClientResponse* HttpResponseParser_parse_with_options(HttpTransport* transpo
     }
 
     if (has_body) {
+        /* [2B-1] 충돌 및 상한 검사는 has_body 판정 이후로 일원화 */
+        if (has_content_length && has_transfer_encoding) {
+            goto reject;
+        }
+        if (content_length_conflict) {
+            goto reject;
+        }
         if (has_content_length && content_length_exceeds_body_cap) {
             goto reject;
         }
@@ -208,16 +226,12 @@ HttpClientResponse* HttpResponseParser_parse_with_options(HttpTransport* transpo
                 while (read_total < chunk_size) {
                     int c = HttpTransport_getc(transport);
                     if (c < 0) {
-                        break; /* 2B 위임: 단기 읽기는 유지 */
+                        goto reject; /* [2B-1] Chunk Short-Read Atomic Reject */
                     }
                     if (body_buf->writeByte(body_buf, (uint8_t)c) < 0) {
-                        goto reject; /* ✅ [Harden HTTP-2A V5] 16MB 상한 초과 등 쓰기 실패 시 즉시 거부 */
+                        goto reject;
                     }
                     read_total++;
-                }
-
-                if (read_total < chunk_size) {
-                    break; /* 2B 위임: 단기 읽기는 유지 */
                 }
 
                 int r1 = HttpTransport_getc(transport);
@@ -230,8 +244,12 @@ HttpClientResponse* HttpResponseParser_parse_with_options(HttpTransport* transpo
             size_t read_total = 0;
             while (read_total < content_length) {
                 int c = HttpTransport_getc(transport);
-                if (c < 0) break;
-                if (body_buf->writeByte(body_buf, (uint8_t)c) < 0) goto reject; /* ✅ 클라이언트 본문 쓰기 실패 시 즉시 거부 */
+                if (c < 0) {
+                    goto reject; /* [2B-1] Content-Length Short-Read Atomic Reject */
+                }
+                if (body_buf->writeByte(body_buf, (uint8_t)c) < 0) {
+                    goto reject;
+                }
                 read_total++;
             }
         } else {
