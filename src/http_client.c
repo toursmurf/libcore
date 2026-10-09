@@ -302,9 +302,9 @@ static HttpClientResponse* impl_execute(HttpClient* self, HttpClientRequest* req
                     HttpTransport_close(transport);
                     return NULL;
                 }
-                res = HttpResponseParser_parse(transport);
+                res = HttpResponseParser_parse_with_options(transport, NULL, req->method);
             } else {
-                res = HttpResponseParser_parse_with_status(transport, status_line);
+                res = HttpResponseParser_parse_with_options(transport, status_line, req->method);
             }
         } else {
             if (req->payload_type == PAYLOAD_MULTIPART) {
@@ -319,7 +319,7 @@ static HttpClientResponse* impl_execute(HttpClient* self, HttpClientRequest* req
                     return NULL;
                 }
             }
-            res = HttpResponseParser_parse(transport);
+            res = HttpResponseParser_parse_with_options(transport, NULL, req->method);
         }
 
         if (owned_buf && body_buf) {
