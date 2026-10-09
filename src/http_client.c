@@ -10,6 +10,40 @@
 #include <stdio.h>
 #include <ctype.h>
 
+/* [2B-2B V4] Expect-100 클라이언트 헤더 소비 루프 리소스 상한 */
+#define HTTP_EXPECT_MAX_HEADER_COUNT ((size_t)100)
+#define HTTP_EXPECT_MAX_HEADER_BYTES ((size_t)64 * 1024)
+#define HTTP_MAX_INFORMATIONAL ((size_t)10)
+
+/* [2B-2B V4] 동일한 정책(100 fields / 64KiB)으로 헤더 블록을 소비하는 Helper */
+static bool recv_expect_header_block(HttpTransport* transport, char* line_buf, size_t line_size) {
+    size_t header_count = 0;
+    size_t header_bytes = 0;
+
+    for (;;) {
+        int ret = HttpTransport_recv_line(transport, line_buf, (int)line_size);
+
+        if (ret <= 0 || ret >= (int)(line_size - 1)) {
+            return false;
+        }
+
+        if (strlen(line_buf) == 0) {
+            break;
+        }
+
+        if (header_count >= HTTP_EXPECT_MAX_HEADER_COUNT) {
+            return false;
+        }
+        header_count++;
+
+        if ((size_t)ret > HTTP_EXPECT_MAX_HEADER_BYTES - header_bytes) {
+            return false;
+        }
+        header_bytes += (size_t)ret;
+    }
+    return true;
+}
+
 /* =========================================================
  *  ARC 객체 파괴자
  * ========================================================= */
@@ -38,7 +72,7 @@ HttpMultipartFile* new_HttpMultipartFile(const char* filename, const char* conte
 
     if (data && size > 0) {
         self->data = malloc(size);
-        if (!self->data) { /*  NULL 방어막 완비 */
+        if (!self->data) {
             RELEASE((Object*)self);
             return NULL;
         }
@@ -294,17 +328,78 @@ static HttpClientResponse* impl_execute(HttpClient* self, HttpClientRequest* req
         RELEASE((Object*)head_sb);
 
         if (expect_100) {
-            char status_line[128];
-            HttpTransport_recv_line(transport, status_line, sizeof(status_line));
-            if (strstr(status_line, "100 Continue")) {
-                HttpTransport_recv_line(transport, status_line, sizeof(status_line));
-                if (MultipartWriter_stream_send(req->data, req->files, boundary, transport) < 0) {
+            char status_line[4096];
+            size_t informational_count = 0;
+            bool request_body_sent = false;
+
+            /* [2B-2B V4] 파서로 넘기지 않고 Final Status까지 완벽히 클라이언트가 통제하는 상태 루프 */
+            for (;;) {
+                int ret1 = HttpTransport_recv_line(transport, status_line, sizeof(status_line));
+
+                if (ret1 <= 0 || ret1 >= (int)(sizeof(status_line) - 1)) {
                     HttpTransport_close(transport);
+                    if (owned_buf && body_buf) free(body_buf);
                     return NULL;
                 }
-                res = HttpResponseParser_parse_with_options(transport, NULL, req->method);
-            } else {
+
+                int parsed_status = 0;
+                if (sscanf(status_line, "HTTP/1.%*d %d", &parsed_status) != 1) {
+                    HttpTransport_close(transport);
+                    if (owned_buf && body_buf) free(body_buf);
+                    return NULL;
+                }
+
+                if (parsed_status < 100 || parsed_status > 999) {
+                    HttpTransport_close(transport);
+                    if (owned_buf && body_buf) free(body_buf);
+                    return NULL;
+                }
+
+                if (parsed_status == 101) {
+                    HttpTransport_close(transport);
+                    if (owned_buf && body_buf) free(body_buf);
+                    return NULL;
+                }
+
+                if (parsed_status >= 100 && parsed_status < 200) {
+                    informational_count++;
+                    if (informational_count > HTTP_MAX_INFORMATIONAL) {
+                        HttpTransport_close(transport);
+                        if (owned_buf && body_buf) free(body_buf);
+                        return NULL;
+                    }
+
+                    if (!recv_expect_header_block(transport, status_line, sizeof(status_line))) {
+                        HttpTransport_close(transport);
+                        if (owned_buf && body_buf) free(body_buf);
+                        return NULL;
+                    }
+
+                    if (parsed_status == 100 && !request_body_sent) {
+                        /* 100 Continue 정상 수신: 정확히 1회만 바디를 전송 */
+                        if (req->payload_type == PAYLOAD_MULTIPART) {
+                            if (MultipartWriter_stream_send(req->data, req->files, boundary, transport) < 0) {
+                                HttpTransport_close(transport);
+                                if (owned_buf && body_buf) free(body_buf);
+                                return NULL;
+                            }
+                        } else if (body_len > 0 && body_buf) {
+                            if (HttpTransport_send(transport, body_buf, body_len) < 0) {
+                                HttpTransport_close(transport);
+                                if (owned_buf && body_buf) free(body_buf);
+                                return NULL;
+                            }
+                        }
+                        request_body_sent = true;
+                    }
+
+                    /* 100이든 103이든, 파서로 넘기지 않고 계속 200+ 응답을 대기 */
+                    continue;
+                }
+
+                /* 200~599 최종 응답 수신: 드디어 파서에게 상태 라인과 함께 위임 */
                 res = HttpResponseParser_parse_with_options(transport, status_line, req->method);
+                break;
             }
         } else {
             if (req->payload_type == PAYLOAD_MULTIPART) {
@@ -327,7 +422,6 @@ static HttpClientResponse* impl_execute(HttpClient* self, HttpClientRequest* req
             body_buf = NULL;
         }
 
-        /* ✅ [V1.5 Final 패치] snprintf로 안전하게 교체! (GCC 11+ 경고 방어) */
         char last_scheme[16];
         char last_host[256];
         int last_port = transport->port;
