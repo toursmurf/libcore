@@ -23,7 +23,8 @@ static bool recv_expect_header_block(HttpTransport* transport, char* line_buf, s
     for (;;) {
         int ret = HttpTransport_recv_line(transport, line_buf, (int)line_size);
 
-        if (ret <= 0 || ret >= (int)(line_size - 1)) {
+        /* [HTTP-2B-2D] 임시 보수 가드(ret >= line_size - 1) 제거 -> recv_line 캘리 계약에 위임 */
+        if (ret <= 0) {
             return false;
         }
 
@@ -336,7 +337,8 @@ static HttpClientResponse* impl_execute(HttpClient* self, HttpClientRequest* req
             for (;;) {
                 int ret1 = HttpTransport_recv_line(transport, status_line, sizeof(status_line));
 
-                if (ret1 <= 0 || ret1 >= (int)(sizeof(status_line) - 1)) {
+                /* [HTTP-2B-2D] 임시 보수 가드 제거 -> recv_line 캘리 계약에 위임 */
+                if (ret1 <= 0) {
                     HttpTransport_close(transport);
                     if (owned_buf && body_buf) free(body_buf);
                     return NULL;
