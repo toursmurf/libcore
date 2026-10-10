@@ -24,7 +24,7 @@ HttpTransport* HttpTransport_connect(const char* url) {
         return NULL;
     }
 
-    /*  [이돌이 패치] 포트가 "0"으로 들어오는 경우 80/443 기본 포트로 강제 덮어쓰기! */
+    /* [이돌이 패치] 포트가 "0"으로 들어오는 경우 80/443 기본 포트로 강제 덮어쓰기! */
     int port = port_str ? atoi(port_str) : 0;
     if (port <= 0) {
         port = (strcasecmp(scheme, "https") == 0) ? 443 : 80;
@@ -114,18 +114,74 @@ int HttpTransport_getc(HttpTransport* self) {
     return (unsigned char)self->read_buf[self->read_pos++];
 }
 
+/* =========================================================
+ * [HTTP-2B-2C V2.1] recv_line callee hardening
+ * ========================================================= */
 int HttpTransport_recv_line(HttpTransport* self, char* line_buf, int max_len) {
-    int i = 0, c;
-    while (i < max_len - 1) {
-        c = HttpTransport_getc(self);
-        if (c < 0) break;
-        line_buf[i++] = (char)c;
-        if (c == '\n') break;
+    int consumed = 0;
+    int out_len = 0;
+
+    if (!line_buf) return -1;
+
+    if (max_len >= 1) {
+        line_buf[0] = '\0';
     }
-    line_buf[i] = '\0';
-    if (i > 0 && line_buf[i-1] == '\n') line_buf[i-1] = '\0';
-    if (i > 1 && line_buf[i-2] == '\r') line_buf[i-2] = '\0';
-    return i;
+
+    if (!self || max_len < 2) {
+        return -1;
+    }
+
+    while (consumed < max_len - 1) {
+        int c = HttpTransport_getc(self);
+
+        if (c < 0) {
+            goto fail;
+        }
+
+        consumed++;
+
+        /* Embedded NUL: wire != C string */
+        if (c == '\0') {
+            goto fail;
+        }
+
+        /* Bare LF is intentionally accepted. */
+        if (c == '\n') {
+            line_buf[out_len] = '\0';
+            return consumed;
+        }
+
+        if (c == '\r') {
+            /*
+             * CR itself consumed the final byte in the input window.
+             * Do not read/peek beyond max_len - 1.
+             */
+            if (consumed >= max_len - 1) {
+                goto fail;
+            }
+
+            int next_c = HttpTransport_getc(self);
+            if (next_c < 0) {
+                goto fail;
+            }
+
+            consumed++;
+
+            /* A CR not immediately followed by LF is invalid. */
+            if (next_c != '\n') {
+                goto fail;
+            }
+
+            line_buf[out_len] = '\0';
+            return consumed;
+        }
+
+        line_buf[out_len++] = (char)c;
+    }
+
+fail:
+    line_buf[0] = '\0';
+    return -1;
 }
 
 void HttpTransport_close(HttpTransport* self) {
