@@ -1,30 +1,31 @@
-// ============================================================================
-//  TARGET OS: 64-bit Linux Only (32-bit not supported) 
-// ============================================================================
 #ifndef WS_PROTOCOL_H
 #define WS_PROTOCOL_H
 
-/* 단일 WS 프레임 페이로드 최대 크기: 1MB (서버 자원 보호) */
 #define MAX_WS_PAYLOAD_SIZE (1024 * 1024)
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <sys/types.h>
 
-// P2 핸드셰이크용 키 생성기
+#define WS_OPCODE_CONTINUATION 0x0
+#define WS_OPCODE_TEXT         0x1
+#define WS_OPCODE_BINARY       0x2
+#define WS_OPCODE_CLOSE        0x8
+#define WS_OPCODE_PING         0x9
+#define WS_OPCODE_PONG         0xA
+
+#define WS_DECODE_OK           1
+#define WS_DECODE_NEED_MORE    0
+#define WS_DECODE_ERROR       -1
+
 char* ws_compute_accept_key(const char* client_key);
 
-// P3 서버 -> 브라우저 (무제한 Payload 지원, 마스킹 없음)
 size_t ws_build_text_frame(const char* msg, uint8_t* out_buf, size_t max_len);
-
-// P3 브라우저å -> 서버 (무제한 Payload 해독, 마스킹 해제)
 ssize_t ws_decode_frame(const uint8_t* in_buf, size_t in_len, char* out_msg, size_t max_out);
+ssize_t ws_decode_frame2(const uint8_t* in_buf, size_t in_len, char* out_msg, size_t max_out, size_t* consumed, int* is_ping);
 
-/* P3-2 스트리밍 디코더 (분할 프레임 대응)
- * 반환:  >0 = 페이로드 길이 (성공, *consumed에 소비 바이트)
- *         0 = 데이터 부족 (더 수신 필요)
- *        -1 = Close 프레임 (*consumed에 소비 바이트)
- *        -2 = 프로토콜 위반 (즉시 절단 대상)
- * PING(0x9) 수신 시 *ping_out=1, 페이로드는 out_msg (PONG 회신용) */
-ssize_t ws_decode_frame2(const uint8_t* in_buf, size_t in_len,  char* out_msg, size_t max_out, size_t* consumed, int* is_ping);
+size_t ws_build_frame(uint8_t opcode, const uint8_t* msg, size_t msg_len, uint8_t* out_buf, size_t max_len);
+int ws_decode_frame3(uint8_t* in_buf, size_t in_len, uint8_t** out_payload, size_t* out_payload_len, size_t* consumed, int* out_opcode);
+
 #endif // WS_PROTOCOL_H
