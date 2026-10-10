@@ -64,8 +64,9 @@ UrlInfo* UrlInfo_parse(const char* url_str) {
         info->host = new_StringN(p, (size_t)(port_start - p));
         if (!info->host) { RELEASE((Object*)info); return NULL; }
 
-        int parsed_port = atoi(port_start + 1);
-        if (parsed_port > 0 && parsed_port <= 65535) {
+        /* [PORT-1] atoi 제거: ':' 다음부터 host_end 직전까지 정확히 그 구간만 엄격 파싱 */
+        int parsed_port = 0;
+        if (parse_port_strict_n(port_start + 1, (size_t)(host_end - (port_start + 1)), &parsed_port)) {
             info->port = parsed_port;
         } else {
             RELEASE((Object*)info);

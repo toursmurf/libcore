@@ -72,4 +72,23 @@ Socket* createSyncUnixClient(const char* path, Exception** out_err);
 
 HashMap* parse_url(const char* url);
 
+/**
+ * [PORT-1] Strict TCP/UDP port parser.
+ *
+ * Success (returns true, *out set):
+ *   - every byte is a decimal digit '0'..'9'
+ *   - the whole input is consumed (no leading/trailing bytes)
+ *   - final value is 1..65535 (leading zeros allowed: "0080" -> 80)
+ *
+ * Failure (returns false, *out unchanged):
+ *   - s == NULL, out == NULL, empty input
+ *   - sign ('+', '-'), whitespace, any non-digit byte
+ *   - value 0 or value > 65535 (rejected before it can overflow)
+ *
+ * parse_port_strict_n() parses exactly len bytes (input need not be
+ * NUL-terminated). parse_port_strict() parses a NUL-terminated string.
+ */
+bool parse_port_strict_n(const char* s, size_t len, int* out);
+bool parse_port_strict(const char* s, int* out);
+
 #endif /* SOCKET_BASE_H */

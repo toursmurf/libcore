@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 static const Class _Socket_Class = {
     .name     = "Socket",
@@ -139,6 +140,36 @@ void Socket_init_base(Socket* self, int fd, SocketProtocol protocol) {
 }
 
 // ----------------------------------------------------------------------------
+// [PORT-1] Strict port parser (검증과 변환을 한 번에: 검증한 바로 그 값을 반환)
+// ----------------------------------------------------------------------------
+bool parse_port_strict_n(const char* s, size_t len, int* out) {
+    if (!s || !out || len == 0) return false;
+
+    uint32_t v = 0;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char ch = (unsigned char)s[i];
+        uint32_t d;
+
+        if (ch < '0' || ch > '9') return false;
+        d = (uint32_t)(ch - '0');
+
+        /* v*10 + d > 65535 를 곱하기 전에 판정 → 타입 폭과 무관하게 오버플로 불가 */
+        if (v > (65535u - d) / 10u) return false;
+        v = v * 10u + d;
+    }
+
+    if (v == 0) return false;
+
+    *out = (int)v;
+    return true;
+}
+
+bool parse_port_strict(const char* s, int* out) {
+    if (!s) return false;
+    return parse_port_strict_n(s, strlen(s), out);
+}
+
+// ----------------------------------------------------------------------------
 // [4] PHP 스타일 HashMap URL 파서
 // ----------------------------------------------------------------------------
 HashMap* parse_url(const char* url) {
@@ -247,7 +278,9 @@ Socket* createServer(const char* url, Exception** out_err) {
         const char* port_str = hashmap_get_str(info, "port");
 
         if (host && port_str) {
-            int port = atoi(port_str);
+            int port = 0;
+            /* [PORT-1] atoi 제거: 숫자 외 문자/부호/공백/범위 초과/0 은 전부 reject */
+            if (!parse_port_strict(port_str, &port)) port = 0;
             //  [방어막 2] 포트 바운더리 체크
             if (port <= 0 || port > 65535) {
                 if (out_err) {
@@ -272,7 +305,9 @@ Socket* createServer(const char* url, Exception** out_err) {
         const char* port_str = hashmap_get_str(info, "port");
 
         if (host && port_str) {
-            int port = atoi(port_str);
+            int port = 0;
+            /* [PORT-1] atoi 제거: 숫자 외 문자/부호/공백/범위 초과/0 은 전부 reject */
+            if (!parse_port_strict(port_str, &port)) port = 0;
             if (port <= 0 || port > 65535) {
                 if (out_err) {
                     *out_err = throw_Exception(ERR_SOCK_PORT, 0, "UDP port out of range (1-65535)");
@@ -357,7 +392,9 @@ Socket* createClient(const char* url, Exception** out_err) {
         const char* port_str = hashmap_get_str(info, "port");
 
         if (host && port_str) {
-            int port = atoi(port_str);
+            int port = 0;
+            /* [PORT-1] atoi 제거: 숫자 외 문자/부호/공백/범위 초과/0 은 전부 reject */
+            if (!parse_port_strict(port_str, &port)) port = 0;
             //  [방어막 2] 포트 바운더리 체크
             if (port <= 0 || port > 65535) {
                 if (out_err) {
