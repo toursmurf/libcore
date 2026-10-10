@@ -24,10 +24,15 @@ HttpTransport* HttpTransport_connect(const char* url) {
         return NULL;
     }
 
-    /* [이돌이 패치] 포트가 "0"으로 들어오는 경우 80/443 기본 포트로 강제 덮어쓰기! */
-    int port = port_str ? atoi(port_str) : 0;
-    if (port <= 0) {
+    /* [URL-1] atoi 제거: absent → 기본 포트, explicit → strict 검증, invalid → 즉시 실패
+     *   - port_str == NULL : URL에 포트 없음 (parse_url URL-1 계약) → 80/443
+     *   - port_str != NULL : ":0", ":-1", ":+80", ":aacc", ":", ":65536" 등은 전부 reject */
+    int port = 0;
+    if (!port_str) {
         port = (strcasecmp(scheme, "https") == 0) ? 443 : 80;
+    }else if (!parse_port_strict(port_str, &port)) {
+       RELEASE((Object*)url_info);
+       return NULL;
     }
 
     Socket* sock = NULL;

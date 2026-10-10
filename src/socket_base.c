@@ -232,7 +232,7 @@ HashMap* parse_url(const char* url) {
         hashmap_put_str(result, "port", port_sep + 1);
     } else {
         hashmap_put_str(result, "host", hostport);
-        hashmap_put_str(result, "port", "0");
+        /* [URL-1] 포트 absent: "port" 키를 넣지 않는다 ("0" 표현 제거) */
     }
 
     return result;
