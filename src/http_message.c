@@ -1,9 +1,13 @@
-/*[cite: 1] */
+/*
+ * http_message.c
+ * HTTP 메시지 객체 및 응답 전송부
+ */
 #include "http_message.h"
 #include "http_server.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 const char* Http_statusMessage(int code) {
     switch (code) {
@@ -222,10 +226,14 @@ static void send_internal(HttpResponse* self, const char* ctype, const char* bod
         ctx.len += n_end;
     }
 
+    /* 🚨 [NEW] HttpServer에 묶인 정상적인 Connection이며, 요청이 HEAD인지 구조체 역추적으로 확인 */
+    bool is_head = (self->conn && self->conn->req && self->conn->req->method == HTTP_HEAD);
+
     if (self->conn) {
         HttpConnection_append_send(self->conn, (const uint8_t*)head_buf, ctx.len);
 
-        if (body && body_len > 0) {
+        /* 🚨 [MODIFIED] HEAD가 아닐 때만 실제 Body를 버퍼에 쓴다! (Body Suppression) */
+        if (!is_head && body && body_len > 0) {
             HttpConnection_append_send(self->conn, (const uint8_t*)body, body_len);
         }
 
@@ -233,6 +241,8 @@ static void send_internal(HttpResponse* self, const char* ctype, const char* bod
     } else {
         self->socket->send(self->socket, head_buf, ctx.len, NULL, 0);
 
+        /* 🚨 [CONTRACT] Standalone/raw socket response has no HttpRequest method context.
+         * HEAD body suppression is guaranteed ONLY for HttpServer-bound responses. */
         if (body && body_len > 0) {
             self->socket->send(self->socket, body, body_len, NULL, 0);
         }
@@ -419,12 +429,24 @@ static void impl_sendFile(HttpResponse* self, const char* path) {
 
     ctx.len += n_end;
 
+    /* 🚨 [NEW] HttpServer에 묶인 정상적인 Connection이며, 요청이 HEAD인지 확인 */
+    bool is_head = (self->conn && self->conn->req && self->conn->req->method == HTTP_HEAD);
+
     if (self->conn) {
         HttpConnection_append_send(self->conn,
             (const uint8_t*)head_buf, ctx.len);
     } else {
         self->socket->send(self->socket,
             head_buf, ctx.len, NULL, 0);
+    }
+
+    /* 🚨 [NEW] HEAD면 파일 덩어리(Chunk) 읽기도 전에 즉각 종료! 불필요한 File I/O 원천 차단! */
+    if (is_head) {
+        fclose(fp);
+        if (self->conn) {
+            HttpConnection_flush(self->conn);
+        }
+        return;
     }
 
     /* size까지만 전송!! */

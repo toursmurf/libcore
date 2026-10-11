@@ -242,6 +242,24 @@ static bool route_match(const char* route_path,
     return match;
 }
 
+/* ── [NEW] 내부 헬퍼: HEAD 6-Pass 라우팅 전용 (일반 메서드에는 100% 무영향) ── */
+static Route* find_route_head_helper(Router* self, HttpMethod method, const char* safe_path,
+                                     HttpRequest* req, bool is_dynamic) {
+    int route_count = self->routes->getSize(self->routes);
+    for (int i = 0; i < route_count; i++) {
+        Route* r = (Route*)self->routes->get(self->routes, i);
+        if (!r) continue;
+
+        if (r->method == method) {
+            const char* r_path = r->path ? r->path->c_str(r->path) : "/";
+            if (route_match(r_path, safe_path, is_dynamic ? req->params : NULL, is_dynamic)) {
+                return r;
+            }
+        }
+    }
+    return NULL;
+}
+
 /*  ③ 심장부: 2-Pass 패킷 디스패처 (PathValidator 검증 융합 완료) */
 static void impl_dispatch(Router* self, HttpRequest* req, HttpResponse* res) {
     if (!self || !req || !res) return;
@@ -262,38 +280,64 @@ static void impl_dispatch(Router* self, HttpRequest* req, HttpResponse* res) {
         return;
     }
 
-    // ✨✨ [2단계: 안전이 보장된 정규화 경로(safe_path)로 2-Pass 라우팅 시작] ✨✨
+    // ✨✨ [2단계: 안전이 보장된 정규화 경로(safe_path)로 라우팅 시작] ✨✨
     int route_count = self->routes->getSize(self->routes);
     HttpMethod req_method = req->method;
 
-    /* 1패스: 정적 라우트 우선 매칭 (예: /board/list) */
-    for (int i = 0; i < route_count; i++) {
-        Route* r = (Route*)self->routes->get(self->routes, i);
-        if (!r) continue;
+    /* 🚨 [NEW] HEAD 전용 6-Pass 라우팅 (명시적 HEAD > UNKNOWN > GET Fallback) */
+    if (req_method == HTTP_HEAD) {
+        Route* matched = NULL;
 
-        if (r->method == req_method || r->method == HTTP_UNKNOWN) {
-            const char* route_path_str = r->path ? r->path->c_str(r->path) : "/";
-            if (route_match(route_path_str, safe_path, NULL, false)) {
-                if (r->handler) {
-                    r->handler(req, res, self->user_ctx);
-                }
-                return;
-            }
+        /* 1. Static HEAD exact */
+        matched = find_route_head_helper(self, HTTP_HEAD, safe_path, req, false);
+        /* 2. Static UNKNOWN */
+        if (!matched) matched = find_route_head_helper(self, HTTP_UNKNOWN, safe_path, req, false);
+        /* 3. Static GET fallback */
+        if (!matched) matched = find_route_head_helper(self, HTTP_GET, safe_path, req, false);
+
+        /* 4. Dynamic HEAD exact */
+        if (!matched) matched = find_route_head_helper(self, HTTP_HEAD, safe_path, req, true);
+        /* 5. Dynamic UNKNOWN */
+        if (!matched) matched = find_route_head_helper(self, HTTP_UNKNOWN, safe_path, req, true);
+        /* 6. Dynamic GET fallback */
+        if (!matched) matched = find_route_head_helper(self, HTTP_GET, safe_path, req, true);
+
+        if (matched && matched->handler) {
+            matched->handler(req, res, self->user_ctx);
+            return;
         }
     }
+    /* 🚨 [ORIGINAL] HEAD가 아닌 일반 요청: 기존 2-Pass 알고리즘 100% 보존 (등록 순서 우선) */
+    else {
+        /* 1패스: 정적 라우트 우선 매칭 (예: /board/list) */
+        for (int i = 0; i < route_count; i++) {
+            Route* r = (Route*)self->routes->get(self->routes, i);
+            if (!r) continue;
 
-    /* 2패스: 파라미터 동적 라우트 매칭 (예: /board/:id) */
-    for (int i = 0; i < route_count; i++) {
-        Route* r = (Route*)self->routes->get(self->routes, i);
-        if (!r) continue;
-
-        if (r->method == req_method || r->method == HTTP_UNKNOWN) {
-            const char* route_path_str = r->path ? r->path->c_str(r->path) : "/";
-            if (route_match(route_path_str, safe_path, req->params, true)) {
-                if (r->handler) {
-                    r->handler(req, res, self->user_ctx);
+            if (r->method == req_method || r->method == HTTP_UNKNOWN) {
+                const char* route_path_str = r->path ? r->path->c_str(r->path) : "/";
+                if (route_match(route_path_str, safe_path, NULL, false)) {
+                    if (r->handler) {
+                        r->handler(req, res, self->user_ctx);
+                    }
+                    return;
                 }
-                return;
+            }
+        }
+
+        /* 2패스: 파라미터 동적 라우트 매칭 (예: /board/:id) */
+        for (int i = 0; i < route_count; i++) {
+            Route* r = (Route*)self->routes->get(self->routes, i);
+            if (!r) continue;
+
+            if (r->method == req_method || r->method == HTTP_UNKNOWN) {
+                const char* route_path_str = r->path ? r->path->c_str(r->path) : "/";
+                if (route_match(route_path_str, safe_path, req->params, true)) {
+                    if (r->handler) {
+                        r->handler(req, res, self->user_ctx);
+                    }
+                    return;
+                }
             }
         }
     }

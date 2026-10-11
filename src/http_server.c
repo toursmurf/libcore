@@ -849,10 +849,12 @@ void HttpConnection_on_readable(Socket* s, void* loop_ptr) {
             }
             memcpy(path_str, target_start, target_len); path_str[target_len] = '\0';
 
+            /* 🚨 [MODIFIED] HTTP 파싱 분기: HEAD 정상 매칭 추가 */
             if (strcmp(method_str, "GET") == 0) conn->req->method = HTTP_GET;
             else if (strcmp(method_str, "POST") == 0) conn->req->method = HTTP_POST;
             else if (strcmp(method_str, "PUT") == 0) conn->req->method = HTTP_PUT;
             else if (strcmp(method_str, "DELETE") == 0) conn->req->method = HTTP_DELETE;
+            else if (strcmp(method_str, "HEAD") == 0) conn->req->method = HTTP_HEAD;
             else conn->req->method = HTTP_UNKNOWN;
 
             char* qmark = strchr(path_str, '?');
