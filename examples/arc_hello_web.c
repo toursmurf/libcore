@@ -27,7 +27,7 @@ int main(void) {
 
     Router* router = new_Router(NULL);
     router->GET(router, "/", hello);
-    /* 동적 라우팅 url/1, url/2 같이 변경하는글자의 경우 */
+    /* 동적 라우팅: /1, /2, /test 등의 첫 경로 세그먼트를 id로 캡처 */
     router->GET(router, "/:id", hello);
 
     EventLoop*  loop   = event_loop_create();
