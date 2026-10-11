@@ -7,14 +7,18 @@
 #include <signal.h>
 #include <stdio.h>
 
+/* "/" 와 "/:id" 요청을 처리하는 공통 핸들러 */
 static void hello(HttpRequest* req, HttpResponse* res, void* ctx) {
     (void)req; (void)ctx;
     char buf[256]={0};
     const char* id_str = req->params ? hashmap_get_str(req->params, "id") : NULL;
-    if(id_str)
-    	snprintf(buf, sizeof(buf), "Hello, libcore: %s\n", id_str); 
-    else
-    	snprintf(buf, sizeof(buf), "Hello, libcore\n"); 
+    if (id_str) {
+    	snprintf(buf, sizeof(buf),
+             "Hello, libcore: %s\n", id_str);
+    } else {
+    	snprintf(buf, sizeof(buf),
+             "Hello, libcore\n");
+    }
     res->sendText(res, buf);
 }
 
