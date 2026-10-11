@@ -7,7 +7,6 @@
 #include <signal.h>
 #include <stdio.h>
 
-// root 로 이동시
 static void hello(HttpRequest* req, HttpResponse* res, void* ctx) {
     (void)req; (void)ctx;
     char buf[256]={0};
