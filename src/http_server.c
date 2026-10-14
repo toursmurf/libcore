@@ -694,6 +694,12 @@ static int HttpConnection_parse_headers(HttpConnection* conn, char* header_end) 
 
 void WsUpgrade_handler(HttpRequest* req, HttpResponse* res, void* user_ctx) {
     (void)user_ctx;
+
+    /* 🚨 [NEW] RFC 6455 §4.1: 핸드셰이크는 반드시 GET만 허용! HEAD -> GET Fallback 우회 경로 원천 차단! */
+    if (req->method != HTTP_GET) {
+        res->setStatus(res, 400); res->sendText(res, "Invalid Handshake Request"); return;
+    }
+
     const char* upgrade = hashmap_get_str(req->headers, "upgrade");
     const char* ws_key = hashmap_get_str(req->headers, "sec-websocket-key");
 
