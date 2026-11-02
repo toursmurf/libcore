@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Valgrind](https://img.shields.io/badge/Valgrind-clean-brightgreen)](/)
 [![Platform](https://img.shields.io/badge/Platform-Rocky%20Linux%20%7C%20macOS-lightgrey)](/)
-[![Version](https://img.shields.io/badge/Version-v1.7.2-orange)](/)
+[![Version](https://img.shields.io/badge/Version-v1.8.0-orange)](/)
 
 ---
 
@@ -66,7 +66,7 @@ into a reusable C99 server runtime.
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
-│                     libcore v1.7.2                       │
+│                     libcore v1.8.0                       │
 ├──────────────────────────────────────────────────────────┤
 │                                                          │
 │   ┌─────────────────┐      ┌─────────────────────────┐   │
@@ -143,7 +143,7 @@ The operating system and EventLoop backend are selected automatically.
 
 ```text
 =========================================
- libcore Build Configuration (v1.7.2)
+ libcore Build Configuration (v1.8.0)
 =========================================
  Target OS  : Linux
  Backend    : epoll
@@ -155,7 +155,7 @@ The operating system and EventLoop backend are selected automatically.
 
 ```text
 =========================================
- libcore Build Configuration (v1.7.2)
+ libcore Build Configuration (v1.8.0)
 =========================================
  Target OS  : macOS
  Backend    : kqueue
@@ -391,7 +391,7 @@ macOS Apple Silicon
 
 # 🚀 WebBoard Demo — Multi-RDB Support
 
-libcore v1.7.2 WebBoard는 동일한 애플리케이션 코드에서
+libcore v1.8.0 WebBoard는 동일한 애플리케이션 코드에서
 
 ```text
 MySQL / MariaDB
@@ -521,6 +521,7 @@ using libcore CoreSNMP / ASN.1 components.
 
 | 버전 / Version | 주요 내용 / Highlights |
 |---|---|
+| **v1.8.0** | io_uring modified |
 | **v1.7.2** | WebBoard multi-RDB (MySQL / PostgreSQL / SQLite), real-time WebSocket demos: PixelBoard and ToosType |
 | **v1.7.1** | Router parameter 2-Pass engine, OOM / NPD defense |
 | **v1.7.0** | macOS kqueue support — Linux + macOS |
@@ -549,7 +550,7 @@ Ubuntu / Debian / macOS Intel / Other Linux distributions
 ```
 
 > Other environments may work, but have not been independently
-> verified for libcore v1.7.2.
+> verified for libcore v1.8.0.
 
 ---
 
@@ -561,7 +562,7 @@ Ubuntu / Debian / macOS Intel / Other Linux distributions
 | [docs/coding_guide_en.md](docs/coding_guide_en.md) | English Coding Guide |
 | [docs/CODING_CONTRACT_KO.md](docs/CODING_CONTRACT_KO.md) | Korean Coding Contract |
 | [docs/CODING_CONTRACT_EN.md](docs/CODING_CONTRACT_EN.md) | English Coding Contract |
-| [docs/libcore_v1.7.2_API_Reference.md](docs/libcore_v1.7.2_API_Reference.md) | v1.7.2 API Reference |
+| [docs/libcore_v1.8.0_API_Reference.md](docs/libcore_v1.8.0_API_Reference.md) | v1.8.0 API Reference |
 | [docs/libcore_v1_class_diagram.md](docs/libcore_v1_class_diagram.md) | Class Diagram |
 | [docs/mysql_setup.md](docs/mysql_setup.md) | MySQL Setup |
 | [docs/examples.ko.md](docs/examples.ko.md) | Korean Examples Guide |
@@ -663,4 +664,4 @@ Valgrind clean. MIT licensed.
 
 > **Java-like API / Python-like usability / C-level performance / explicit ownership safety.**
 
-**libcore v1.7.2**
+**libcore v1.8.0**
