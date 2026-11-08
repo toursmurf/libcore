@@ -24,11 +24,14 @@ void normalize_path(char* path) {
             /* Do nothing */
         } else if (strcmp(token, "..") == 0) {
             if (stack->getSize(stack) > 0) {
-                stack->removeResult(stack, stack->getSize(stack) - 1);
+                stack->remove(stack, stack->getSize(stack) - 1);
             }
         } else {
             String* token_str = new_String(token);
-            if (token_str) stack->add(stack, (Object*)token_str);
+            if (token_str) {
+                stack->add(stack, (Object*)token_str);
+                RELEASE((Object*)token_str);
+            }
         }
         token = strtok_r(NULL, "/", &saveptr);
     }
@@ -41,7 +44,6 @@ void normalize_path(char* path) {
         memcpy(p, s->c_str(s), slen);
         p += slen;
         if (i < stack->getSize(stack) - 1) *p++ = '/';
-        RELEASE(s);
     }
     *p = '\0';
     RELEASE((Object*)stack);

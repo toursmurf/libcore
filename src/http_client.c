@@ -182,7 +182,7 @@ static void update_cookie_jar(ArrayList* jar, HttpCookie* new_c) {
         if (strcmp(c->name, new_c->name) == 0 &&
             ((!c->domain && !new_c->domain) || (c->domain && new_c->domain && strcasecmp(c->domain, new_c->domain) == 0)) &&
             ((!c->path && !new_c->path) || (c->path && new_c->path && strcmp(c->path, new_c->path) == 0))) {
-            jar->removeResult(jar, i);
+            jar->remove(jar, i);
             break;
         }
     }
